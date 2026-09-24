@@ -41,16 +41,15 @@ export function DatabaseExplorer() {
     const { tabs, activeTabId } = useTabStore.getState();
     const tab = tabs.find((item) => item.id === activeTabId);
     const metadata = tab?.type === 'table' ? tab.metadata as TableTabMetadata | undefined : undefined;
-    if (!metadata?.objectName || !metadata.connectionId) {
+    const catalog = metadata?.catalog || metadata?.databaseName;
+    if (!metadata?.connectionId || !catalog) {
       toast.warning(t(I18N_KEYS.EXPLORER.LOCATE_TABLE_NONE));
       return;
     }
     const found = await treeRef.current?.locateTable({
       connectionId: metadata.connectionId,
-      catalog: metadata.catalog || metadata.databaseName,
+      catalog,
       schema: metadata.schema || metadata.schemaName,
-      objectName: metadata.objectName,
-      objectType: metadata.objectType,
     });
     if (!found) {
       toast.warning(t(I18N_KEYS.EXPLORER.LOCATE_TABLE_MISSING));

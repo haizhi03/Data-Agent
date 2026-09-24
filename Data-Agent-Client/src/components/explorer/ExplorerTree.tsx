@@ -1,7 +1,7 @@
 import { forwardRef, useImperativeHandle, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Tree as ArboristTree, NodeApi, TreeApi } from 'react-arborist';
-import { ExplorerIdPrefix, ExplorerTreeConfig, ExplorerNodeType, FolderName } from '../../constants/explorer';
+import { ExplorerIdPrefix, ExplorerTreeConfig, ExplorerNodeType } from '../../constants/explorer';
 import { I18N_KEYS } from '../../constants/i18nKeys';
 import { ExplorerTreeNode } from './ExplorerTreeNode';
 import type { ExplorerNode } from '../../types/explorer';
@@ -30,8 +30,6 @@ export interface ExplorerLocateTarget {
   connectionId: number;
   catalog?: string | null;
   schema?: string | null;
-  objectName: string;
-  objectType: 'table' | 'view';
 }
 
 export interface ExplorerTreeHandle {
@@ -135,29 +133,12 @@ export const ExplorerTree = forwardRef<ExplorerTreeHandle, ExplorerTreeProps>(fu
       ));
       if (!connection) return false;
 
-      let current = await revealNode(connection, onHydrateFromCache, onLoadData);
-      const database = findChild(current, ExplorerNodeType.DB, target.catalog);
-      if (database) {
-        current = await revealNode(database, onHydrateFromCache, onLoadData);
-      }
-      const schemaName = target.schema || (!database ? target.catalog : null);
-      const schema = findChild(current, ExplorerNodeType.SCHEMA, schemaName);
-      if (schema) {
-        current = await revealNode(schema, onHydrateFromCache, onLoadData);
-      }
-
-      const folderName = target.objectType === 'view' ? FolderName.VIEWS : FolderName.TABLES;
-      const folder = (current.children ?? []).find((child) => (
-        child.data.type === ExplorerNodeType.FOLDER && child.data.folderName === folderName
-      ));
-      if (!folder) return false;
-      current = await revealNode(folder, onHydrateFromCache, onLoadData);
-
-      const objectType = target.objectType === 'view' ? ExplorerNodeType.VIEW : ExplorerNodeType.TABLE;
-      const match = findChild(current, objectType, target.objectName);
-      if (!match) return false;
-      match.select();
-      await tree.scrollTo(match.id, 'center');
+      const current = await revealNode(connection, onHydrateFromCache, onLoadData);
+      const database = findChild(current, ExplorerNodeType.DB, target.catalog)
+        ?? findChild(current, ExplorerNodeType.SCHEMA, target.schema || target.catalog);
+      if (!database) return false;
+      database.select();
+      await tree.scrollTo(database.id, 'center');
       return true;
     },
   }), [onHydrateFromCache, onLoadData]);
