@@ -17,7 +17,7 @@ spring:
     driver-class-name: org.postgresql.Driver
     url: jdbc:postgresql://localhost:5432/data_agent
     username: postgres
-    password: postgres
+    password: asdf
   profiles:
     active: local
 # MyBatis-Plus configuration
