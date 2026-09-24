@@ -61,4 +61,5 @@ export const ConnectionPaths = {
 /** SQL execution endpoints */
 export const SqlPaths = {
   EXECUTE: '/db/sql/execute',
+  ANALYZE: '/db/sql/analyze',
 } as const;

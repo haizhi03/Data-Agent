@@ -199,8 +199,11 @@ public class ExecuteSqlTool {
         String pluginId = ActiveConnectionRegistry.getAnyActiveConnection(connectionId)
                 .map(ActiveConnectionRegistry.ActiveConnection::pluginId)
                 .orElse(null);
+        if (pluginId == null || !DefaultPluginManager.getInstance().supportsSqlValidationByPluginId(pluginId)) {
+            return false;
+        }
         SqlValidator validator = DefaultPluginManager.getInstance()
-                .getSqlValidatorByPluginId(Objects.nonNull(pluginId) ? pluginId : "");
+                .getSqlValidatorByPluginId(pluginId);
         return sqls.stream()
                 .map(validator::validate)
                 .allMatch(result -> result.valid() && result.sqlType().isReadOnly());

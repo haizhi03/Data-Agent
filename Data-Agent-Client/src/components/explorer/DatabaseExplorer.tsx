@@ -7,6 +7,8 @@ import { useDataViewActions } from '../../hooks/useDataViewActions';
 import { useDeleteActions } from '../../hooks/useDeleteActions';
 import { useRenameActions } from '../../hooks/useRenameActions';
 import { DataAttributes } from '../../constants/dataAttributes';
+import { EXPLORER_SQL_OBJECT_CHANGED, ExplorerNodeType, FolderName } from '../../constants/explorer';
+import type { ExplorerNode } from '../../types/explorer';
 import { ExplorerHeader } from './ExplorerHeader';
 import { ExplorerTree } from './ExplorerTree';
 import { ExplorerDialogs } from './ExplorerDialogs';
@@ -107,6 +109,46 @@ export function DatabaseExplorer() {
   useEffect(() => {
     useWorkspaceStore.getState().fetchSupportedDbTypes();
   }, []);
+
+  useEffect(() => {
+    const onSqlObjectChanged = (event: Event) => {
+      const detail = (event as CustomEvent<{
+        connectionId: number;
+        catalog?: string | null;
+        schema?: string | null;
+        objectType: string;
+      }>).detail;
+      const folderByType: Record<string, FolderName> = {
+        TABLE: FolderName.TABLES,
+        VIEW: FolderName.VIEWS,
+        FUNCTION: FolderName.ROUTINES,
+        PROCEDURE: FolderName.ROUTINES,
+        TRIGGER: FolderName.TRIGGERS,
+      };
+      const folderName = folderByType[detail.objectType];
+      const nodes: ExplorerNode[] = [];
+      const collect = (items: ExplorerNode[]) => {
+        for (const item of items) {
+          nodes.push(item);
+          if (item.children) collect(item.children);
+        }
+      };
+      collect(treeDataState);
+      const matchingScope = (node: ExplorerNode) =>
+        node.connectionId === String(detail.connectionId)
+        && (node.catalog ?? '') === (detail.catalog ?? '');
+      const folder = nodes.find(node =>
+        node.type === ExplorerNodeType.FOLDER && node.folderName === folderName
+        && matchingScope(node) && (node.schema ?? '') === (detail.schema ?? ''));
+      const schema = nodes.find(node =>
+        node.type === ExplorerNodeType.SCHEMA && matchingScope(node)
+        && node.name === detail.schema);
+      const target = folder ?? schema;
+      if (target) void refreshNodeById(target.id);
+    };
+    window.addEventListener(EXPLORER_SQL_OBJECT_CHANGED, onSqlObjectChanged);
+    return () => window.removeEventListener(EXPLORER_SQL_OBJECT_CHANGED, onSqlObjectChanged);
+  }, [treeDataState, refreshNodeById]);
 
   return (
     <div

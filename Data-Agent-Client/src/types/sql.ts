@@ -9,6 +9,34 @@ export interface ExecuteSqlParams {
   sql: string;
 }
 
+export interface SqlSyntaxError {
+  line: number;
+  column: number;
+  message: string;
+}
+
+export interface SqlStatementAnalysis {
+  sql: string;
+  type: string;
+  objectType: string | null;
+  line: number;
+  column: number;
+  endLine: number;
+  endColumn: number;
+  startOffset: number;
+  endOffset: number;
+  tables: string[];
+  columns: string[];
+  aliases: Record<string, string>;
+  readOnly: boolean;
+  executableSql: string;
+}
+
+export interface SqlScriptAnalysis {
+  statements: SqlStatementAnalysis[];
+  errors: SqlSyntaxError[];
+}
+
 /**
  * SQL Execution Response
  * Returned from backend /api/db/sql/execute

@@ -90,8 +90,11 @@ class DmLiveSmokeTest {
             System.out.println("views SYSDBA = " + plugin.getViews(conn, null, "SYSDBA").size());
             System.out.println("functions SYSDBA = " + plugin.getFunctions(conn, null, "SYSDBA").size());
             System.out.println("procedures SYSDBA = " + plugin.getProcedures(conn, null, "SYSDBA").size());
+            System.out.println("sequences SYSDBA = " + plugin.getSequences(conn, null, "SYSDBA").size());
             System.out.println("indexes CHAT2DB_EXPLAIN_TEST = "
                     + plugin.getIndexes(conn, null, "SYSDBA", "CHAT2DB_EXPLAIN_TEST").size());
+            System.out.println("constraints CHAT2DB_EXPLAIN_TEST = "
+                    + plugin.getConstraints(conn, null, "SYSDBA", "CHAT2DB_EXPLAIN_TEST").size());
             System.out.println("triggers of table = " + plugin.getTriggers(conn, null, "SYSDBA", "CHAT2DB_EXPLAIN_TEST").size());
         }
     }

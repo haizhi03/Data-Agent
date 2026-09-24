@@ -31,6 +31,15 @@ class DmSqlSplitterTest {
     }
 
     @Test
+    void keepsSemicolonInsideComments() {
+        List<String> stmts = DmSqlSplitter.INSTANCE.split(
+                "SELECT 1 /* ; */ FROM DUAL; -- ; comment\nSELECT 2;");
+        assertEquals(2, stmts.size());
+        assertTrue(stmts.get(0).contains("/* ; */"));
+        assertTrue(stmts.get(1).contains("SELECT 2"));
+    }
+
+    @Test
     void plsqlCreateProcedureBlockWithSlashTerminatorIsSingleStatement() {
         String sql = "CREATE OR REPLACE PROCEDURE P AS BEGIN NULL; END;\n/\nSELECT 1;\nSELECT 2;";
         List<String> stmts = DmSqlSplitter.INSTANCE.split(sql);
@@ -66,6 +75,23 @@ class DmSqlSplitterTest {
         assertTrue(stmts.get(0).startsWith("CREATE FUNCTION F"));
         assertTrue(stmts.get(1).startsWith("CREATE PROCEDURE P"));
         assertEquals("SELECT 1", stmts.get(2));
+    }
+
+    @Test
+    void leadingCommentsDoNotTurnProcedureIntoPlainStatement() {
+        String sql = "-- deployment note\n/* another note */\n"
+                + "CREATE OR REPLACE PROCEDURE P AS BEGIN NULL; END;\n/\nSELECT 1;";
+        List<String> stmts = DmSqlSplitter.INSTANCE.split(sql);
+        assertEquals(2, stmts.size());
+        assertTrue(stmts.get(0).contains("NULL; END"), stmts.toString());
+        assertEquals("SELECT 1", stmts.get(1));
+    }
+
+    @Test
+    void invalidProcedureBodyIsNotPartiallySplit() {
+        String sql = "CREATE PROCEDURE P AS BEGIN\n/a + b;\nNULL; END;\n/\nSELECT 1;";
+        List<String> stmts = DmSqlSplitter.INSTANCE.split(sql);
+        assertEquals(List.of(sql), stmts);
     }
 
     @Test

@@ -1,5 +1,6 @@
 import Editor, { loader } from '@monaco-editor/react';
-import { forwardRef, useImperativeHandle, useRef } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
+import type { SqlSyntaxError } from '../../types/sql';
 import { useTheme } from '../../hooks/useTheme';
 
 // Configure Monaco CDN
@@ -23,6 +24,7 @@ interface MonacoEditorProps {
   language?: string;
   readOnly?: boolean;
   height?: string | number;
+  diagnostics?: SqlSyntaxError[];
 }
 
 export const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(
@@ -32,10 +34,25 @@ export const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(
     language = 'sql',
     readOnly = false,
     height = '100%',
+    diagnostics = [],
   }, ref) => {
 
     const { theme: appTheme } = useTheme();
     const editorRef = useRef<any>(null);
+    const monacoRef = useRef<any>(null);
+
+    useEffect(() => {
+      const model = editorRef.current?.getModel();
+      if (!model || !monacoRef.current) return;
+      monacoRef.current.editor.setModelMarkers(model, 'dm-sql-parser', diagnostics.map(error => ({
+        startLineNumber: error.line,
+        startColumn: error.column + 1,
+        endLineNumber: error.line,
+        endColumn: error.column + 2,
+        message: error.message,
+        severity: monacoRef.current.MarkerSeverity.Error,
+      })));
+    }, [diagnostics, value]);
 
     const handleEditorWillMount = (monaco: any) => {
       // Define JetBrains-like dark theme
@@ -120,8 +137,17 @@ export const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(
         theme={getCurrentTheme()}
         onChange={onChange}
         beforeMount={handleEditorWillMount}
-        onMount={(editor) => {
+        onMount={(editor, monaco) => {
           editorRef.current = editor;
+          monacoRef.current = monaco;
+          monaco.editor.setModelMarkers(editor.getModel(), 'dm-sql-parser', diagnostics.map(error => ({
+            startLineNumber: error.line,
+            startColumn: error.column + 1,
+            endLineNumber: error.line,
+            endColumn: error.column + 2,
+            message: error.message,
+            severity: monaco.MarkerSeverity.Error,
+          })));
         }}
         options={{
           readOnly,
