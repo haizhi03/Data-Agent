@@ -1,4 +1,4 @@
-import { Plus, Search, RefreshCw, Settings, Database } from 'lucide-react';
+import { ChevronsDownUp, ChevronsUpDown, Locate, Plus, Search, RefreshCw, Settings, Database } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { I18N_KEYS } from '../../constants/i18nKeys';
 import { cn } from '../../lib/utils';
@@ -22,6 +22,9 @@ interface ExplorerHeaderProps {
   supportedDbTypes: Array<{ code: string; displayName: string }>;
   onAddDatabase: (dbType: string) => void;
   onManageDriver: (dbType: string) => void;
+  onCollapseDatabases: () => void;
+  onExpandDatabases: () => void;
+  onLocateTable: () => void;
 }
 
 export function ExplorerHeader({
@@ -32,6 +35,9 @@ export function ExplorerHeader({
   supportedDbTypes,
   onAddDatabase,
   onManageDriver,
+  onCollapseDatabases,
+  onExpandDatabases,
+  onLocateTable,
 }: ExplorerHeaderProps) {
   const { t } = useTranslation();
 
@@ -55,15 +61,43 @@ export function ExplorerHeader({
       </div>
 
       {/* Explorer Title + Actions (second) */}
-      <div className="flex items-center justify-between px-3 py-2.5 text-[10px] font-semibold uppercase tracking-[0.14em] theme-text-secondary">
-        <span>{t(I18N_KEYS.EXPLORER.TITLE)}</span>
-        <div className="flex items-center gap-1.5">
+      <div className="flex items-center justify-between gap-2 px-3 py-2.5 text-[10px] font-semibold uppercase tracking-[0.14em] theme-text-secondary">
+        <span className="min-w-0 truncate">{t(I18N_KEYS.EXPLORER.TITLE)}</span>
+        <div className="flex shrink-0 items-center gap-1.5">
           <button
             onClick={onRefresh}
             title={t(I18N_KEYS.COMMON.REFRESH)}
             className="workbench-icon-button"
           >
             <RefreshCw className={cn('h-3.5 w-3.5 hover:theme-text-primary transition-colors', isLoading && 'animate-spin')} />
+          </button>
+
+          <button
+            type="button"
+            onClick={onLocateTable}
+            title={t(I18N_KEYS.EXPLORER.LOCATE_TABLE)}
+            aria-label={t(I18N_KEYS.EXPLORER.LOCATE_TABLE)}
+            className="workbench-icon-button"
+          >
+            <Locate className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={onExpandDatabases}
+            title={t(I18N_KEYS.EXPLORER.EXPAND_DATABASES)}
+            aria-label={t(I18N_KEYS.EXPLORER.EXPAND_DATABASES)}
+            className="workbench-icon-button"
+          >
+            <ChevronsUpDown className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={onCollapseDatabases}
+            title={t(I18N_KEYS.EXPLORER.COLLAPSE_DATABASES)}
+            aria-label={t(I18N_KEYS.EXPLORER.COLLAPSE_DATABASES)}
+            className="workbench-icon-button"
+          >
+            <ChevronsDownUp className="h-3.5 w-3.5" />
           </button>
 
           <DropdownMenu>

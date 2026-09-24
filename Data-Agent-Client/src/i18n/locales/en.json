@@ -400,7 +400,13 @@
   },
   "explorer": {
     "title": "Database Explorer",
+    "collapse": "Collapse",
     "expand": "Expand",
+    "collapse_databases": "Collapse databases",
+    "expand_databases": "Expand databases",
+    "locate_table": "Locate current table",
+    "locate_table_none": "Open a table in the center first",
+    "locate_table_missing": "Could not find this table in the explorer",
     "disconnect": "Disconnect",
     "edit": "Edit",
     "delete_connection": "Delete connection",

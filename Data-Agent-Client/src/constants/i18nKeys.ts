@@ -214,6 +214,13 @@ export const I18N_KEYS = {
   // Explorer keys
   EXPLORER: {
     TITLE: 'explorer.title',
+    COLLAPSE: 'explorer.collapse',
+    EXPAND: 'explorer.expand',
+    COLLAPSE_DATABASES: 'explorer.collapse_databases',
+    EXPAND_DATABASES: 'explorer.expand_databases',
+    LOCATE_TABLE: 'explorer.locate_table',
+    LOCATE_TABLE_NONE: 'explorer.locate_table_none',
+    LOCATE_TABLE_MISSING: 'explorer.locate_table_missing',
     LOADING: 'explorer.loading',
     DATABASE: 'explorer.database',
     DRIVER: 'explorer.driver',
