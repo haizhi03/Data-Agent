@@ -400,7 +400,13 @@
   },
   "explorer": {
     "title": "数据库资源管理器",
+    "collapse": "收起",
     "expand": "展开",
+    "collapse_databases": "收起数据库",
+    "expand_databases": "展开数据库",
+    "locate_table": "定位到当前数据库",
+    "locate_table_none": "请先在中间打开一个数据库",
+    "locate_table_missing": "在左侧树中找不到这个数据库",
     "disconnect": "断开连接",
     "edit": "编辑",
     "delete_connection": "删除连接",
