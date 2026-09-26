@@ -12,6 +12,8 @@ export type TableDataViewMode = 'grid' | 'transpose';
 export interface SelectedTableRow {
   rowIndex: number;
   row: unknown[];
+  /** Set when the selected row is a staged (not yet inserted) row. */
+  pendingLocalId?: string;
 }
 
 export interface LoadDataOverrides extends Partial<TableDataQueryState> {}

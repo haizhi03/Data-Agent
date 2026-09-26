@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '../ui/Button';
 import { I18N_KEYS } from '../../constants/i18nKeys';
@@ -17,6 +18,7 @@ import { TableDataGridAg } from './TableDataGridAg';
 import { TableDataInsertBar } from './TableDataInsertBar';
 import { TableDataPagination } from './TableDataPagination';
 import { TableDataToolbar } from './TableDataToolbar';
+import { useTableDataFind } from './useTableDataFind';
 import { useTableDataTabState } from './useTableDataTabState';
 
 interface TableDataTabProps {
@@ -48,19 +50,19 @@ export function TableDataTab({ tabId, metadata }: TableDataTabProps) {
     newRowValues,
     columnMetadata,
     loadingColumns,
-    insertSubmitting,
     insertError,
     selectedRowIndex,
     hasSelectedRow,
-    deleteConfirmOpen,
-    closeDeleteConfirm,
-    deletePending,
-    deleteConfirmMode,
-    deleteForceCount,
-    updateConfirmOpen,
-    closeUpdateConfirm,
-    updatePending,
-    updateForceCount,
+    hasPendingOps,
+    pendingCount,
+    submittingEdits,
+    dirtyCellKeys,
+    pendingDeleteRowIndexes,
+    pendingInsertRows,
+    batchForceConfirmOpen,
+    batchForceMessage,
+    closeBatchForceConfirm,
+    handleConfirmBatchForce,
     databases,
     loadingDatabases,
     isTable,
@@ -83,8 +85,8 @@ export function TableDataTab({ tabId, metadata }: TableDataTabProps) {
     handleNewRowValueChange,
     handleConfirmInsert,
     handleDeleteRow,
-    handleConfirmDelete,
-    handleConfirmUpdate,
+    submitPendingOps,
+    revertPendingOps,
     formatCellValue,
     columns,
     startRow,
@@ -94,6 +96,39 @@ export function TableDataTab({ tabId, metadata }: TableDataTabProps) {
     loadDdl,
   } = useTableDataTabState({ tabId, metadata });
 
+  const {
+    findVisible,
+    findDisabled,
+    searchTerm,
+    searchInputRef,
+    matchCount,
+    currentMatchIndex,
+    matchedKeys,
+    currentMatch,
+    onToggleFind,
+    onSearchTermChange,
+    onFindNext,
+    onFindPrevious,
+    onCloseFind,
+  } = useTableDataFind({ data, viewMode, formatCellValue });
+
+  // Ctrl/Cmd + Enter submits all staged operations. Inputs, textareas and
+  // content-editable elements (SQL editor, find box) keep their own shortcuts.
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.key !== 'Enter') return;
+      const target = event.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable) {
+        return;
+      }
+      event.preventDefault();
+      void submitPendingOps(false);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [submitPendingOps]);
+
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <TableDataToolbar
@@ -101,7 +136,9 @@ export function TableDataTab({ tabId, metadata }: TableDataTabProps) {
         isTable={isTable}
         viewMode={viewMode}
         hasRowSelection={hasSelectedRow}
-        deletePending={deletePending}
+        hasPendingOps={hasPendingOps}
+        pendingCount={pendingCount}
+        submittingEdits={submittingEdits}
         txMode={txMode}
         isolationLevel={isolationLevel}
         displayDbLabel={displayDbLabel}
@@ -109,7 +146,8 @@ export function TableDataTab({ tabId, metadata }: TableDataTabProps) {
         databases={databases}
         loadingDatabases={loadingDatabases}
         onRun={handleRun}
-        onRefresh={() => void handleRun()}
+        onRefresh={() => void revertPendingOps()}
+        onSubmit={() => void submitPendingOps(false)}
         onTransactionModeChange={setTxMode}
         onIsolationLevelChange={setIsolationLevel}
         onAddRow={handleAddRow}
@@ -117,6 +155,17 @@ export function TableDataTab({ tabId, metadata }: TableDataTabProps) {
         onOpenDdl={() => setDdlDialogOpen(true)}
         onDatabaseChange={handleDatabaseChange}
         onViewModeChange={handleViewModeChange}
+        findVisible={findVisible}
+        findDisabled={findDisabled}
+        searchTerm={searchTerm}
+        matchCount={matchCount}
+        currentMatchIndex={currentMatchIndex}
+        searchInputRef={searchInputRef}
+        onToggleFind={onToggleFind}
+        onSearchTermChange={onSearchTermChange}
+        onFindNext={onFindNext}
+        onFindPrevious={onFindPrevious}
+        onCloseFind={onCloseFind}
       />
 
       {isDm && isTable && !isAddingRow && (
@@ -142,12 +191,12 @@ export function TableDataTab({ tabId, metadata }: TableDataTabProps) {
         headers={columns}
         columnMetadata={columnMetadata}
         loadingColumns={loadingColumns}
-        insertSubmitting={insertSubmitting}
+        insertSubmitting={false}
         insertError={insertError}
         newRowValues={newRowValues}
         isDm={isDm}
         onNewRowValueChange={handleNewRowValueChange}
-        onConfirmInsert={handleConfirmInsert}
+        onConfirmInsert={() => void handleConfirmInsert()}
         onCancelInsert={handleCancelAddRow}
       />
 
@@ -159,47 +208,25 @@ export function TableDataTab({ tabId, metadata }: TableDataTabProps) {
         loadDdl={loadDdl}
       />
 
-      <Dialog open={deleteConfirmOpen} onOpenChange={(open) => (!open ? closeDeleteConfirm() : undefined)}>
-        <DialogContent className="sm:max-w-[400px]">
+      <Dialog
+        open={batchForceConfirmOpen}
+        onOpenChange={(open) => {
+          if (!open) closeBatchForceConfirm();
+        }}
+      >
+        <DialogContent className="sm:max-w-[420px]">
           <DialogHeader>
-            <DialogTitle>{t(I18N_KEYS.EXPLORER.DELETE_ROW)}</DialogTitle>
+            <DialogTitle>{t(I18N_KEYS.EXPLORER.BATCH_FORCE_TITLE)}</DialogTitle>
             <DialogDescription>
-              {deleteConfirmMode === 'force'
-                ? `${t(I18N_KEYS.EXPLORER.DELETE_ROW_FORCE_PROMPT, { count: deleteForceCount })} ${t(I18N_KEYS.EXPLORER.DELETE_ROW_FORCE_CONTINUE)}`
-                : t(I18N_KEYS.EXPLORER.DELETE_ROW_CONFIRM)}
+              {batchForceMessage || t(I18N_KEYS.EXPLORER.BATCH_FORCE_PROMPT)}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={closeDeleteConfirm} disabled={deletePending}>
+            <Button variant="outline" onClick={closeBatchForceConfirm}>
               {t(I18N_KEYS.CONNECTIONS.CANCEL)}
             </Button>
-            <Button variant="destructive" disabled={deletePending} onClick={handleConfirmDelete}>
-              {deletePending
-                ? t(I18N_KEYS.COMMON.LOADING) + '...'
-                : deleteConfirmMode === 'force'
-                  ? t(I18N_KEYS.EXPLORER.DELETE_ROW_FORCE_ACTION)
-                  : t(I18N_KEYS.EXPLORER.DELETE_ROW)}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={updateConfirmOpen} onOpenChange={(open) => (!open ? closeUpdateConfirm() : undefined)}>
-        <DialogContent className="sm:max-w-[400px]">
-          <DialogHeader>
-            <DialogTitle>{t(I18N_KEYS.EXPLORER.UPDATE_ROW)}</DialogTitle>
-            <DialogDescription>
-              {`${t(I18N_KEYS.EXPLORER.UPDATE_ROW_FORCE_PROMPT, { count: updateForceCount })} ${t(I18N_KEYS.EXPLORER.UPDATE_ROW_FORCE_CONTINUE)}`}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={closeUpdateConfirm} disabled={updatePending}>
-              {t(I18N_KEYS.CONNECTIONS.CANCEL)}
-            </Button>
-            <Button variant="destructive" disabled={updatePending} onClick={handleConfirmUpdate}>
-              {updatePending
-                ? t(I18N_KEYS.COMMON.LOADING) + '...'
-                : t(I18N_KEYS.EXPLORER.UPDATE_ROW_FORCE_ACTION)}
+            <Button variant="destructive" onClick={() => void handleConfirmBatchForce()}>
+              {t(I18N_KEYS.EXPLORER.BATCH_FORCE_CONTINUE)}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -215,6 +242,11 @@ export function TableDataTab({ tabId, metadata }: TableDataTabProps) {
         selectedRowIndex={selectedRowIndex}
         startRow={startRow}
         editable={isTable && viewMode === 'grid'}
+        matchedKeys={matchedKeys}
+        currentMatch={currentMatch}
+        dirtyCellKeys={dirtyCellKeys}
+        pendingDeleteRowIndexes={pendingDeleteRowIndexes}
+        pendingInsertRows={pendingInsertRows}
         onRowSelectionChange={handleGridSelectionChange}
         onGridSortChange={handleGridSortChange}
         onCellValueChanged={handleGridCellValueChanged}

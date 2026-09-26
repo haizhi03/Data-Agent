@@ -7,6 +7,7 @@ export const ApiPaths = {
   TABLES_RENAME: '/tables/rename',
   TABLE_DATA: '/tables/data',
   TABLE_ROWS: '/tables/rows',
+  TABLE_ROWS_BATCH: '/tables/rows/batch',
   VIEWS: '/views',
   VIEWS_DDL: '/views/ddl',
   VIEW_DATA: '/views/data',
