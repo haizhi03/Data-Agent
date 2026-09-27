@@ -294,6 +294,17 @@ export const I18N_KEYS = {
     LOAD_DDL_FAILED: 'explorer.load_ddl_failed',
     COPY_DDL: 'explorer.copy_ddl',
     DDL_COPIED: 'explorer.ddl_copied',
+    FIND_TITLE: 'explorer.find_title',
+    FIND_PLACEHOLDER: 'explorer.find_placeholder',
+    FIND_NEXT: 'explorer.find_next',
+    FIND_PREVIOUS: 'explorer.find_previous',
+    FIND_CLOSE: 'explorer.find_close',
+    BATCH_SUBMIT_TITLE: 'explorer.batch_submit_title',
+    BATCH_SUBMIT_SUCCESS: 'explorer.batch_submit_success',
+    BATCH_SUBMIT_FAILED_ITEM: 'explorer.batch_submit_failed_item',
+    BATCH_FORCE_TITLE: 'explorer.batch_force_title',
+    BATCH_FORCE_PROMPT: 'explorer.batch_force_prompt',
+    BATCH_FORCE_CONTINUE: 'explorer.batch_force_continue',
   },
 
   // AI keys

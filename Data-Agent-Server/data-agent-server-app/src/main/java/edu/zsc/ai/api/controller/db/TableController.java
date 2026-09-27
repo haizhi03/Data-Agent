@@ -1,6 +1,7 @@
 package edu.zsc.ai.api.controller.db;
 
 import edu.zsc.ai.domain.model.context.DbContext;
+import edu.zsc.ai.domain.model.dto.request.db.BatchTableRowsRequest;
 import edu.zsc.ai.domain.model.dto.request.db.DeleteTableRowRequest;
 import edu.zsc.ai.domain.model.dto.request.db.DeleteTableRequest;
 import edu.zsc.ai.domain.model.dto.request.db.InsertTableRowRequest;
@@ -8,6 +9,7 @@ import edu.zsc.ai.domain.model.dto.request.db.RenameTableRequest;
 import edu.zsc.ai.domain.model.dto.request.db.TableRowValueRequest;
 import edu.zsc.ai.domain.model.dto.request.db.UpdateTableRowRequest;
 import edu.zsc.ai.domain.model.dto.response.base.ApiResponse;
+import edu.zsc.ai.domain.model.dto.response.db.BatchTableRowsResponse;
 import edu.zsc.ai.domain.model.dto.response.db.ExecuteSqlResponse;
 import edu.zsc.ai.domain.model.dto.response.db.TableDataResponse;
 import edu.zsc.ai.domain.service.db.TableService;
@@ -111,6 +113,19 @@ public class TableController {
                 request.getTableName(),
                 toRowValues(request.getSetValues()),
                 toRowValues(request.getMatchValues()),
+                request.isForce()
+        ));
+    }
+
+    @PostMapping("/rows/batch")
+    public ApiResponse<BatchTableRowsResponse> batchRows(@Valid @RequestBody BatchTableRowsRequest request) {
+        log.info("Batch updating table rows: connectionId={}, tableName={}, operationCount={}, force={}",
+                request.getConnectionId(), request.getTableName(), request.getOperations().size(), request.isForce());
+        DbContext db = DbContext.from(request);
+        return ApiResponse.success(tableService.batchTableRows(
+                db,
+                request.getTableName(),
+                request.getOperations(),
                 request.isForce()
         ));
     }

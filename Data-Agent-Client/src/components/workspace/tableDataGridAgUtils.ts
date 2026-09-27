@@ -16,6 +16,8 @@ export interface TableDataGridAgRow {
   __rowNumber: number;
   __sourceRow?: unknown[];
   __fieldName?: string;
+  /** When present, this row is a staged INSERT; value is its pending op localId. */
+  __pendingInsert?: string;
   [key: string]: unknown;
 }
 
@@ -30,25 +32,30 @@ function getRowNumberColumnWidth(totalRowCount: number): number {
 }
 
 function buildRowNumberColumn(totalRowCount: number): ColDef<TableDataGridAgRow> {
-  const rowNumberWidth = getRowNumberColumnWidth(totalRowCount);
+    const rowNumberWidth = getRowNumberColumnWidth(totalRowCount);
 
-  return {
-    colId: TABLE_DATA_GRID_ROW_NUMBER_COL_ID,
-    field: TABLE_DATA_GRID_ROW_NUMBER_COL_ID,
-    headerName: '',
-    width: rowNumberWidth,
-    minWidth: rowNumberWidth,
-    maxWidth: rowNumberWidth,
-    pinned: 'left',
-    lockPosition: 'left',
-    lockPinned: true,
-    suppressMovable: true,
-    sortable: false,
-    resizable: false,
-    suppressHeaderMenuButton: true,
-    cellClass: 'workspace-ag-grid__row-number-cell',
-    headerClass: 'workspace-ag-grid__row-number-header',
-  };
+    return {
+        colId: TABLE_DATA_GRID_ROW_NUMBER_COL_ID,
+        field: TABLE_DATA_GRID_ROW_NUMBER_COL_ID,
+        headerName: '',
+        width: rowNumberWidth,
+        minWidth: rowNumberWidth,
+        maxWidth: rowNumberWidth,
+        pinned: 'left',
+        lockPosition: 'left',
+        lockPinned: true,
+        suppressMovable: true,
+        sortable: false,
+        resizable: false,
+        suppressHeaderMenuButton: true,
+        // Staged INSERT rows use negative numbers; show '*' instead.
+        valueFormatter: (params: ValueFormatterParams<TableDataGridAgRow>) => {
+            const value = params.value;
+            return typeof value === 'number' && value < 0 ? '*' : value;
+        },
+        cellClass: 'workspace-ag-grid__row-number-cell',
+        headerClass: 'workspace-ag-grid__row-number-header',
+    };
 }
 
 export function buildTableDataGridRows(
@@ -80,6 +87,8 @@ export function buildTableDataGridColumnDefs(
   formatCellValue: (value: unknown) => string,
   totalRowCount: number,
   editable: boolean = false,
+  findCellClassRules?: ColDef<TableDataGridAgRow>['cellClassRules'],
+  pendingDeleteRowIndexes?: Set<number>,
 ): ColDef<TableDataGridAgRow>[] {
   const dataColumns = headers.map<ColDef<TableDataGridAgRow>>((header, colIndex) => ({
     colId: header,
@@ -89,12 +98,22 @@ export function buildTableDataGridColumnDefs(
     resizable: true,
     minWidth: 120,
     flex: 1,
-    editable,
+    // Rows staged for deletion cannot be edited; staged INSERT rows remain editable.
+    editable: editable
+      ? (params) => {
+          const rowIndex = params.node.data?.__rowIndex;
+          if (rowIndex != null && rowIndex >= 0 && pendingDeleteRowIndexes?.has(rowIndex)) {
+            return false;
+          }
+          return true;
+        }
+      : false,
     valueFormatter: (params: ValueFormatterParams<TableDataGridAgRow>) =>
       formatCellValue(params.value),
     comparator: () => 0,
     cellClass: 'theme-text-primary',
     headerClass: 'theme-text-secondary',
+    ...(findCellClassRules ? { cellClassRules: findCellClassRules } : {}),
   }));
 
   return [buildRowNumberColumn(totalRowCount), ...dataColumns];
