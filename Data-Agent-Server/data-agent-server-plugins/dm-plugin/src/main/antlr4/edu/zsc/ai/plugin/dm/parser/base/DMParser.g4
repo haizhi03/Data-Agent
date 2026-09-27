@@ -80,6 +80,7 @@ unit_statement
     | alter_type
     | alter_user
     | alter_view
+    | transaction_control_statements
     | call_statement
     | create_analytic_view
     | create_attribute_dimension
@@ -178,7 +179,6 @@ unit_statement
     | purge_statement
     | rename_object
     | revoke_statement
-    | transaction_control_statements
     | truncate_cluster
     | truncate_table
     | unified_auditing

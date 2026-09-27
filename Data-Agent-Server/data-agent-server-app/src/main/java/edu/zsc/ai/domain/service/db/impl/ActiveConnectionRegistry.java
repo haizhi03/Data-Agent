@@ -8,6 +8,9 @@ import edu.zsc.ai.domain.model.context.DbContext;
 import edu.zsc.ai.domain.exception.BusinessException;
 import edu.zsc.ai.domain.service.db.ConnectionAccessService;
 import edu.zsc.ai.domain.service.db.support.ConnectionAccessSupport;
+import edu.zsc.ai.plugin.capability.ConnectionManager;
+import edu.zsc.ai.plugin.manager.DefaultPluginManager;
+import com.zaxxer.hikari.HikariDataSource;
 import lombok.extern.slf4j.Slf4j;
 
 import javax.sql.DataSource;
@@ -78,9 +81,59 @@ public class ActiveConnectionRegistry {
         @Override
         public void close() {
             try {
+                resetSessionStateBeforeReturn();
                 connection.close();
             } catch (SQLException e) {
                 throw new RuntimeException("Failed to close database connection: " + e.getMessage(), e);
+            }
+        }
+
+        /**
+         * Restore the session baseline (schema, warnings, etc.) through the plugin SPI before the
+         * connection goes back to the pool. When restoration fails the connection is not returned
+         * for reuse: it is evicted from the pool (immediate for Hikari pools) so a dirty session
+         * is never handed to another borrower.
+         */
+        private void resetSessionStateBeforeReturn() {
+            ConnectionManager manager;
+            try {
+                manager = DefaultPluginManager.getInstance().getConnectionManagerByPluginId(pluginId());
+            } catch (RuntimeException e) {
+                log.warn("Cannot resolve ConnectionManager for pluginId={}, returning connection without session reset: dbConnectionId={}",
+                        pluginId(), activeConnection.dbConnectionId(), e);
+                return;
+            }
+            if (manager == null) {
+                log.warn("No ConnectionManager resolved for pluginId={}, returning connection without session reset: dbConnectionId={}",
+                        pluginId(), activeConnection.dbConnectionId());
+                return;
+            }
+            try {
+                manager.resetSessionState(connection, activeConnection.databaseName(), activeConnection.schemaName());
+            } catch (SQLException e) {
+                log.warn("Failed to reset session state, evicting the connection instead of returning it to the pool: dbConnectionId={}, database={}, schema={}",
+                        activeConnection.dbConnectionId(), activeConnection.databaseName(), activeConnection.schemaName(), e);
+                evictPooledConnection(e);
+            }
+        }
+
+        private void evictPooledConnection(SQLException resetFailure) {
+            if (activeConnection.dataSource() instanceof HikariDataSource hikariDataSource) {
+                // immediate eviction of this specific pool entry; the proxy close that follows
+                // completes the discard and the entry is never handed out again
+                hikariDataSource.evictConnection(connection);
+                return;
+            }
+            // defensive fallback for non-Hikari pools: physically close the underlying connection
+            try {
+                if (connection.isWrapperFor(Connection.class)) {
+                    Connection physical = connection.unwrap(Connection.class);
+                    if (physical != connection) {
+                        physical.close();
+                    }
+                }
+            } catch (SQLException e) {
+                resetFailure.addSuppressed(e);
             }
         }
     }

@@ -18,6 +18,13 @@ final class DmSimpleParserVisitor extends DMParserBaseVisitor<SqlType> {
             if (dml.merge_statement() != null) return SqlType.MERGE;
             if (dml.explain_statement() != null) return SqlType.EXPLAIN;
         }
+        DMParser.Transaction_control_statementsContext transaction = context.transaction_control_statements();
+        if (transaction != null) {
+            if (transaction.commit_statement() != null) return SqlType.COMMIT;
+            if (transaction.rollback_statement() != null) return SqlType.ROLLBACK;
+            // SET TRANSACTION / SET CONSTRAINT / SAVEPOINT: transaction-related but not BEGIN/COMMIT/ROLLBACK
+            return SqlType.UNKNOWN;
+        }
         return switch (context.getStart().getType()) {
             case DMLexer.CREATE -> SqlType.CREATE;
             case DMLexer.ALTER -> SqlType.ALTER;

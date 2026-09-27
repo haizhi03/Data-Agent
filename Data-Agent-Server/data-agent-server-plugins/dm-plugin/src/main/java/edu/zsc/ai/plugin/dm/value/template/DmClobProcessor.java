@@ -6,6 +6,7 @@ import edu.zsc.ai.plugin.value.JdbcValueContext;
 import java.sql.Clob;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.Locale;
 
 /**
  * Processor for DM CLOB/TEXT/LONGVARCHAR types.
@@ -16,6 +17,10 @@ import java.sql.SQLException;
  *   <li>Small CLOBs (&lt; 1MB chars): full content as String</li>
  *   <li>Large CLOBs (&ge; 1MB chars): metadata with size information</li>
  * </ul>
+ *
+ * <p>The metadata placeholder is size information only, never content;
+ * {@code DmRowWriteSupport} refuses to write it back
+ * ({@code DmLobPreviewValues.PREVIEW_NOT_WRITABLE_CODE}).
  * Falls back to {@code getString} if the Clob API fails.
  *
  * @author hhz
@@ -56,10 +61,10 @@ public class DmClobProcessor extends DefaultValueProcessor {
     private String formatClobMetadata(long sizeInChars) {
         if (sizeInChars >= SIZE_THRESHOLD_CHARS) {
             double sizeInMB = sizeInChars / (1024.0 * 1024.0);
-            return String.format("[CLOB: %.2fMB]", sizeInMB);
+            return String.format(Locale.ROOT, "[CLOB: %.2fMB]", sizeInMB);
         } else {
             double sizeInKB = sizeInChars / 1024.0;
-            return String.format("[CLOB: %.2fKB]", sizeInKB);
+            return String.format(Locale.ROOT, "[CLOB: %.2fKB]", sizeInKB);
         }
     }
 }

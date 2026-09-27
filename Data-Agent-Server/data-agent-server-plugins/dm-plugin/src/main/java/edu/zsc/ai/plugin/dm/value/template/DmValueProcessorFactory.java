@@ -41,9 +41,11 @@ public class DmValueProcessorFactory {
         PROCESSOR_MAP.put(DmDataTypeEnum.DECIMAL, DECIMAL_PROCESSOR);
         PROCESSOR_MAP.put(DmDataTypeEnum.DEC, DECIMAL_PROCESSOR);
 
-        // Date/time family
-        PROCESSOR_MAP.put(DmDataTypeEnum.DATE, DATETIME_PROCESSOR);   // DM DATE includes hh:mm:ss
-        PROCESSOR_MAP.put(DmDataTypeEnum.DATETIME, DATETIME_PROCESSOR);
+        // Date/time family. DM DATE is date-only in native mode (the server
+        // truncates any time component at write time, live-verified); DM DATETIME
+        // carries time and is handled exactly like TIMESTAMP.
+        PROCESSOR_MAP.put(DmDataTypeEnum.DATE, DATETIME_PROCESSOR);
+        PROCESSOR_MAP.put(DmDataTypeEnum.DATETIME, TIMESTAMP_PROCESSOR);
         PROCESSOR_MAP.put(DmDataTypeEnum.TIMESTAMP, TIMESTAMP_PROCESSOR);
         PROCESSOR_MAP.put(DmDataTypeEnum.TIMESTAMP_WITH_TIME_ZONE, TIMESTAMP_TZ_PROCESSOR);
         PROCESSOR_MAP.put(DmDataTypeEnum.TIMESTAMP_WITH_LOCAL_TIME_ZONE, TIMESTAMP_TZ_PROCESSOR);

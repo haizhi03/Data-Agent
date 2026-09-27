@@ -11,9 +11,12 @@ import java.sql.Connection;
 import java.sql.SQLException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
@@ -57,6 +60,36 @@ class HikariManagedDataSourceFactoryTest {
             assertEquals(4_000L, dataSource.getValidationTimeout());
             assertEquals(50_000L, dataSource.getIdleTimeout());
             assertEquals(180_000L, dataSource.getMaxLifetime());
+            // explicit session baselines so Hikari resets dirty connections on return
+            assertTrue(dataSource.isAutoCommit());
+            assertFalse(dataSource.isReadOnly());
+            // driver default isolation is kept unless explicitly configured
+            assertNull(dataSource.getTransactionIsolation());
+        } finally {
+            dataSource.close();
+        }
+    }
+
+    @Test
+    void create_appliesConfiguredTransactionIsolationBaseline() throws SQLException {
+        ConnectionPoolProperties properties = new ConnectionPoolProperties();
+        properties.setTransactionIsolation("TRANSACTION_READ_COMMITTED");
+
+        HikariManagedDataSourceFactory factory = new HikariManagedDataSourceFactory(properties);
+        ConnectionManager manager = mock(ConnectionManager.class);
+        Connection connection = mock(Connection.class);
+        when(connection.isClosed()).thenReturn(false);
+        when(connection.isValid(anyInt())).thenReturn(true);
+        when(manager.connect(any())).thenReturn(connection);
+
+        ConnectionConfig config = new ConnectionConfig();
+        config.setHost("127.0.0.1");
+        ManagedDataSourceFactory.ManagedDataSourceRequest request =
+                new ManagedDataSourceFactory.ManagedDataSourceRequest(9L, "dm", null, "SYSDBA");
+
+        HikariDataSource dataSource = assertInstanceOf(HikariDataSource.class, factory.create(manager, config, request));
+        try {
+            assertEquals("TRANSACTION_READ_COMMITTED", dataSource.getTransactionIsolation());
         } finally {
             dataSource.close();
         }

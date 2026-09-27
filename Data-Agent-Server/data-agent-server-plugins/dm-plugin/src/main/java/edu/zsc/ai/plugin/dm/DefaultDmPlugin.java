@@ -210,6 +210,11 @@ public abstract class DefaultDmPlugin extends AbstractDatabasePlugin
     }
 
     @Override
+    public boolean isTransactionControl(String sql) {
+        return DmSqlParser.INSTANCE.isTransactionControl(sql);
+    }
+
+    @Override
     public SqlScriptAnalysis analyze(String sql) {
         return DmSqlParser.INSTANCE.analyze(sql);
     }

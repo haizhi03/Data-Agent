@@ -35,6 +35,13 @@ public class HikariManagedDataSourceFactory implements ManagedDataSourceFactory 
         ));
         hikariConfig.setIdleTimeout(connectionPoolProperties.getIdleTimeoutMs());
         hikariConfig.setMaxLifetime(connectionPoolProperties.getMaxLifetimeMs());
+        // Explicit session baselines so Hikari's dirty-check reset on return actually applies;
+        // transactionIsolation stays unset (driver default) unless configured.
+        hikariConfig.setAutoCommit(true);
+        hikariConfig.setReadOnly(false);
+        if (connectionPoolProperties.getTransactionIsolation() != null) {
+            hikariConfig.setTransactionIsolation(connectionPoolProperties.getTransactionIsolation());
+        }
 
         HikariDataSource dataSource = new HikariDataSource(hikariConfig);
         try (Connection ignored = dataSource.getConnection()) {

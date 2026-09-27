@@ -113,6 +113,57 @@ public final class DmSqlParser {
         return validate(sql).sqlType();
     }
 
+    /**
+     * Whether the SQL is a single explicit transaction control statement.
+     *
+     * <p>Parsed, not regex-matched, so anonymous blocks ({@code BEGIN ... END;}),
+     * string literals ('COMMIT') and comments are not misclassified.
+     * {@code COMMIT} (incl. {@code COMMIT WORK}) and {@code SET TRANSACTION} count as
+     * transaction control; {@code ROLLBACK} counts only when it rolls back the whole
+     * transaction — {@code ROLLBACK TO SAVEPOINT x} deliberately does not.
+     * Unparseable input returns false.
+     *
+     * @param sql the SQL to check
+     * @return true when executing it would implicitly begin or end the current transaction
+     */
+    public boolean isTransactionControl(String sql) {
+        if (sql == null || sql.isBlank()) {
+            return false;
+        }
+        DMLexer lexer = new DMLexer(CharStreams.fromString(sql));
+        lexer.removeErrorListeners();
+        CommonTokenStream tokens = new CommonTokenStream(lexer);
+        DMParser parser = new DMParser(tokens);
+        parser.removeErrorListeners();
+        java.util.concurrent.atomic.AtomicBoolean syntaxError = new java.util.concurrent.atomic.AtomicBoolean();
+        parser.addErrorListener(new BaseErrorListener() {
+            @Override
+            public void syntaxError(Recognizer<?, ?> recognizer, Object offendingSymbol, int line,
+                                    int charPositionInLine, String message, RecognitionException exception) {
+                syntaxError.set(true);
+            }
+        });
+        // Dedicated entry: avoids the unit_statement ambiguity where bare COMMIT/ROLLBACK or
+        // SET TRANSACTION READ ONLY can be claimed by call_statement.
+        DMParser.Transaction_control_statementsContext transaction = parser.transaction_control_statements();
+        if (syntaxError.get() || transaction == null || transaction.exception != null) {
+            return false;
+        }
+        // tolerate trailing semicolons/slashes, but any other leftover token means this is
+        // not a single transaction control statement (e.g. "COMMIT; SELECT ...")
+        while (tokens.LA(1) == DMParser.SEMICOLON || "/".equals(tokens.LT(1).getText())) {
+            tokens.consume();
+        }
+        if (tokens.LA(1) != Token.EOF) {
+            return false;
+        }
+        if (transaction.commit_statement() != null || transaction.set_transaction_command() != null) {
+            return true;
+        }
+        DMParser.Rollback_statementContext rollback = transaction.rollback_statement();
+        return rollback != null && rollback.TO() == null;
+    }
+
     public List<String> split(String sql) {
         if (sql == null || sql.isBlank()) {
             return List.of();
