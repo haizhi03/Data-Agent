@@ -13,6 +13,10 @@ db:
 spring:
   application:
     name: DataAgent
+  servlet:
+    multipart:
+      max-file-size: 200MB
+      max-request-size: 210MB
   datasource:
     driver-class-name: org.postgresql.Driver
     url: jdbc:postgresql://localhost:5432/data_agent
