@@ -105,7 +105,7 @@ export const ExplorerTree = forwardRef<ExplorerTreeHandle, ExplorerTreeProps>(fu
       const toClose: NodeApi<ExplorerNode>[] = [];
       const walk = (node: NodeApi<ExplorerNode>) => {
         node.children?.forEach(walk);
-        if (node.level >= 1 && node.isOpen) toClose.push(node);
+        if (node.isOpen) toClose.push(node);
       };
       tree.root.children?.forEach(walk);
       toClose.forEach((node) => node.close());
@@ -155,8 +155,9 @@ export const ExplorerTree = forwardRef<ExplorerTreeHandle, ExplorerTreeProps>(fu
       const objectType = target.objectType === 'view' ? ExplorerNodeType.VIEW : ExplorerNodeType.TABLE;
       const match = findChild(current, objectType, target.objectName);
       if (!match) return false;
-      match.select();
-      await tree.scrollTo(match.id, 'center');
+      const opened = await revealNode(match, onHydrateFromCache, onLoadData);
+      opened.select();
+      await tree.scrollTo(opened.id, 'center');
       return true;
     },
   }), [onHydrateFromCache, onLoadData]);
