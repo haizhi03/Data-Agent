@@ -1,4 +1,4 @@
-import { Braces, Database, FileCode, ListTodo, Table as TableIcon, X } from 'lucide-react';
+import { Braces, Database, FileCode, ListTodo, Table as TableIcon, Waypoints, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '../../lib/utils';
 import { useTabStore } from '../../store/tabStore';
@@ -32,7 +32,7 @@ import { SUB_AGENT_TYPES, type SubAgentType } from '../ai/blocks/subAgentTypes';
 interface SortableTabProps {
   tabId: string;
   name: string;
-  type: 'file' | 'table' | 'plan' | 'subagent-console';
+  type: 'file' | 'table' | 'plan' | 'subagent-console' | 'er';
   connectionName?: string;
   databaseName?: string | null;
   isActive: boolean;
@@ -75,7 +75,7 @@ function SortableTab({
   const tabLabel =
     type === 'plan' || type === 'subagent-console'
       ? name
-      : type === 'table'
+      : type === 'table' || type === 'er'
         ? name
         : connectionName
           ? `${connectionName}${databaseName ? '_' + databaseName : ''}`
@@ -140,6 +140,8 @@ function SortableTab({
                   )
                 ) : type === 'file' ? (
                   <FileCode className="w-3 h-3 text-blue-400" />
+                ) : type === 'er' ? (
+                  <Waypoints className="w-3 h-3 text-sky-400" />
                 ) : (
                   <TableIcon className="w-3 h-3 text-green-400" />
                 )}

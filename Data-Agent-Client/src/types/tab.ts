@@ -31,6 +31,11 @@ export interface TableTabMetadata extends ConsoleTabMetadata {
 
 export type TableDataTabMetadata = TableTabMetadata;
 
+export interface ErDiagramTabMetadata extends ConsoleTabMetadata {
+  catalog?: string | null;
+  schema?: string | null;
+}
+
 /**
  * Plan Tab Metadata
  * Stored in Tab.metadata for plan tabs opened from AI ExitPlanMode

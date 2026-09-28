@@ -104,7 +104,7 @@ export function DatabaseExplorer() {
   });
 
   // Data view actions
-  const { handleViewDdl, handleViewData, handleTableOrViewDoubleClick, handleOpenQueryConsole, handleCreateTable, getDdlConfig } = useDataViewActions({
+  const { handleViewDdl, handleViewData, handleTableOrViewDoubleClick, handleOpenQueryConsole, handleCreateTable, handleOpenErDiagram, getDdlConfig } = useDataViewActions({
     setSelectedDdlNode,
     setDdlDialogOpen,
     setTableDataDialogOpen,
@@ -178,6 +178,7 @@ export function DatabaseExplorer() {
           onDelete={handleDelete}
           onOpenQueryConsole={handleOpenQueryConsole}
           onCreateTable={handleCreateTable}
+          onOpenErDiagram={handleOpenErDiagram}
         />
       </div>
 

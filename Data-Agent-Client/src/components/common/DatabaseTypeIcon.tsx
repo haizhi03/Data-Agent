@@ -12,9 +12,22 @@ interface DbIconRule {
   iconUrl: string;
 }
 
-// Dameng (DM) has no official devicon; use an inline SVG badge so it does not
-// depend on an external icon CDN. Load-error still falls back to the default icon.
-const DM_ICON_URL = 'data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Crect%20width%3D%2224%22%20height%3D%2224%22%20rx%3D%225%22%20fill%3D%22%23C7362B%22%2F%3E%3Ctext%20x%3D%2212%22%20y%3D%2216.5%22%20text-anchor%3D%22middle%22%20font-family%3D%22Arial%2C%20sans-serif%22%20font-size%3D%2210%22%20font-weight%3D%22bold%22%20fill%3D%22%23FFFFFF%22%3EDM%3C%2Ftext%3E%3C%2Fsvg%3E';
+// Dameng mark: navy oval with white / red / white waves. Inline so the menu
+// does not depend on an external icon CDN. Load-error still falls back.
+const DM_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 44">
+  <defs>
+    <clipPath id="dm-oval">
+      <ellipse cx="32" cy="22" rx="30" ry="20"/>
+    </clipPath>
+  </defs>
+  <ellipse cx="32" cy="22" rx="30" ry="20" fill="#0B3A8C"/>
+  <g clip-path="url(#dm-oval)">
+    <path fill="#FFFFFF" d="M-2 14C10 4 22 24 34 14S54 4 66 14v8C54 12 42 32 34 22S10 12-2 22z"/>
+    <path fill="#E10600" d="M-2 22C10 12 22 32 34 22S54 12 66 22v9C54 21 42 41 34 31S10 21-2 31z"/>
+    <path fill="#FFFFFF" d="M-2 31C10 21 22 41 34 31S54 21 66 31v9C54 30 42 50 34 40S10 30-2 40z"/>
+  </g>
+</svg>`;
+const DM_ICON_URL = `data:image/svg+xml,${encodeURIComponent(DM_ICON_SVG)}`;
 
 const DB_ICON_RULES: DbIconRule[] = [
   { matchers: ['dameng', 'dm'], iconUrl: DM_ICON_URL },

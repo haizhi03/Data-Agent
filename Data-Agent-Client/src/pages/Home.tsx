@@ -5,11 +5,12 @@ import { MonacoEditor, type MonacoEditorHandle } from "../components/editor/Mona
 import { ResultsPanel } from "../components/results/ResultsPanel";
 import { Toolbar } from "../components/workspace/Toolbar";
 import { TableDataTab } from "../components/workspace/TableDataTab";
+import { ErDiagramTab } from "../components/workspace/ErDiagramTab";
 import { EmptyState } from "../components/workspace/EmptyState";
 import { PlanConsole } from "../components/plan/PlanConsole";
 import { SubAgentConsole } from "../components/subagent/SubAgentConsole";
 import { useWorkspaceStore } from "../store/workspaceStore";
-import type { TableTabMetadata, PlanTabMetadata, SubAgentConsoleTabMetadata } from "../types/tab";
+import type { TableTabMetadata, PlanTabMetadata, SubAgentConsoleTabMetadata, ErDiagramTabMetadata } from "../types/tab";
 import type { ExecuteSqlResponse } from "../types/sql";
 import { sqlExecutionService } from "../services/sqlExecution.service";
 import { connectionService } from "../services/connection.service";
@@ -27,7 +28,7 @@ export default function Home() {
     const [connectionType, setConnectionType] = useState<{ id: number; dbType: string } | null>(null);
 
     const activeTab = tabs.find(t => t.id === activeTabId);
-    const isSpecialTab = activeTab?.type === 'plan' || activeTab?.type === 'subagent-console';
+    const isSpecialTab = activeTab?.type === 'plan' || activeTab?.type === 'subagent-console' || activeTab?.type === 'er';
     const sqlContext = !isSpecialTab
         ? activeTab?.metadata as import('../types/tab').ConsoleTabMetadata | undefined
         : undefined;
@@ -118,6 +119,10 @@ export default function Home() {
                         tabId={activeTab.id}
                         metadata={activeTab.metadata as SubAgentConsoleTabMetadata}
                     />
+                </div>
+            ) : activeTab?.type === 'er' && activeTab.metadata ? (
+                <div className="flex-1 min-h-0 overflow-hidden bg-transparent">
+                    <ErDiagramTab metadata={activeTab.metadata as ErDiagramTabMetadata} />
                 </div>
             ) : (
                 <ResultsPanel

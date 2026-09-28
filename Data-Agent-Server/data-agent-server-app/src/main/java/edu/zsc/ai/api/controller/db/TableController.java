@@ -8,8 +8,10 @@ import edu.zsc.ai.domain.model.dto.request.db.RenameTableRequest;
 import edu.zsc.ai.domain.model.dto.request.db.TableRowValueRequest;
 import edu.zsc.ai.domain.model.dto.request.db.UpdateTableRowRequest;
 import edu.zsc.ai.domain.model.dto.response.base.ApiResponse;
+import edu.zsc.ai.domain.model.dto.response.db.ErDiagramResponse;
 import edu.zsc.ai.domain.model.dto.response.db.ExecuteSqlResponse;
 import edu.zsc.ai.domain.model.dto.response.db.TableDataResponse;
+import edu.zsc.ai.domain.service.db.ErDiagramService;
 import edu.zsc.ai.domain.service.db.TableService;
 import edu.zsc.ai.plugin.model.db.TableRowValue;
 import jakarta.validation.Valid;
@@ -36,6 +38,16 @@ import java.util.List;
 public class TableController {
 
     private final TableService tableService;
+    private final ErDiagramService erDiagramService;
+
+    @GetMapping("/er-diagram")
+    public ApiResponse<ErDiagramResponse> erDiagram(
+            @RequestParam @NotNull(message = "connectionId is required") Long connectionId,
+            @RequestParam(required = false) String catalog,
+            @RequestParam(required = false) String schema) {
+        log.info("Loading ER diagram: connectionId={}, catalog={}, schema={}", connectionId, catalog, schema);
+        return ApiResponse.success(erDiagramService.load(new DbContext(connectionId, catalog, schema)));
+    }
 
     @GetMapping
     public ApiResponse<List<String>> listTables(

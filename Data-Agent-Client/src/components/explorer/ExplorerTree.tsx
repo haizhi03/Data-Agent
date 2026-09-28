@@ -24,6 +24,7 @@ interface ExplorerTreeProps {
   onDelete: (node: ExplorerNode, type: ExplorerNodeType) => void;
   onOpenQueryConsole: (node: ExplorerNode) => void;
   onCreateTable: (node: ExplorerNode) => void;
+  onOpenErDiagram: (node: ExplorerNode) => void;
 }
 
 export interface ExplorerLocateTarget {
@@ -94,6 +95,7 @@ export const ExplorerTree = forwardRef<ExplorerTreeHandle, ExplorerTreeProps>(fu
   onDelete,
   onOpenQueryConsole,
   onCreateTable,
+  onOpenErDiagram,
 }: ExplorerTreeProps, ref) {
   const { t } = useTranslation();
   const treeRef = useRef<TreeApi<ExplorerNode> | undefined>(undefined);
@@ -181,6 +183,7 @@ export const ExplorerTree = forwardRef<ExplorerTreeHandle, ExplorerTreeProps>(fu
         onDelete={onDelete}
         onOpenQueryConsole={onOpenQueryConsole}
         onCreateTable={onCreateTable}
+        onOpenErDiagram={onOpenErDiagram}
       />
     );
   };

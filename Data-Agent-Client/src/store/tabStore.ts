@@ -17,7 +17,7 @@ export type WorkspaceTabMetadataUpdate = Partial<ConsoleTabMetadata & TableTabMe
 export interface Tab {
   id: string;
   name: string;
-  type: 'file' | 'table' | 'plan' | 'subagent-console';
+  type: 'file' | 'table' | 'plan' | 'subagent-console' | 'er';
   icon?: string;
   content?: string;
   active: boolean;
