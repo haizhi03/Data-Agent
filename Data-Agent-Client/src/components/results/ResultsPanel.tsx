@@ -6,6 +6,7 @@ import { I18N_KEYS } from '../../constants/i18nKeys';
 import type { ExecuteSqlMessage, ExecuteSqlResponse, ExecuteSqlResultSet } from '../../types/sql';
 import { SqlCodeBlock } from '../common/SqlCodeBlock';
 import { buildCsvFromResult, downloadCsv } from '../../utils/exportResult';
+import { formatDmExecutionPlan } from '../../utils/dmExecutionPlan';
 import { useToast } from '../../hooks/useToast';
 import {
   Panel,
@@ -36,6 +37,8 @@ export function ResultsPanel({ isVisible, onClose, executeResult, isRunning = fa
     [];
 
   const resultRows = primaryResultSet?.rows ?? executeResult?.rows ?? [];
+  const isDmExecutionPlan = /^\s*EXPLAIN\b/i.test(executeResult?.executedSql || executeResult?.originalSql || '')
+    && resultHeaders.length === 1 && resultHeaders[0] === 'Execution Plan';
 
   // Determine if Results tab should be shown (SELECT query with data)
   const hasResultTab = !!(
@@ -205,9 +208,19 @@ export function ResultsPanel({ isVisible, onClose, executeResult, isRunning = fa
         {/* Content Area */}
         <div className="flex-1 overflow-hidden bg-transparent relative">
           {activeTab === 'result' && hasResultTab && executeResult ? (
-            // Results Table
             <div className="overflow-auto h-full">
-              {resultHeaders.length > 0 ? (
+              {isDmExecutionPlan ? (
+                <div className="text-[11px] theme-text-primary">
+                  <div className="sticky top-0 px-3 py-1.5 font-medium theme-text-secondary border-b theme-border bg-[color:var(--bg-panel)]">
+                    Execution Plan
+                  </div>
+                  {resultRows.map((row, index) => (
+                    <pre key={index} className="px-3 py-2 font-mono leading-5 whitespace-pre-wrap break-words border-b theme-border">
+                      {formatDmExecutionPlan(String(row[0] ?? ''))}
+                    </pre>
+                  ))}
+                </div>
+              ) : resultHeaders.length > 0 ? (
                 <table className="text-[11px] w-full border-collapse">
                   <thead className="sticky top-0 bg-[color:var(--bg-panel)]/92 backdrop-blur-xl">
                     <tr>

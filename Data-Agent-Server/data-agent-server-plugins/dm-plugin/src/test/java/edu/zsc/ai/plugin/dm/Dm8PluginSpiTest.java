@@ -1,8 +1,14 @@
 package edu.zsc.ai.plugin.dm;
 
 import edu.zsc.ai.plugin.Plugin;
+import edu.zsc.ai.plugin.capability.SqlIdentifierEscaper;
+import edu.zsc.ai.plugin.capability.SqlValidator;
+import edu.zsc.ai.plugin.capability.SequenceManager;
+import edu.zsc.ai.plugin.capability.ConstraintManager;
 import edu.zsc.ai.plugin.driver.MavenCoordinates;
 import edu.zsc.ai.plugin.enums.DbType;
+import edu.zsc.ai.plugin.manager.DefaultPluginManager;
+import edu.zsc.ai.plugin.value.ValueProcessor;
 import org.junit.jupiter.api.Test;
 
 import java.util.ServiceLoader;
@@ -44,6 +50,20 @@ class Dm8PluginSpiTest {
     void schemaSupportedButDatabaseNot() {
         assertFalse(plugin.supportDatabase());
         assertTrue(plugin.supportSchema());
+    }
+
+    @Test
+    void exposesDmLanguageAndConversionCapabilities() {
+        assertTrue(plugin instanceof SqlValidator);
+        assertTrue(plugin instanceof SqlIdentifierEscaper);
+        assertTrue(plugin instanceof ValueProcessor);
+        assertTrue(plugin instanceof SequenceManager);
+        assertTrue(plugin instanceof ConstraintManager);
+        assertEquals("\"Mixed\"\"Case\"", plugin.quoteIdentifier("Mixed\"Case"));
+        assertTrue(DefaultPluginManager.getInstance().supportsSqlValidationByPluginId("dm-8"));
+        assertTrue(DefaultPluginManager.getInstance().getSqlAnalyzerByPluginId("dm-8") instanceof Dm8Plugin);
+        assertTrue(DefaultPluginManager.getInstance().getSequenceManagerByPluginId("dm-8") instanceof Dm8Plugin);
+        assertTrue(DefaultPluginManager.getInstance().getConstraintManagerByPluginId("dm-8") instanceof Dm8Plugin);
     }
 
     @Test

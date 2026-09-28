@@ -20,4 +20,10 @@ public class ConnectionPoolProperties {
     private long idleTimeoutMs = 600_000L;
 
     private long maxLifetimeMs = 1_800_000L;
+
+    /**
+     * Hikari transaction isolation constant name (e.g. {@code TRANSACTION_READ_COMMITTED}).
+     * {@code null} keeps the driver default (MySQL defaults to REPEATABLE_READ).
+     */
+    private String transactionIsolation;
 }

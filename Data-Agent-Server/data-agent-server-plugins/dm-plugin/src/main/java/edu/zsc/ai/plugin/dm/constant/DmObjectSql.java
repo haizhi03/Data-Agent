@@ -15,6 +15,8 @@ public final class DmObjectSql {
     public static final String OBJECT_TYPE_PROCEDURE = "PROCEDURE";
     public static final String OBJECT_TYPE_TRIGGER = "TRIGGER";
     public static final String OBJECT_TYPE_INDEX = "INDEX";
+    public static final String OBJECT_TYPE_SEQUENCE = "SEQUENCE";
+    public static final String OBJECT_TYPE_CONSTRAINT = "CONSTRAINT";
 
     // --- schema resolution fallback ---
     /** Returns the current login user (default schema) when Connection.getSchema() is unavailable. */
@@ -74,6 +76,26 @@ public final class DmObjectSql {
                     + " AND TABLE_NAME = ?"
                     + " ORDER BY INDEX_NAME, COLUMN_POSITION";
 
+    // --- ALL_SEQUENCES: inspect definitions without advancing the sequence ---
+    public static final String SQL_LIST_SEQUENCES =
+            "SELECT SEQUENCE_NAME, MIN_VALUE, MAX_VALUE, INCREMENT_BY, CYCLE_FLAG, CACHE_SIZE"
+                    + " FROM ALL_SEQUENCES WHERE SEQUENCE_OWNER = ? ORDER BY SEQUENCE_NAME";
+
+    // Match referenced key columns by POSITION, not by name or row order.
+    public static final String SQL_LIST_CONSTRAINTS =
+            "SELECT c.CONSTRAINT_NAME, c.CONSTRAINT_TYPE, c.TABLE_NAME, c.STATUS,"
+                    + " c.SEARCH_CONDITION, c.R_OWNER, r.TABLE_NAME AS REF_TABLE_NAME,"
+                    + " cc.COLUMN_NAME, cc.POSITION, rc.COLUMN_NAME AS REF_COLUMN_NAME"
+                    + " FROM ALL_CONSTRAINTS c"
+                    + " LEFT JOIN ALL_CONS_COLUMNS cc ON cc.OWNER = c.OWNER"
+                    + " AND cc.CONSTRAINT_NAME = c.CONSTRAINT_NAME"
+                    + " LEFT JOIN ALL_CONSTRAINTS r ON r.OWNER = c.R_OWNER"
+                    + " AND r.CONSTRAINT_NAME = c.R_CONSTRAINT_NAME"
+                    + " LEFT JOIN ALL_CONS_COLUMNS rc ON rc.OWNER = r.OWNER"
+                    + " AND rc.CONSTRAINT_NAME = r.CONSTRAINT_NAME AND rc.POSITION = cc.POSITION"
+                    + " WHERE c.OWNER = ? AND c.TABLE_NAME = ?"
+                    + " ORDER BY c.CONSTRAINT_NAME, cc.POSITION";
+
     // --- dbms_metadata (%s = escaped literals: object type, object name, owner schema) ---
     public static final String SQL_GET_OBJECT_DDL =
             "SELECT DBMS_METADATA.GET_DDL('%s', '%s', '%s') AS DDL FROM DUAL";
@@ -82,6 +104,8 @@ public final class DmObjectSql {
     public static final String SQL_DROP_FUNCTION = "DROP FUNCTION %s";
     public static final String SQL_DROP_PROCEDURE = "DROP PROCEDURE %s";
     public static final String SQL_DROP_TRIGGER = "DROP TRIGGER %s";
+    public static final String SQL_DROP_SEQUENCE = "DROP SEQUENCE %s";
+    public static final String SQL_DROP_CONSTRAINT = "ALTER TABLE %s DROP CONSTRAINT %s";
 
     private DmObjectSql() {
     }

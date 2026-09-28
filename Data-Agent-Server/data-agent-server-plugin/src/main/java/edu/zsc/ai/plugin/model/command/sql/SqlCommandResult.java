@@ -2,6 +2,8 @@ package edu.zsc.ai.plugin.model.command.sql;
 
 import edu.zsc.ai.plugin.model.command.CommandResult;
 import edu.zsc.ai.plugin.model.command.base.BaseCommandResult;
+import edu.zsc.ai.plugin.model.transaction.StatementExecutionState;
+import edu.zsc.ai.plugin.model.transaction.TransactionOutcome;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -49,6 +51,17 @@ public class SqlCommandResult extends BaseCommandResult implements CommandResult
     private List<SqlMessageInfo> messages;
 
     private List<SqlCommandSubResult> results;
+
+    /**
+     * Factual execution state of this statement. Assigned by the executor on every exit path.
+     */
+    private StatementExecutionState statementState;
+
+    /**
+     * Outcome of the surrounding transaction: COMMITTED/ROLLED_BACK/UNKNOWN when a transaction
+     * was used, NONE otherwise.
+     */
+    private TransactionOutcome transactionOutcome;
 
     /**
      * Get value from a row by column name. Use this instead of row.get(index) to avoid

@@ -5,15 +5,19 @@ import edu.zsc.ai.plugin.value.JdbcValueContext;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.time.OffsetDateTime;
 
 /**
  * Processor for DM TIMESTAMP WITH TIME ZONE / TIMESTAMP WITH LOCAL TIME ZONE.
  *
- * <p>Prefers the JDBC 4.2 {@code getObject(..., OffsetDateTime.class)} mapping
- * (rendered as an ISO offset date-time string). If the DM driver does not support
- * that mapping for its proprietary value class, falls back to the raw string
- * representation, which always carries the zone/offset information.
+ * <p>Renders the driver's raw string representation
+ * ({@code yyyy-MM-dd HH:mm:ss.ffffff +hh:mm}), which is the only form that keeps
+ * the <b>original zone offset</b> and is accepted verbatim by the DM driver on
+ * write-back via {@code setObject(String)} (live-verified).
+ *
+ * <p>The JDBC 4.2 {@code getObject(..., OffsetDateTime.class)} mapping is
+ * deliberately NOT used: the DM driver normalizes the value to the session time
+ * zone (e.g. {@code +05:30} is returned as {@code +08:00}), silently discarding
+ * the stored offset. Writing such a normalized value back would change the row.
  *
  * @author hhz
  */
@@ -23,15 +27,8 @@ public class DmTimestampWithTimeZoneProcessor extends DefaultValueProcessor {
         ResultSet resultSet = context.getResultSet();
         int columnIndex = context.getColumnIndex();
 
-        try {
-            OffsetDateTime offsetDateTime = resultSet.getObject(columnIndex, OffsetDateTime.class);
-            if (offsetDateTime != null) {
-                return offsetDateTime.toString();
-            }
-            return resultSet.wasNull() ? null : resultSet.getString(columnIndex);
-        } catch (Exception e) {
-            // Driver does not support OffsetDateTime mapping for this type
-            return resultSet.getString(columnIndex);
-        }
+        // The raw driver string preserves the original offset and is re-writable
+        // as-is; it is the lossless representation for this type.
+        return resultSet.getString(columnIndex);
     }
 }

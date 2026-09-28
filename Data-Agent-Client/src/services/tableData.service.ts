@@ -68,6 +68,44 @@ export interface ImportTableDataResult {
   errorMessage: string | null;
 }
 
+export type BatchRowOperationType = 'INSERT' | 'UPDATE' | 'DELETE';
+
+export interface BatchRowOperation {
+  type: BatchRowOperationType;
+  values?: TableRowValuePayload[];
+  setValues?: TableRowValuePayload[];
+  matchValues?: TableRowValuePayload[];
+}
+
+export interface BatchTableRowsParams {
+  connectionId: number;
+  tableName: string;
+  catalog?: string;
+  schema?: string;
+  operations: BatchRowOperation[];
+  force?: boolean;
+}
+
+export interface BatchTableRowsItemResult {
+  type: string;
+  success: boolean;
+  affectedRows: number;
+  errorCode: string | null;
+  errorMessage: string | null;
+}
+
+export interface BatchTableRowsResult {
+  success: boolean;
+  committed: boolean;
+  requiresForce: boolean;
+  forceCode: string | null;
+  total: number;
+  succeeded: number;
+  failedAtIndex: number | null;
+  errorMessage: string | null;
+  results: BatchTableRowsItemResult[];
+}
+
 export const tableDataService = {
   getTableData: async (
     connectionId: string,
@@ -198,6 +236,18 @@ export const tableDataService = {
     const response = await http.post<ImportTableDataResult>(ApiPaths.TABLE_IMPORT, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
       timeout: 600000,
+    });
+    return response.data;
+  },
+
+  batchRows: async (params: BatchTableRowsParams): Promise<BatchTableRowsResult> => {
+    const response = await http.post<BatchTableRowsResult>(ApiPaths.TABLE_ROWS_BATCH, {
+      connectionId: params.connectionId,
+      tableName: params.tableName,
+      catalog: params.catalog ?? undefined,
+      schema: params.schema ?? undefined,
+      operations: params.operations,
+      force: params.force ?? false,
     });
     return response.data;
   },

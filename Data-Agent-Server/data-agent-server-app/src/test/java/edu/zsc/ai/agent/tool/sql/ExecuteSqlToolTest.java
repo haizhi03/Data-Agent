@@ -29,6 +29,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -56,6 +57,17 @@ class ExecuteSqlToolTest {
         assertTrue(exception.getMessageForModel().contains("executeSelectSql requires at least one read-only SQL statement"));
         assertTrue(exception.getMessageForModel().contains("connectionId=5, database=sales, schema=public"));
         assertTrue(exception.getMessageForModel().contains("Provide SELECT, WITH, SHOW, or EXPLAIN statements before retrying"));
+    }
+
+    @Test
+    void executeSelectSql_rejectsWhenNoDialectValidatorIsAvailable() {
+        org.junit.jupiter.api.Assertions.assertThrows(
+                AgentToolExecuteException.class,
+                () -> tool.executeSelectSql(5L, "sales", "public", List.of("SELECT 1"),
+                        InvocationParameters.from(Map.of()))
+        );
+
+        verify(sqlExecutionService, never()).executeBatchSql(any(), any());
     }
 
     @Test

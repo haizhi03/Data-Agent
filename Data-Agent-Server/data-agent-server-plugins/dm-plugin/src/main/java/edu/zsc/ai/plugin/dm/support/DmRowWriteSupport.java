@@ -1,9 +1,11 @@
 package edu.zsc.ai.plugin.dm.support;
 
+import edu.zsc.ai.plugin.dm.value.DmLobPreviewValues;
 import edu.zsc.ai.plugin.model.command.sql.SqlCommandResult;
 import edu.zsc.ai.plugin.model.command.sql.SqlMessageInfo;
 import edu.zsc.ai.plugin.model.command.sql.SqlMessageLevel;
 import edu.zsc.ai.plugin.model.db.TableRowValue;
+import edu.zsc.ai.plugin.model.transaction.StatementExecutionState;
 import org.apache.commons.lang3.StringUtils;
 
 import java.sql.Connection;
@@ -24,6 +26,12 @@ import java.util.List;
  *       only used as a fallback).</li>
  *   <li>Empty strings and SQL NULL remain distinct JDBC inputs. The server's
  *       compatibility mode decides how an empty string is stored.</li>
+ *   <li>Truncated LOB preview placeholders ({@code [BLOB: xMB]} /
+ *       {@code [CLOB: xMB]}, produced by the DM value processors for large
+ *       objects) are refused as INSERT/UPDATE inputs: they are size metadata,
+ *       not content, and writing them back would silently corrupt the LOB
+ *       (live-verified). Rejected with code
+ *       {@link DmLobPreviewValues#PREVIEW_NOT_WRITABLE_CODE}.</li>
  * </ul>
  *
  * @author hhz
@@ -56,6 +64,11 @@ public final class DmRowWriteSupport {
         }
 
         String sql = sqlTemplate.buildInsertRowSql(fullTableName, quotedColumns);
+
+        TableRowValue preview = firstTruncatedLobPreview(values);
+        if (preview != null) {
+            return buildPreviewRejectedResult(sql, preview);
+        }
 
         return executePreparedUpdate(connection, sql, params);
     }
@@ -106,6 +119,11 @@ public final class DmRowWriteSupport {
         SetClause setClause = buildSetClause(setValues);
         MatchClause matchClause = buildMatchClause(matchValues);
         String sql = sqlTemplate.buildUpdateRowSql(fullTableName, setClause.setSql(), matchClause.whereSql());
+
+        TableRowValue preview = firstTruncatedLobPreview(setValues);
+        if (preview != null) {
+            return buildPreviewRejectedResult(sql, preview);
+        }
 
         long matchedRows = countRowsByMatch(connection, fullTableName, matchClause);
         if (matchedRows == 0) {
@@ -245,6 +263,28 @@ public final class DmRowWriteSupport {
             return charSequence.toString();
         }
         return String.valueOf(value);
+    }
+
+    /**
+     * Find the first value that is a truncated LOB preview placeholder, or null.
+     * Such values are size metadata, not content; see {@link DmLobPreviewValues}.
+     */
+    private TableRowValue firstTruncatedLobPreview(List<TableRowValue> values) {
+        for (TableRowValue entry : values) {
+            if (entry != null && DmLobPreviewValues.isTruncatedLobPreview(entry.value())) {
+                return entry;
+            }
+        }
+        return null;
+    }
+
+    private SqlCommandResult buildPreviewRejectedResult(String sql, TableRowValue entry) {
+        SqlCommandResult result = buildFailedUpdateResult(sql,
+                DmLobPreviewValues.rejectionMessage(entry.columnName().trim(), entry.value()),
+                DmLobPreviewValues.PREVIEW_NOT_WRITABLE_CODE,
+                0L);
+        result.setStatementState(StatementExecutionState.NOT_EXECUTED);
+        return result;
     }
 
     private SqlCommandResult buildFailedUpdateResult(String sql, String message) {

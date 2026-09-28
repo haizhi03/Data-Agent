@@ -10,12 +10,14 @@ import { PlanConsole } from "../components/plan/PlanConsole";
 import { SubAgentConsole } from "../components/subagent/SubAgentConsole";
 import { useWorkspaceStore } from "../store/workspaceStore";
 import type { TableTabMetadata, PlanTabMetadata, SubAgentConsoleTabMetadata } from "../types/tab";
-import type { ExecuteSqlResponse } from "../types/sql";
+import type { ExecuteSqlResponse, SqlSyntaxError } from "../types/sql";
 import { sqlExecutionService } from "../services/sqlExecution.service";
+import { sqlAnalysisService } from "../services/sqlAnalysis.service";
 import { connectionService } from "../services/connection.service";
 import { getSqlDialectByDbType } from "../constants/sqlDialect";
 import { formatSql } from "../utils/sql";
 import { I18N_KEYS } from "../constants/i18nKeys";
+import { EXPLORER_SQL_OBJECT_CHANGED } from "../constants/explorer";
 
 export default function Home() {
     const { t } = useTranslation();
@@ -25,6 +27,7 @@ export default function Home() {
     const editorRef = useRef<MonacoEditorHandle | null>(null);
     const [isRunning, setIsRunning] = useState(false);
     const [connectionType, setConnectionType] = useState<{ id: number; dbType: string } | null>(null);
+    const [diagnostics, setDiagnostics] = useState<SqlSyntaxError[]>([]);
 
     const activeTab = tabs.find(t => t.id === activeTabId);
     const isSpecialTab = activeTab?.type === 'plan' || activeTab?.type === 'subagent-console';
@@ -42,6 +45,32 @@ export default function Home() {
             .catch(() => { if (!cancelled) setConnectionType(null); });
         return () => { cancelled = true; };
     }, [sqlContext?.connectionId]);
+
+    useEffect(() => {
+        const connectionId = sqlContext?.connectionId;
+        const sql = activeTab?.type === 'file' ? activeTab.content : undefined;
+        setDiagnostics([]);
+        if (!connectionId || connectionType?.id !== connectionId
+            || connectionType.dbType.toUpperCase() !== 'DM' || !sql?.trim()) return;
+        let cancelled = false;
+        const timeout = window.setTimeout(() => {
+            sqlAnalysisService.analyze({
+                connectionId,
+                databaseName: sqlContext.databaseName,
+                schemaName: sqlContext.schemaName,
+                sql,
+            }).then(result => {
+                if (!cancelled) setDiagnostics(result.errors);
+            }).catch(() => {
+                if (!cancelled) setDiagnostics([]);
+            });
+        }, 350);
+        return () => {
+            cancelled = true;
+            window.clearTimeout(timeout);
+        };
+    }, [activeTab?.content, activeTab?.type, activeTabId, connectionType, sqlContext?.connectionId,
+        sqlContext?.databaseName, sqlContext?.schemaName]);
 
     const handleFormatSql = useCallback(() => {
         if (!activeTab || activeTab.type !== 'file' || !connectionType || connectionType.id !== sqlContext?.connectionId) return;
@@ -71,6 +100,28 @@ export default function Home() {
                 originalSql: result.originalSql || sql,
                 executedSql: result.executedSql || sql,
             });
+            if (result.success && connectionType?.id === sqlContext.connectionId
+                && connectionType.dbType.toUpperCase() === 'DM') {
+                sqlAnalysisService.analyze({
+                    connectionId: sqlContext.connectionId,
+                    databaseName: sqlContext.databaseName,
+                    schemaName: sqlContext.schemaName,
+                    sql,
+                }).then(analysis => {
+                    if (analysis.errors.length || analysis.statements.length !== 1) return;
+                    const statement = analysis.statements[0];
+                    if (['CREATE', 'ALTER', 'DROP'].includes(statement.type) && statement.objectType) {
+                        window.dispatchEvent(new CustomEvent(EXPLORER_SQL_OBJECT_CHANGED, {
+                            detail: {
+                                connectionId: sqlContext.connectionId,
+                                catalog: sqlContext.databaseName,
+                                schema: sqlContext.schemaName,
+                                objectType: statement.objectType,
+                            },
+                        }));
+                    }
+                }).catch(() => undefined);
+            }
         } catch (err: unknown) {
             setExecuteResult({
                 success: false,
@@ -84,7 +135,7 @@ export default function Home() {
         } finally {
             setIsRunning(false);
         }
-    }, [activeTab, sqlContext]);
+    }, [activeTab, connectionType, sqlContext]);
 
     // SQL Editor Shortcuts
     useEffect(() => {
@@ -149,6 +200,7 @@ export default function Home() {
                                     <MonacoEditor
                                         ref={editorRef}
                                         value={activeTab.content || ''}
+                                        diagnostics={diagnostics}
                                         onChange={(val) => updateTabContent(activeTab.id, val || '')}
                                     />
                                 ) : activeTab?.type === 'table' && activeTab.metadata ? (
