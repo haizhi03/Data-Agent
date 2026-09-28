@@ -90,6 +90,8 @@ export const INDEX_UNIQUE_SUFFIX = ' UNIQUE';
 /** Query key for connections. */
 export const QUERY_KEY_CONNECTIONS = ['connections'] as const;
 
+export const EXPLORER_SQL_OBJECT_CHANGED = 'explorer-sql-object-changed';
+
 /** DDL viewer constants. */
 export const DdlViewerConfig = {
   SYNTAX_LANGUAGE: 'sql' as const,

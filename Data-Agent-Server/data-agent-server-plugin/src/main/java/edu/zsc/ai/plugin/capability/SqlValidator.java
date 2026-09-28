@@ -26,4 +26,20 @@ public interface SqlValidator {
      * @return the SQL type
      */
     SqlType classifySql(String sql);
+
+    /**
+     * Whether the single SQL statement is an explicit transaction control statement
+     * (BEGIN / START TRANSACTION / COMMIT / ROLLBACK and dialect variants).
+     * Implementations should use their own parser so that anonymous blocks
+     * ({@code BEGIN ... END;}), string literals and comments are not misclassified.
+     *
+     * @param sql the SQL statement to check
+     * @return true if executing it would implicitly begin/end a transaction
+     */
+    default boolean isTransactionControl(String sql) {
+        return switch (classifySql(sql)) {
+            case BEGIN, COMMIT, ROLLBACK -> true;
+            default -> false;
+        };
+    }
 }

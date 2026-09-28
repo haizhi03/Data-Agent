@@ -12,6 +12,7 @@ import edu.zsc.ai.plugin.model.command.sql.SqlCommandResult;
 import edu.zsc.ai.plugin.model.command.sql.SqlMessageInfo;
 import edu.zsc.ai.plugin.model.command.sql.SqlMessageLevel;
 import edu.zsc.ai.plugin.model.command.sql.SqlCommandSubResult;
+import edu.zsc.ai.plugin.model.transaction.BatchExecutionState;
 
 import java.util.Collections;
 import java.util.List;
@@ -26,6 +27,14 @@ public class SqlExecutionConverter {
      * Convert plugin SqlCommandResult to ExecuteSqlResponse DTO.
      */
     public static ExecuteSqlResponse toResponse(SqlCommandResult r) {
+        return toResponse(r, null);
+    }
+
+    /**
+     * Convert plugin SqlCommandResult to ExecuteSqlResponse DTO, tagging the batch state
+     * when the statement was part of a batch.
+     */
+    public static ExecuteSqlResponse toResponse(SqlCommandResult r, BatchExecutionState batchState) {
         if (r == null) {
             return null;
         }
@@ -49,6 +58,9 @@ public class SqlExecutionConverter {
                 .executionInfo(executionInfo)
                 .messages(messages)
                 .results(results)
+                .statementState(r.getStatementState())
+                .transactionOutcome(r.getTransactionOutcome())
+                .batchState(batchState)
                 .build();
     }
 

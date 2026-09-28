@@ -52,4 +52,18 @@ public interface ConnectionManager {
             throw new RuntimeException("Failed to get driver info: " + e.getMessage(), e);
         }
     }
+
+    /**
+     * Restore the session baseline before a connection is returned to the pool.
+     * Default is a no-op (Hikari already resets autoCommit/readOnly/isolation/catalog
+     * for the values it tracks). Plugins override to reset dialect-specific session
+     * state such as the current schema, and to clear warnings.
+     *
+     * @param connection the physical connection being returned
+     * @param catalog    catalog the pool slot is scoped to (may be null)
+     * @param schema     schema the pool slot is scoped to (may be null)
+     * @throws SQLException if the reset fails; callers should drop the physical connection
+     */
+    default void resetSessionState(Connection connection, String catalog, String schema) throws SQLException {
+    }
 }

@@ -1,8 +1,10 @@
 package edu.zsc.ai.plugin.dm;
 
 import edu.zsc.ai.plugin.connection.ConnectionConfig;
+import edu.zsc.ai.plugin.dm.fixture.DmLiveTestFixture;
 import edu.zsc.ai.plugin.model.command.sql.SqlCommandResult;
 import edu.zsc.ai.plugin.model.metadata.ColumnMetadata;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 
@@ -14,24 +16,22 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Live smoke test against a real DM instance. Run with:
- * mvn test -pl data-agent-server-plugins/dm-plugin -Ddm.live=true -Dtest=DmLiveSmokeTest
+ * mvn test -pl data-agent-server-plugins/dm-plugin -Ddm.live=true -Ddm.password=... -Dtest=DmLiveSmokeTest
+ * Credentials come only from system properties / environment; tests skip when absent.
  */
 @EnabledIfSystemProperty(named = "dm.live", matches = "true")
 class DmLiveSmokeTest {
 
-    private static final String DRIVER_JAR = System.getProperty("dm.driver.jar",
-            System.getProperty("user.home") + "/.data-agent/drivers/dm/DmJdbcDriver18-8.1.3.140.jar");
+    private ConnectionConfig config;
+
+    @BeforeEach
+    void setUp() {
+        config = DmLiveTestFixture.baseConfig();
+    }
 
     @Test
     void connectAndBrowseMetadata() throws Exception {
         Dm8Plugin plugin = new Dm8Plugin();
-        ConnectionConfig config = new ConnectionConfig();
-        config.setHost(System.getProperty("dm.host", "localhost"));
-        config.setPort(Integer.getInteger("dm.port", 25236));
-        config.setUsername(System.getProperty("dm.user", "SYSDBA"));
-        config.setPassword(System.getProperty("dm.password", "Chat2DB_dm2762"));
-        config.setDriverJarPath(DRIVER_JAR);
-
         try (Connection conn = plugin.connect(config)) {
             // catalog placeholder must be ignored (explorer passes a pseudo catalog)
             List<String> schemas = plugin.getSchemas(conn, "localhost@25236");
@@ -60,13 +60,6 @@ class DmLiveSmokeTest {
     @Test
     void listTriggersUsesDmDictionaryColumns() throws Exception {
         Dm8Plugin plugin = new Dm8Plugin();
-        ConnectionConfig config = new ConnectionConfig();
-        config.setHost(System.getProperty("dm.host", "localhost"));
-        config.setPort(Integer.getInteger("dm.port", 25236));
-        config.setUsername(System.getProperty("dm.user", "SYSDBA"));
-        config.setPassword(System.getProperty("dm.password", "Chat2DB_dm2762"));
-        config.setDriverJarPath(DRIVER_JAR);
-
         try (Connection conn = plugin.connect(config)) {
             // must not raise "invalid column TRIGGER_TYPE" against the real DM dictionary
             List<?> triggers = plugin.getTriggers(conn, null, "CTISYS", null);
@@ -79,19 +72,15 @@ class DmLiveSmokeTest {
     @Test
     void listViewsFunctionsProceduresIndexes() throws Exception {
         Dm8Plugin plugin = new Dm8Plugin();
-        ConnectionConfig config = new ConnectionConfig();
-        config.setHost(System.getProperty("dm.host", "localhost"));
-        config.setPort(Integer.getInteger("dm.port", 25236));
-        config.setUsername(System.getProperty("dm.user", "SYSDBA"));
-        config.setPassword(System.getProperty("dm.password", "Chat2DB_dm2762"));
-        config.setDriverJarPath(DRIVER_JAR);
-
         try (Connection conn = plugin.connect(config)) {
             System.out.println("views SYSDBA = " + plugin.getViews(conn, null, "SYSDBA").size());
             System.out.println("functions SYSDBA = " + plugin.getFunctions(conn, null, "SYSDBA").size());
             System.out.println("procedures SYSDBA = " + plugin.getProcedures(conn, null, "SYSDBA").size());
+            System.out.println("sequences SYSDBA = " + plugin.getSequences(conn, null, "SYSDBA").size());
             System.out.println("indexes CHAT2DB_EXPLAIN_TEST = "
                     + plugin.getIndexes(conn, null, "SYSDBA", "CHAT2DB_EXPLAIN_TEST").size());
+            System.out.println("constraints CHAT2DB_EXPLAIN_TEST = "
+                    + plugin.getConstraints(conn, null, "SYSDBA", "CHAT2DB_EXPLAIN_TEST").size());
             System.out.println("triggers of table = " + plugin.getTriggers(conn, null, "SYSDBA", "CHAT2DB_EXPLAIN_TEST").size());
         }
     }
@@ -99,12 +88,6 @@ class DmLiveSmokeTest {
     @Test
     void connectWithSchemaSetsCurrentSchema() throws Exception {
         Dm8Plugin plugin = new Dm8Plugin();
-        ConnectionConfig config = new ConnectionConfig();
-        config.setHost(System.getProperty("dm.host", "localhost"));
-        config.setPort(Integer.getInteger("dm.port", 25236));
-        config.setUsername(System.getProperty("dm.user", "SYSDBA"));
-        config.setPassword(System.getProperty("dm.password", "Chat2DB_dm2762"));
-        config.setDriverJarPath(DRIVER_JAR);
         config.setSchema("TEST");
 
         try (Connection conn = plugin.connect(config)) {

@@ -1,5 +1,8 @@
 package edu.zsc.ai.domain.model.dto.response.db;
 
+import edu.zsc.ai.plugin.model.transaction.BatchExecutionState;
+import edu.zsc.ai.plugin.model.transaction.StatementExecutionState;
+import edu.zsc.ai.plugin.model.transaction.TransactionOutcome;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -51,4 +54,19 @@ public class ExecuteSqlResponse {
     private List<ExecuteSqlMessage> messages;
 
     private List<ExecuteSqlSubResult> results;
+
+    /**
+     * Factual per-statement execution state (M1-06). Serialized as the enum name.
+     */
+    private StatementExecutionState statementState;
+
+    /**
+     * Outcome of the transaction surrounding this statement (M1-06).
+     */
+    private TransactionOutcome transactionOutcome;
+
+    /**
+     * Aggregate state of the batch this statement belonged to; null for single-statement execution.
+     */
+    private BatchExecutionState batchState;
 }

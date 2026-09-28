@@ -5,12 +5,15 @@ import edu.zsc.ai.plugin.SqlPlugin;
 import edu.zsc.ai.plugin.capability.ColumnManager;
 import edu.zsc.ai.plugin.capability.CommandExecutor;
 import edu.zsc.ai.plugin.capability.ConnectionManager;
+import edu.zsc.ai.plugin.capability.ConstraintManager;
 import edu.zsc.ai.plugin.capability.DatabaseManager;
 import edu.zsc.ai.plugin.capability.FunctionManager;
 import edu.zsc.ai.plugin.capability.IndexManager;
 import edu.zsc.ai.plugin.capability.ProcedureManager;
 import edu.zsc.ai.plugin.capability.SchemaManager;
+import edu.zsc.ai.plugin.capability.SequenceManager;
 import edu.zsc.ai.plugin.capability.SqlSplitter;
+import edu.zsc.ai.plugin.capability.SqlAnalyzer;
 import edu.zsc.ai.plugin.capability.SqlValidator;
 import edu.zsc.ai.plugin.capability.TableManager;
 import edu.zsc.ai.plugin.capability.TriggerManager;
@@ -249,6 +252,16 @@ public class DefaultPluginManager implements PluginManager {
     }
 
     @Override
+    public SequenceManager getSequenceManagerByPluginId(@NotBlank String pluginId) {
+        return PluginCapabilityResolver.getManagerByPluginId(pluginMap, pluginId, SequenceManager.class);
+    }
+
+    @Override
+    public ConstraintManager getConstraintManagerByPluginId(@NotBlank String pluginId) {
+        return PluginCapabilityResolver.getManagerByPluginId(pluginMap, pluginId, ConstraintManager.class);
+    }
+
+    @Override
     public CommandExecutor<SqlCommandRequest, SqlCommandResult> getSqlCommandExecutorByPluginId(@NotBlank String pluginId) {
         return (CommandExecutor<SqlCommandRequest, SqlCommandResult>) PluginCapabilityResolver.getManagerByPluginId(pluginMap, pluginId, CommandExecutor.class);
     }
@@ -263,6 +276,16 @@ public class DefaultPluginManager implements PluginManager {
     public SqlValidator getSqlValidatorByPluginId(@NotBlank String pluginId) {
         Plugin plugin = pluginMap.get(pluginId);
         return (plugin instanceof SqlValidator validator) ? validator : DefaultSqlValidator.INSTANCE;
+    }
+
+    @Override
+    public boolean supportsSqlValidationByPluginId(@NotBlank String pluginId) {
+        return pluginMap.get(pluginId) instanceof SqlValidator;
+    }
+
+    @Override
+    public SqlAnalyzer getSqlAnalyzerByPluginId(@NotBlank String pluginId) {
+        return PluginCapabilityResolver.getManagerByPluginId(pluginMap, pluginId, SqlAnalyzer.class);
     }
 
     public boolean supportsSchemaByPluginId(@NotBlank String pluginId) {

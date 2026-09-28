@@ -29,6 +29,13 @@ public class ConnectionConfig {
     private String driverJarPath;
     
     private Integer timeout = 30;
+
+    /**
+     * Optional socket-level network timeout (milliseconds) applied via
+     * {@code Connection.setNetworkTimeout} after connect; null leaves the driver default.
+     * Complements query timeouts by failing blocked socket reads on a hung server (M1-09).
+     */
+    private Integer networkTimeoutMs;
     
     public void addProperty(String key, String value) {
         if (properties == null) {

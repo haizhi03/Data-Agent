@@ -2,7 +2,9 @@ package edu.zsc.ai.domain.service.db.support;
 
 import edu.zsc.ai.plugin.capability.ConnectionManager;
 import edu.zsc.ai.plugin.connection.ConnectionConfig;
+import edu.zsc.ai.plugin.connection.ConnectionFailureException;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.BiFunction;
 
@@ -28,14 +30,26 @@ public final class ConnectionManagerChain<R> {
         return new ConnectionManagerChain<>(handlers);
     }
 
+    /**
+     * Try each handler in order and return the first success. When every handler fails, throw an
+     * aggregated {@link ConnectionFailureException} whose suppressed exceptions carry each attempt's
+     * failure reason instead of swallowing them.
+     */
     public ConnectionManagerHandleResult<R> handle(ConnectionConfig config) {
+        List<RuntimeException> failures = new ArrayList<>();
         for (ConnectionManagerHandler<R> handler : handlers) {
             try {
                 return handler.handle(config);
-            } catch (RuntimeException ignored) {
+            } catch (RuntimeException e) {
+                failures.add(e);
             }
         }
-        return null;
+        ConnectionFailureException aggregate = new ConnectionFailureException(
+                ConnectionFailureException.Category.UNKNOWN,
+                String.format("All %d connection manager attempt(s) failed", failures.size()),
+                failures.get(0));
+        failures.forEach(aggregate::addSuppressed);
+        throw aggregate;
     }
 
     public record ConnectionManagerHandleResult<R>(ConnectionManager manager, R result) {

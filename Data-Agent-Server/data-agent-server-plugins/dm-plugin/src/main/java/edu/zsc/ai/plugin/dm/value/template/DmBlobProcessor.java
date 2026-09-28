@@ -5,6 +5,7 @@ import edu.zsc.ai.plugin.value.JdbcValueContext;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.Locale;
 
 /**
  * Processor for DM BLOB/BFILE/IMAGE types.
@@ -14,6 +15,10 @@ import java.sql.SQLException;
  *   <li>Small BLOBs (&lt; 1MB): Convert to Base64 data URI format</li>
  *   <li>Large BLOBs (&ge; 1MB): Return metadata with size information</li>
  * </ul>
+ *
+ * <p>The metadata placeholder is size information only, never content;
+ * {@code DmRowWriteSupport} refuses to write it back
+ * ({@code DmLobPreviewValues.PREVIEW_NOT_WRITABLE_CODE}).
  *
  * @author hhz
  */
@@ -66,10 +71,10 @@ public class DmBlobProcessor extends DefaultValueProcessor {
     private String formatBlobMetadata(long sizeInBytes) {
         if (sizeInBytes >= SIZE_THRESHOLD_BYTES) {
             double sizeInMB = sizeInBytes / (1024.0 * 1024.0);
-            return String.format("[BLOB: %.2fMB]", sizeInMB);
+            return String.format(Locale.ROOT, "[BLOB: %.2fMB]", sizeInMB);
         } else {
             double sizeInKB = sizeInBytes / 1024.0;
-            return String.format("[BLOB: %.2fKB]", sizeInKB);
+            return String.format(Locale.ROOT, "[BLOB: %.2fKB]", sizeInKB);
         }
     }
 }

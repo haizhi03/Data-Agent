@@ -38,7 +38,7 @@ public enum DmDataTypeEnum {
     REAL(Types.REAL),
 
     // Date/time types
-    DATE(Types.TIMESTAMP),          // DM DATE includes hh:mm:ss (Oracle-compatible)
+    DATE(Types.TIMESTAMP),          // date-only under COMPATIBLE_MODE=0 (server truncates time at write)
     DATETIME(Types.TIMESTAMP),
     TIMESTAMP(Types.TIMESTAMP),
     TIME(Types.TIME),
