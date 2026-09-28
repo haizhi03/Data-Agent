@@ -1,4 +1,4 @@
-import { FileText, Pencil, Plus, Table, Table2, Trash2 } from 'lucide-react';
+import { FileText, Pencil, Plus, Table, Table2, Trash2, Waypoints } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import {
   ContextMenuContent,
@@ -17,6 +17,7 @@ interface NodeContextMenuContentProps {
   isConnected: boolean;
   onOpenQueryConsole: (node: ExplorerNode) => void;
   onCreateTable: (node: ExplorerNode) => void;
+  onOpenErDiagram: (node: ExplorerNode) => void;
   onViewDdl: (node: ExplorerNode) => void;
   onViewData: (node: ExplorerNode, highlightColumn?: string) => void;
   onRename: (node: ExplorerNode) => void;
@@ -28,6 +29,7 @@ export function NodeContextMenuContent({
   isConnected,
   onOpenQueryConsole,
   onCreateTable,
+  onOpenErDiagram,
   onViewDdl,
   onViewData,
   onRename,
@@ -100,6 +102,13 @@ export function NodeContextMenuContent({
           </ContextMenuSub>
           <ContextMenuSeparator />
         </>
+      )}
+
+      {isTablesFolder && (
+        <ContextMenuItem onSelect={() => onOpenErDiagram(node)}>
+          <Waypoints className="w-3.5 h-3.5 mr-2" />
+          {t(I18N_KEYS.EXPLORER.ER_DIAGRAM)}
+        </ContextMenuItem>
       )}
 
       {/* 2. View DDL - for DDL objects */}

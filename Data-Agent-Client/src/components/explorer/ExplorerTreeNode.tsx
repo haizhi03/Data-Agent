@@ -38,6 +38,7 @@ export interface ExplorerTreeNodeProps {
   onDelete: (node: ExplorerNode, type: ExplorerNodeType) => void;
   onOpenQueryConsole: (node: ExplorerNode) => void;
   onCreateTable: (node: ExplorerNode) => void;
+  onOpenErDiagram: (node: ExplorerNode) => void;
 }
 
 export function ExplorerTreeNode({
@@ -57,6 +58,7 @@ export function ExplorerTreeNode({
   onDelete,
   onOpenQueryConsole,
   onCreateTable,
+  onOpenErDiagram,
 }: ExplorerTreeNodeProps) {
   const { t } = useTranslation();
   const isConnected = !!node.data.connectionId;
@@ -227,6 +229,7 @@ export function ExplorerTreeNode({
           isConnected={isConnected}
           onOpenQueryConsole={onOpenQueryConsole}
           onCreateTable={onCreateTable}
+          onOpenErDiagram={onOpenErDiagram}
           onViewDdl={onViewDdl}
           onViewData={onViewData}
           onRename={onRename}

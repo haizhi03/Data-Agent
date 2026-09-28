@@ -346,12 +346,37 @@ export function useDataViewActions({
     setCreateTableDialogOpen(true);
   }, [setSelectedCreateTableNode, setCreateTableDialogOpen]);
 
+  const handleOpenErDiagram = useCallback((node: ExplorerNode) => {
+    if (!node.connectionId) return;
+    const connectionId = Number(node.connectionId);
+    const connection = node.dbConnection ?? getConnection(connectionId);
+    const catalog = node.catalog ?? '';
+    const schema = node.schema ?? '';
+    const scope = schema || catalog || node.name;
+    openTab({
+      id: `er-${connectionId}-${catalog}-${schema}`,
+      name: `ER ${scope}`,
+      type: 'er',
+      content: '',
+      metadata: {
+        connectionId,
+        dbType: connection?.dbType,
+        connectionName: connection?.name || 'Unknown',
+        databaseName: catalog || schema || null,
+        schemaName: schema || null,
+        catalog: catalog || null,
+        schema: schema || null,
+      },
+    });
+  }, [getConnection, openTab]);
+
   return {
     handleViewDdl,
     handleViewData,
     handleTableOrViewDoubleClick,
     handleOpenQueryConsole,
     handleCreateTable,
+    handleOpenErDiagram,
     getDdlConfig,
   };
 }

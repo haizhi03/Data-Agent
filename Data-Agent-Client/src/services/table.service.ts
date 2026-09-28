@@ -11,7 +11,42 @@ export interface CreateTableParams {
   sql: string;
 }
 
+export interface ErColumn {
+  name: string;
+  typeName: string;
+  comment: string;
+  primaryKey: boolean;
+}
+
+export interface ErTable {
+  name: string;
+  comment: string;
+  columns: ErColumn[];
+}
+
+export interface ErRelation {
+  name: string;
+  fromTable: string;
+  fromColumn: string;
+  toTable: string;
+  toColumn: string;
+}
+
+export interface ErDiagram {
+  tables: ErTable[];
+  relations: ErRelation[];
+  truncated: boolean;
+}
+
 export const tableService = {
+  getErDiagram: async (connectionId: string, catalog?: string, schema?: string): Promise<ErDiagram> => {
+    const params: Record<string, string> = { connectionId };
+    if (catalog) params.catalog = catalog;
+    if (schema) params.schema = schema;
+    const response = await http.get<ErDiagram>(ApiPaths.TABLES_ER_DIAGRAM, { params, timeout: 60000 });
+    return response.data;
+  },
+
   listTables: async (connectionId: string, catalog?: string, schema?: string): Promise<string[]> => {
     const params: Record<string, string> = { connectionId };
     if (catalog != null && catalog !== '') params.catalog = catalog;

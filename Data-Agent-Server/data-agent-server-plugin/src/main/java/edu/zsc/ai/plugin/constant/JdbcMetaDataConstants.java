@@ -66,6 +66,17 @@ public final class JdbcMetaDataConstants {
      */
     public static final String COLUMN_DEF = "COLUMN_DEF";
 
+    /** Primary-key table name in ResultSet from getImportedKeys. */
+    public static final String PKTABLE_NAME = "PKTABLE_NAME";
+    /** Primary-key column name in ResultSet from getImportedKeys. */
+    public static final String PKCOLUMN_NAME = "PKCOLUMN_NAME";
+    /** Foreign-key table name in ResultSet from getImportedKeys. */
+    public static final String FKTABLE_NAME = "FKTABLE_NAME";
+    /** Foreign-key column name in ResultSet from getImportedKeys. */
+    public static final String FKCOLUMN_NAME = "FKCOLUMN_NAME";
+    /** Foreign-key constraint name in ResultSet from getImportedKeys. */
+    public static final String FK_NAME = "FK_NAME";
+
     /**
      * Table type constant for base tables.
      */
