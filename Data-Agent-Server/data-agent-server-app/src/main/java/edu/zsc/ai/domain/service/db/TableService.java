@@ -7,6 +7,7 @@ import edu.zsc.ai.domain.model.dto.response.db.ExecuteSqlResponse;
 import edu.zsc.ai.domain.model.dto.response.db.TableDataResponse;
 import edu.zsc.ai.plugin.model.db.TableRowValue;
 
+import java.io.OutputStream;
 import java.util.List;
 
 public interface TableService {
@@ -44,4 +45,73 @@ public interface TableService {
      */
     BatchTableRowsResponse batchTableRows(DbContext db, String tableName,
             List<BatchTableRowOperationRequest> operations, boolean force);
+
+    /**
+     * Export all rows of a table as CSV (UTF-8 with BOM) to the given output stream.
+     * Data is fetched page by page and written incrementally.
+     * The {@code onBeforeFirstWrite} callback runs after the first page query succeeds
+     * and before any byte is written, so the caller can set response headers only when
+     * the export can actually start.
+     */
+    void exportTableDataCsv(DbContext db, String tableName, OutputStream outputStream,
+                            Runnable onBeforeFirstWrite);
+
+    /**
+     * Export all rows of a table as a JSON array of objects (keys are column headers)
+     * to the given output stream. Data is fetched page by page and written incrementally.
+     */
+    void exportTableDataJson(DbContext db, String tableName, OutputStream outputStream,
+                             Runnable onBeforeFirstWrite);
+
+    /**
+     * Export all rows of a table as INSERT statements to the given output stream.
+     * Data is fetched page by page and written incrementally.
+     */
+    void exportTableDataSql(DbContext db, String tableName, OutputStream outputStream,
+                            Runnable onBeforeFirstWrite);
+
+    /**
+     * Export all rows of a table as an Excel workbook (.xlsx or .xls) to the given
+     * output stream. XLSX is written with the streaming SXSSF API; XLS uses HSSF and
+     * is limited to 65535 data rows.
+     * @param format "XLSX" or "XLS"
+     */
+    void exportTableDataExcel(DbContext db, String tableName, String format,
+                              OutputStream outputStream, Runnable onBeforeFirstWrite);
+
+    /**
+     * Import rows from an uploaded CSV file into a table. The first CSV line must be
+     * a header row whose names match table columns. All inserts run inside one
+     * transaction: any row failure triggers a full rollback.
+     */
+    edu.zsc.ai.domain.model.dto.response.db.ImportTableDataResponse importTableDataCsv(
+            DbContext db, String tableName, java.io.InputStream inputStream);
+
+    /**
+     * Import rows from an uploaded JSON file into a table. The file must contain a
+     * top-level JSON array of row objects whose field names match table columns;
+     * the first row object fixes the column list like a CSV header. All inserts run
+     * inside one transaction: any row failure triggers a full rollback.
+     */
+    edu.zsc.ai.domain.model.dto.response.db.ImportTableDataResponse importTableDataJson(
+            DbContext db, String tableName, java.io.InputStream inputStream);
+
+    /**
+     * Import rows from an uploaded SQL file into a table. The file must contain
+     * INSERT statements (comments are skipped); only INSERT is allowed so destructive
+     * statements in the file are rejected. All statements run inside one transaction:
+     * any failure triggers a full rollback.
+     */
+    edu.zsc.ai.domain.model.dto.response.db.ImportTableDataResponse importTableDataSql(
+            DbContext db, String tableName, java.io.InputStream inputStream);
+
+    /**
+     * Import rows from an uploaded Excel file (.xlsx or .xls, auto-detected) into a
+     * table. The first sheet's first row must be a header row whose names match table
+     * columns. All inserts run inside one transaction: any row failure triggers a
+     * full rollback.
+     */
+    edu.zsc.ai.domain.model.dto.response.db.ImportTableDataResponse importTableDataExcel(
+            DbContext db, String tableName, java.io.InputStream inputStream);
 }
+

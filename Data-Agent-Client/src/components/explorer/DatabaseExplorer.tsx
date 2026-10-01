@@ -12,6 +12,10 @@ import type { ExplorerNode } from '../../types/explorer';
 import { ExplorerHeader } from './ExplorerHeader';
 import { ExplorerTree } from './ExplorerTree';
 import { ExplorerDialogs } from './ExplorerDialogs';
+import { ExportDataDialog } from './ExportDataDialog';
+import type { ExportDataParams } from './ExportDataDialog';
+import { ImportDataDialog } from './ImportDataDialog';
+import type { ImportDataParams } from './ImportDataDialog';
 
 export function DatabaseExplorer() {
   const { supportedDbTypes, openTab } = useWorkspaceStore();
@@ -106,6 +110,42 @@ export function DatabaseExplorer() {
 
   const ddlConfig = getDdlConfig();
 
+  // Export data dialog
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [exportTargetPath, setExportTargetPath] = useState('');
+  const [exportParams, setExportParams] = useState<ExportDataParams | null>(null);
+  const handleExportData = (node: ExplorerNode) => {
+    const conn = node.dbConnection ?? connections.find((c) => String(c.id) === node.connectionId);
+    const catalog = node.catalog ?? conn?.database ?? '';
+    const tableName = node.objectName || node.name;
+    setExportTargetPath(`@${conn?.host ?? ''}/${catalog}/${tableName}`);
+    setExportParams({
+      connectionId: Number(node.connectionId),
+      tableName,
+      catalog: catalog || undefined,
+      schema: node.schema || undefined,
+    });
+    setExportDialogOpen(true);
+  };
+
+  // Import data dialog
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [importTargetPath, setImportTargetPath] = useState('');
+  const [importParams, setImportParams] = useState<ImportDataParams | null>(null);
+  const handleImportData = (node: ExplorerNode) => {
+    const conn = node.dbConnection ?? connections.find((c) => String(c.id) === node.connectionId);
+    const catalog = node.catalog ?? conn?.database ?? '';
+    const tableName = node.objectName || node.name;
+    setImportTargetPath(`@${conn?.host ?? ''}/${catalog}/${tableName}`);
+    setImportParams({
+      connectionId: Number(node.connectionId),
+      tableName,
+      catalog: catalog || undefined,
+      schema: node.schema || undefined,
+    });
+    setImportDialogOpen(true);
+  };
+
   useEffect(() => {
     useWorkspaceStore.getState().fetchSupportedDbTypes();
   }, []);
@@ -187,6 +227,8 @@ export function DatabaseExplorer() {
           onDelete={handleDelete}
           onOpenQueryConsole={handleOpenQueryConsole}
           onCreateTable={handleCreateTable}
+          onImportData={handleImportData}
+          onExportData={handleExportData}
         />
       </div>
 
@@ -228,6 +270,20 @@ export function DatabaseExplorer() {
           if (node?.id) refreshNodeById(node.id);
         }}
         onConnectionSuccess={refetchConnections}
+      />
+
+      <ExportDataDialog
+        open={exportDialogOpen}
+        onOpenChange={setExportDialogOpen}
+        targetTablePath={exportTargetPath}
+        exportParams={exportParams}
+      />
+
+      <ImportDataDialog
+        open={importDialogOpen}
+        onOpenChange={setImportDialogOpen}
+        targetTablePath={importTargetPath}
+        importParams={importParams}
       />
     </div>
   );

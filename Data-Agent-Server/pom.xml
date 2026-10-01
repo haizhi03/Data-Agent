@@ -23,6 +23,7 @@
         <java.version>17</java.version>
         <jackson.version>2.18.2</jackson.version>
         <commons-lang3.version>3.17.0</commons-lang3.version>
+        <commons-io.version>2.18.0</commons-io.version>
         <commons-collections4.version>4.5.0-M2</commons-collections4.version>
         <jakarta-validation.version>3.0.2</jakarta-validation.version>
         <hibernate-validator.version>8.0.1.Final</hibernate-validator.version>
@@ -86,6 +87,12 @@
                 <groupId>org.apache.commons</groupId>
                 <artifactId>commons-lang3</artifactId>
                 <version>${commons-lang3.version}</version>
+            </dependency>
+            <!-- Apache Commons IO (required by Apache POI; pin to avoid stale transitive versions) -->
+            <dependency>
+                <groupId>commons-io</groupId>
+                <artifactId>commons-io</artifactId>
+                <version>${commons-io.version}</version>
             </dependency>
             <!-- Apache Commons Collections4 -->
             <dependency>
