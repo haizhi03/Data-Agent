@@ -61,7 +61,7 @@ public class DbTypeController {
                                 builder.supportSchema(sqlPlugin.supportSchema());
                             }
                         }
-                    } catch (Exception e) {
+                    } catch (Throwable e) {
                         log.warn("Failed to get capabilities for dbType: {}", t.getCode(), e);
                     }
 
