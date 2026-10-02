@@ -9,6 +9,17 @@
 # Maven
 **/target/
 
+# ANTLR generated parsers (produced by mvn compile into src/main/java)
+Data-Agent-Server/data-agent-server-plugins/mysql-plugin/src/main/java/edu/zsc/ai/plugin/mysql/parser/
+Data-Agent-Server/data-agent-server-plugins/dm-plugin/src/main/java/edu/zsc/ai/plugin/dm/parser/base/DMLexer.java
+Data-Agent-Server/data-agent-server-plugins/dm-plugin/src/main/java/edu/zsc/ai/plugin/dm/parser/base/DMParser.java
+Data-Agent-Server/data-agent-server-plugins/dm-plugin/src/main/java/edu/zsc/ai/plugin/dm/parser/base/DMParserBaseListener.java
+Data-Agent-Server/data-agent-server-plugins/dm-plugin/src/main/java/edu/zsc/ai/plugin/dm/parser/base/DMParserBaseVisitor.java
+Data-Agent-Server/data-agent-server-plugins/dm-plugin/src/main/java/edu/zsc/ai/plugin/dm/parser/base/DMParserListener.java
+Data-Agent-Server/data-agent-server-plugins/dm-plugin/src/main/java/edu/zsc/ai/plugin/dm/parser/base/DMParserVisitor.java
+Data-Agent-Server/data-agent-server-plugins/dm-plugin/src/main/java/edu/zsc/ai/plugin/dm/parser/base/*.tokens
+Data-Agent-Server/data-agent-server-plugins/dm-plugin/src/main/java/edu/zsc/ai/plugin/dm/parser/base/*.interp
+
 # Debug logs
 **/logs/
 .data-agent/
