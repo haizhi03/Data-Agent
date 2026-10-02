@@ -20,6 +20,8 @@ interface ExplorerHeaderProps {
   isLoading: boolean;
   onRefresh: () => void;
   supportedDbTypes: Array<{ code: string; displayName: string }>;
+  isDbTypesLoading: boolean;
+  onRetryDbTypes: () => void;
   onAddDatabase: (dbType: string) => void;
   onManageDriver: (dbType: string) => void;
   onCollapseDatabases: () => void;
@@ -33,6 +35,8 @@ export function ExplorerHeader({
   isLoading,
   onRefresh,
   supportedDbTypes,
+  isDbTypesLoading,
+  onRetryDbTypes,
   onAddDatabase,
   onManageDriver,
   onCollapseDatabases,
@@ -119,8 +123,12 @@ export function ExplorerHeader({
                 <DropdownMenuPortal>
                   <DropdownMenuSubContent className="w-48">
                     {supportedDbTypes.length === 0 ? (
-                      <DropdownMenuItem disabled className="text-xs theme-text-secondary">
-                        {t(I18N_KEYS.EXPLORER.LOADING)}
+                      <DropdownMenuItem
+                        disabled={isDbTypesLoading}
+                        className="text-xs theme-text-secondary"
+                        onClick={onRetryDbTypes}
+                      >
+                        {isDbTypesLoading ? t(I18N_KEYS.EXPLORER.LOADING) : t(I18N_KEYS.COMMON.REFRESH)}
                       </DropdownMenuItem>
                     ) : (
                       supportedDbTypes.map((type) => (
@@ -146,8 +154,12 @@ export function ExplorerHeader({
                 <DropdownMenuPortal>
                   <DropdownMenuSubContent className="w-48">
                     {supportedDbTypes.length === 0 ? (
-                      <DropdownMenuItem disabled className="text-xs theme-text-secondary">
-                        {t(I18N_KEYS.EXPLORER.LOADING)}
+                      <DropdownMenuItem
+                        disabled={isDbTypesLoading}
+                        className="text-xs theme-text-secondary"
+                        onClick={onRetryDbTypes}
+                      >
+                        {isDbTypesLoading ? t(I18N_KEYS.EXPLORER.LOADING) : t(I18N_KEYS.COMMON.REFRESH)}
                       </DropdownMenuItem>
                     ) : (
                       supportedDbTypes.map((type) => (

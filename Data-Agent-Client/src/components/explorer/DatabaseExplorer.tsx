@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useWorkspaceStore } from '../../store/workspaceStore';
+import { useAuthStore } from '../../store/authStore';
 import { useTabStore } from '../../store/tabStore';
 import { useToast } from '../../hooks/useToast';
 import type { TableTabMetadata } from '../../types/tab';
@@ -21,7 +22,8 @@ import { ExplorerDialogs } from './ExplorerDialogs';
 export function DatabaseExplorer() {
   const { t } = useTranslation();
   const toast = useToast();
-  const { supportedDbTypes, openTab } = useWorkspaceStore();
+  const { supportedDbTypes, supportedDbTypesLoading, openTab, fetchSupportedDbTypes } = useWorkspaceStore();
+  const accessToken = useAuthStore((state) => state.accessToken);
   const {
     connections,
     treeDataState,
@@ -136,8 +138,9 @@ export function DatabaseExplorer() {
   const ddlConfig = getDdlConfig();
 
   useEffect(() => {
-    useWorkspaceStore.getState().fetchSupportedDbTypes();
-  }, []);
+    if (!accessToken) return;
+    fetchSupportedDbTypes();
+  }, [accessToken, fetchSupportedDbTypes]);
 
   useEffect(() => {
     const onSqlObjectChanged = (event: Event) => {
@@ -191,6 +194,8 @@ export function DatabaseExplorer() {
         isLoading={isConnectionsLoading}
         onRefresh={refetchConnections}
         supportedDbTypes={supportedDbTypes}
+        isDbTypesLoading={supportedDbTypesLoading}
+        onRetryDbTypes={() => { void fetchSupportedDbTypes(); }}
         onAddDatabase={openCreateModal}
         onCollapseDatabases={() => treeRef.current?.collapseDatabases()}
         onExpandDatabases={() => { void treeRef.current?.expandDatabases(); }}
