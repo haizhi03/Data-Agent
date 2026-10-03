@@ -20,14 +20,22 @@ export interface ErColumn {
 
 export interface ErTable {
   name: string;
+  catalog?: string | null;
+  schema?: string | null;
+  /** True when the table lives outside the opened schema. */
+  external?: boolean;
   comment: string;
   columns: ErColumn[];
 }
 
 export interface ErRelation {
   name: string;
+  fromCatalog?: string | null;
+  fromSchema?: string | null;
   fromTable: string;
   fromColumn: string;
+  toCatalog?: string | null;
+  toSchema?: string | null;
   toTable: string;
   toColumn: string;
 }
@@ -36,6 +44,8 @@ export interface ErDiagram {
   tables: ErTable[];
   relations: ErRelation[];
   truncated: boolean;
+  /** Other schemas contributed more tables than the diagram keeps. */
+  externalTruncated?: boolean;
 }
 
 export const tableService = {

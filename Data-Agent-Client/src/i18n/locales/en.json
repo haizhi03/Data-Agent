@@ -468,6 +468,8 @@
     "er_diagram_empty": "No tables in this scope",
     "er_diagram_failed": "Failed to load ER diagram",
     "er_diagram_truncated": "Showing the first {{count}} tables",
+    "er_diagram_external": "external",
+    "er_diagram_external_truncated": "Showing the first {{count}} tables from other schemas",
     "er_diagram_summary": "{{tables}} tables, {{relations}} relations",
     "er_diagram_hint": "Hover a dot to see the field mapping. Click to pin.",
     "view_ddl": "View DDL",

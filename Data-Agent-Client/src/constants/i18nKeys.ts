@@ -251,6 +251,8 @@ export const I18N_KEYS = {
     ER_DIAGRAM_EMPTY: 'explorer.er_diagram_empty',
     ER_DIAGRAM_FAILED: 'explorer.er_diagram_failed',
     ER_DIAGRAM_TRUNCATED: 'explorer.er_diagram_truncated',
+    ER_DIAGRAM_EXTERNAL: 'explorer.er_diagram_external',
+    ER_DIAGRAM_EXTERNAL_TRUNCATED: 'explorer.er_diagram_external_truncated',
     ER_DIAGRAM_SUMMARY: 'explorer.er_diagram_summary',
     ER_DIAGRAM_HINT: 'explorer.er_diagram_hint',
     VIEW_DATA: 'explorer.view_data',

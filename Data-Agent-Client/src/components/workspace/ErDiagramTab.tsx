@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { useTranslation } from 'react-i18next';
 import { KeyRound } from 'lucide-react';
 import { I18N_KEYS } from '../../constants/i18nKeys';
-import { tableService, type ErDiagram, type ErRelation } from '../../services/table.service';
+import { tableService, type ErDiagram, type ErRelation, type ErTable } from '../../services/table.service';
 import type { ErDiagramTabMetadata } from '../../types/tab';
 
 const CARD_WIDTH = 260;
@@ -13,7 +13,7 @@ const ROW_HEIGHT = 22;
 const MAX_VISIBLE_ROWS = 12;
 
 interface CardBox {
-  name: string;
+  id: string;
   x: number;
   y: number;
   width: number;
@@ -34,7 +34,7 @@ interface Channels {
 }
 
 interface ColumnFocus {
-  table: string;
+  tableId: string;
   column: string;
 }
 
@@ -42,10 +42,38 @@ interface RelationLine {
   key: string;
   d: string;
   label: string;
+  cross: boolean;
+}
+
+function tableId(table: { catalog?: string | null; schema?: string | null; name: string }) {
+  return `${table.catalog ?? ''}\0${table.schema ?? ''}\0${table.name}`;
+}
+
+function relationFromId(relation: ErRelation) {
+  return tableId({ catalog: relation.fromCatalog, schema: relation.fromSchema, name: relation.fromTable });
+}
+
+function relationToId(relation: ErRelation) {
+  return tableId({ catalog: relation.toCatalog, schema: relation.toSchema, name: relation.toTable });
 }
 
 function columnKey(table: string, column: string) {
   return `${table}\0${column}`;
+}
+
+function scopeLabel(catalog?: string | null, schema?: string | null) {
+  return schema || catalog || '';
+}
+
+function isCrossRelation(relation: ErRelation) {
+  return `${relation.fromCatalog ?? ''}\0${relation.fromSchema ?? ''}`
+    !== `${relation.toCatalog ?? ''}\0${relation.toSchema ?? ''}`;
+}
+
+function tableTitle(table: ErTable) {
+  if (!table.external) return table.name;
+  const scope = scopeLabel(table.catalog, table.schema);
+  return scope ? `${scope}.${table.name}` : table.name;
 }
 
 function cardHeight(columnCount: number) {
@@ -54,26 +82,27 @@ function cardHeight(columnCount: number) {
 }
 
 function layoutCards(diagram: ErDiagram): { boxes: CardBox[]; width: number; height: number } {
-  const tables = diagram.tables;
-  const columns = Math.max(1, Math.ceil(Math.sqrt(tables.length)));
-  const rowCount = Math.ceil(tables.length / columns);
+  const local = diagram.tables.filter((table) => !table.external);
+  const external = diagram.tables.filter((table) => table.external);
+  const columns = local.length === 0 ? 0 : Math.max(1, Math.ceil(Math.sqrt(local.length)));
+  const rowCount = columns === 0 ? 0 : Math.ceil(local.length / columns);
   const rowHeights: number[] = [];
   for (let row = 0; row < rowCount; row += 1) {
     let height = 80;
     for (let column = 0; column < columns; column += 1) {
-      const table = tables[row * columns + column];
+      const table = local[row * columns + column];
       if (table) height = Math.max(height, cardHeight(table.columns.length));
     }
     rowHeights.push(height);
   }
 
   const boxes: CardBox[] = [];
-  tables.forEach((table, index) => {
+  local.forEach((table, index) => {
     const column = index % columns;
     const row = Math.floor(index / columns);
     const rowY = rowHeights.slice(0, row).reduce((sum, height) => sum + height + ROW_GAP, 24);
     boxes.push({
-      name: table.name,
+      id: tableId(table),
       x: 24 + column * (CARD_WIDTH + COLUMN_GAP),
       y: rowY,
       width: CARD_WIDTH,
@@ -83,20 +112,50 @@ function layoutCards(diagram: ErDiagram): { boxes: CardBox[]; width: number; hei
     });
   });
 
-  const width = 48 + columns * CARD_WIDTH + Math.max(0, columns - 1) * COLUMN_GAP;
-  const height = 48 + rowHeights.reduce((sum, height) => sum + height, 0) + Math.max(0, rowCount - 1) * ROW_GAP;
-  return { boxes, width, height };
+  const externalCol = columns;
+  let externalY = 24;
+  external.forEach((table, index) => {
+    const height = cardHeight(table.columns.length);
+    boxes.push({
+      id: tableId(table),
+      x: 24 + externalCol * (CARD_WIDTH + COLUMN_GAP),
+      y: externalY,
+      width: CARD_WIDTH,
+      height,
+      col: externalCol,
+      row: index,
+    });
+    externalY += height + ROW_GAP;
+  });
+
+  const usedColumns = external.length > 0 ? externalCol + 1 : columns;
+  const width = usedColumns === 0
+    ? 48
+    : 48 + usedColumns * CARD_WIDTH + Math.max(0, usedColumns - 1) * COLUMN_GAP;
+  const localHeight = rowCount === 0
+    ? 48
+    : 48 + rowHeights.reduce((sum, height) => sum + height, 0) + Math.max(0, rowCount - 1) * ROW_GAP;
+  const externalHeight = external.length === 0 ? 0 : externalY - ROW_GAP + 24;
+  return { boxes, width, height: Math.max(localHeight, externalHeight) };
 }
 
 function relationsForColumn(relations: ErRelation[], focus: ColumnFocus) {
   return relations.filter((relation) => (
-    (relation.fromTable === focus.table && relation.fromColumn === focus.column)
-    || (relation.toTable === focus.table && relation.toColumn === focus.column)
+    (relationFromId(relation) === focus.tableId && relation.fromColumn === focus.column)
+    || (relationToId(relation) === focus.tableId && relation.toColumn === focus.column)
   ));
 }
 
+function qualifiedColumn(catalog: string | null | undefined, schema: string | null | undefined, table: string, column: string) {
+  const scope = scopeLabel(catalog, schema);
+  return scope ? `${scope}.${table}.${column}` : `${table}.${column}`;
+}
+
 function relationLabel(relation: ErRelation) {
-  return `${relation.fromTable}.${relation.fromColumn} → ${relation.toTable}.${relation.toColumn}`;
+  if (!isCrossRelation(relation)) {
+    return `${relation.fromTable}.${relation.fromColumn} → ${relation.toTable}.${relation.toColumn}`;
+  }
+  return `${qualifiedColumn(relation.fromCatalog, relation.fromSchema, relation.fromTable, relation.fromColumn)} → ${qualifiedColumn(relation.toCatalog, relation.toSchema, relation.toTable, relation.toColumn)}`;
 }
 
 function revealRow(row: HTMLElement) {
@@ -137,11 +196,20 @@ function buildChannels(boxes: CardBox[]): Channels {
 
   const horizontal = [12];
   for (let row = 0; row < rowCount - 1; row += 1) {
-    const bottom = Math.max(...boxes.filter((box) => box.row === row).map((box) => box.y + box.height));
-    const top = Math.min(...boxes.filter((box) => box.row === row + 1).map((box) => box.y));
+    const current = boxes.filter((box) => box.row === row);
+    const next = boxes.filter((box) => box.row === row + 1);
+    if (current.length === 0 || next.length === 0) {
+      horizontal.push(horizontal[horizontal.length - 1] + ROW_GAP);
+      continue;
+    }
+    const bottom = Math.max(...current.map((box) => box.y + box.height));
+    const top = Math.min(...next.map((box) => box.y));
     horizontal.push((bottom + top) / 2);
   }
-  const lastRowBottom = Math.max(...boxes.filter((box) => box.row === rowCount - 1).map((box) => box.y + box.height));
+  const lastRow = boxes.filter((box) => box.row === rowCount - 1);
+  const lastRowBottom = lastRow.length === 0
+    ? horizontal[horizontal.length - 1]
+    : Math.max(...lastRow.map((box) => box.y + box.height));
   horizontal.push(lastRowBottom + 12);
   return { rowCount, vertical, horizontal };
 }
@@ -161,7 +229,7 @@ function appendPoint(points: Point[], x: number, y: number) {
 }
 
 function routeEdges(fromBox: CardBox, toBox: CardBox): { fromEdge: 'left' | 'right'; toEdge: 'left' | 'right' } {
-  if (fromBox.name === toBox.name || fromBox.col === toBox.col) {
+  if (fromBox.id === toBox.id || fromBox.col === toBox.col) {
     return { fromEdge: 'right', toEdge: 'right' };
   }
   if (Math.abs(fromBox.col - toBox.col) === 1) {
@@ -182,7 +250,7 @@ function routeAroundCards(fromBox: CardBox, toBox: CardBox, from: Point, to: Poi
   const points: Point[] = [];
   appendPoint(points, from.x, from.y);
 
-  if (fromBox.name === toBox.name || fromBox.col === toBox.col) {
+  if (fromBox.id === toBox.id || fromBox.col === toBox.col) {
     const gutter = channels.vertical[fromBox.col + 1] + laneOffset;
     appendPoint(points, gutter, from.y);
     appendPoint(points, gutter, to.y);
@@ -268,16 +336,16 @@ export function ErDiagramTab({ metadata }: ErDiagramTabProps) {
   }, [metadata.catalog, metadata.connectionId, metadata.schema, t]);
 
   const layout = useMemo(() => (diagram ? layoutCards(diagram) : null), [diagram]);
-  const boxByName = useMemo(() => {
+  const boxById = useMemo(() => {
     const map = new Map<string, CardBox>();
-    layout?.boxes.forEach((box) => map.set(box.name, box));
+    layout?.boxes.forEach((box) => map.set(box.id, box));
     return map;
   }, [layout]);
   const linkedColumns = useMemo(() => {
     const linked = new Set<string>();
     diagram?.relations.forEach((relation) => {
-      linked.add(columnKey(relation.fromTable, relation.fromColumn));
-      linked.add(columnKey(relation.toTable, relation.toColumn));
+      linked.add(columnKey(relationFromId(relation), relation.fromColumn));
+      linked.add(columnKey(relationToId(relation), relation.toColumn));
     });
     return linked;
   }, [diagram]);
@@ -290,8 +358,8 @@ export function ErDiagramTab({ metadata }: ErDiagramTabProps) {
   const highlightedColumns = useMemo(() => {
     const highlighted = new Set<string>();
     activeRelations.forEach((relation) => {
-      highlighted.add(columnKey(relation.fromTable, relation.fromColumn));
-      highlighted.add(columnKey(relation.toTable, relation.toColumn));
+      highlighted.add(columnKey(relationFromId(relation), relation.fromColumn));
+      highlighted.add(columnKey(relationToId(relation), relation.toColumn));
     });
     return highlighted;
   }, [activeRelations]);
@@ -303,19 +371,21 @@ export function ErDiagramTab({ metadata }: ErDiagramTabProps) {
       return;
     }
     activeRelations.forEach((relation) => {
-      const fromRow = rowRefs.current.get(columnKey(relation.fromTable, relation.fromColumn));
-      const toRow = rowRefs.current.get(columnKey(relation.toTable, relation.toColumn));
+      const fromRow = rowRefs.current.get(columnKey(relationFromId(relation), relation.fromColumn));
+      const toRow = rowRefs.current.get(columnKey(relationToId(relation), relation.toColumn));
       if (fromRow) revealRow(fromRow);
       if (toRow) revealRow(toRow);
     });
-    const channels = buildChannels([...boxByName.values()]);
+    const channels = buildChannels([...boxById.values()]);
     const laneSpread = 8;
     const next: RelationLine[] = [];
     activeRelations.forEach((relation, index) => {
-      const fromRow = rowRefs.current.get(columnKey(relation.fromTable, relation.fromColumn));
-      const toRow = rowRefs.current.get(columnKey(relation.toTable, relation.toColumn));
-      const fromBox = boxByName.get(relation.fromTable);
-      const toBox = boxByName.get(relation.toTable);
+      const fromId = relationFromId(relation);
+      const toId = relationToId(relation);
+      const fromRow = rowRefs.current.get(columnKey(fromId, relation.fromColumn));
+      const toRow = rowRefs.current.get(columnKey(toId, relation.toColumn));
+      const fromBox = boxById.get(fromId);
+      const toBox = boxById.get(toId);
       if (!fromRow || !toRow || !fromBox || !toBox) return;
       const edges = routeEdges(fromBox, toBox);
       const from = endpoint(canvas, fromRow, edges.fromEdge, view.scale);
@@ -326,6 +396,7 @@ export function ErDiagramTab({ metadata }: ErDiagramTabProps) {
         key: `${relationLabel(relation)}-${index}`,
         d: pointsToPath(routeAroundCards(fromBox, toBox, from, to, channels, laneOffset)),
         label: relationLabel(relation),
+        cross: isCrossRelation(relation),
       });
     });
     setLines((current) => {
@@ -336,7 +407,7 @@ export function ErDiagramTab({ metadata }: ErDiagramTabProps) {
       }
       return next;
     });
-  }, [active, activeRelations, boxByName, view.scale]);
+  }, [active, activeRelations, boxById, view.scale]);
 
   useLayoutEffect(() => {
     measureLines();
@@ -350,7 +421,7 @@ export function ErDiagramTab({ metadata }: ErDiagramTabProps) {
 
   const togglePin = (focus: ColumnFocus) => {
     setPinned((current) => (
-      current?.table === focus.table && current.column === focus.column ? null : focus
+      current?.tableId === focus.tableId && current.column === focus.column ? null : focus
     ));
   };
 
@@ -368,7 +439,14 @@ export function ErDiagramTab({ metadata }: ErDiagramTabProps) {
           </span>
         )}
         {diagram?.truncated && (
-          <span>{t(I18N_KEYS.EXPLORER.ER_DIAGRAM_TRUNCATED, { count: diagram.tables.length })}</span>
+          <span>{t(I18N_KEYS.EXPLORER.ER_DIAGRAM_TRUNCATED, {
+            count: diagram.tables.filter((table) => !table.external).length,
+          })}</span>
+        )}
+        {diagram?.externalTruncated && (
+          <span>{t(I18N_KEYS.EXPLORER.ER_DIAGRAM_EXTERNAL_TRUNCATED, {
+            count: diagram.tables.filter((table) => table.external).length,
+          })}</span>
         )}
         {activeRelations.length > 0 ? (
           activeRelations.map((relation, index) => (
@@ -439,26 +517,34 @@ export function ErDiagramTab({ metadata }: ErDiagramTabProps) {
                   fill="none"
                   stroke="#e11d48"
                   strokeWidth="1.6"
+                  strokeDasharray={line.cross ? '5 4' : undefined}
                   strokeLinejoin="round"
                   strokeLinecap="round"
                 />
               ))}
             </svg>
             {diagram.tables.map((table) => {
-              const box = boxByName.get(table.name);
+              const id = tableId(table);
+              const box = boxById.get(id);
+              const title = tableTitle(table);
               if (!box) return null;
               return (
                 <div
-                  key={table.name}
-                  className="absolute overflow-hidden rounded-md border theme-border theme-bg-popup shadow-sm"
+                  key={id}
+                  className={`absolute overflow-hidden rounded-md border theme-bg-popup shadow-sm ${table.external ? 'border-dashed border-rose-400/80' : 'theme-border'}`}
                   style={{ left: box.x, top: box.y, width: box.width, height: box.height }}
                 >
-                  <div className="flex h-[34px] items-center border-b theme-border px-2 text-xs font-semibold theme-text-primary">
-                    <span className="truncate" title={table.comment || table.name}>{table.name}</span>
+                  <div className="flex h-[34px] items-center gap-1 border-b theme-border px-2 text-xs font-semibold theme-text-primary">
+                    <span className="truncate" title={table.comment || title}>{title}</span>
+                    {table.external && (
+                      <span className="shrink-0 rounded px-1 text-[10px] font-normal theme-text-secondary">
+                        {t(I18N_KEYS.EXPLORER.ER_DIAGRAM_EXTERNAL)}
+                      </span>
+                    )}
                   </div>
                   <div className="max-h-[264px] overflow-auto" onScroll={measureLines}>
                     {table.columns.map((column) => {
-                      const key = columnKey(table.name, column.name);
+                      const key = columnKey(id, column.name);
                       const linked = linkedColumns.has(key);
                       const highlighted = highlightedColumns.has(key);
                       return (
@@ -476,14 +562,14 @@ export function ErDiagramTab({ metadata }: ErDiagramTabProps) {
                           onClick={(event) => {
                             if (!linked) return;
                             event.stopPropagation();
-                            togglePin({ table: table.name, column: column.name });
+                            togglePin({ tableId: id, column: column.name });
                           }}
                           onPointerEnter={() => {
-                            if (linked) setHover({ table: table.name, column: column.name });
+                            if (linked) setHover({ tableId: id, column: column.name });
                           }}
                           onPointerLeave={() => {
                             setHover((current) => (
-                              current?.table === table.name && current.column === column.name ? null : current
+                              current?.tableId === id && current.column === column.name ? null : current
                             ));
                           }}
                         >
