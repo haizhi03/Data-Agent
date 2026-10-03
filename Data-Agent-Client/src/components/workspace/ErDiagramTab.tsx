@@ -26,6 +26,7 @@ import {
 const CARD_WIDTH = 260;
 const COLUMN_GAP = 72;
 const ROW_GAP = 56;
+const CARD_EDGE = 8;
 const HEADER_HEIGHT = 34;
 const ROW_HEIGHT = 22;
 const MAX_VISIBLE_ROWS = 12;
@@ -245,6 +246,37 @@ function appendPoint(points: Point[], x: number, y: number) {
   points.push(rounded);
 }
 
+function boxesOverlapHorizontally(fromBox: CardBox, toBox: CardBox) {
+  return fromBox.x < toBox.x + toBox.width + 8 && toBox.x < fromBox.x + fromBox.width + 8;
+}
+
+function routeEdgesFree(fromBox: CardBox, toBox: CardBox): { fromEdge: 'left' | 'right'; toEdge: 'left' | 'right' } {
+  const fromCenter = fromBox.x + fromBox.width / 2;
+  const toCenter = toBox.x + toBox.width / 2;
+  if (fromBox.id === toBox.id || boxesOverlapHorizontally(fromBox, toBox)) {
+    return { fromEdge: 'right', toEdge: 'right' };
+  }
+  const fromIsLeft = fromCenter < toCenter;
+  return {
+    fromEdge: fromIsLeft ? 'right' : 'left',
+    toEdge: fromIsLeft ? 'left' : 'right',
+  };
+}
+
+function routeFree(fromBox: CardBox, toBox: CardBox, from: Point, to: Point, laneOffset: number): Point[] {
+  const points: Point[] = [];
+  appendPoint(points, from.x, from.y);
+  const gutter = boxesOverlapHorizontally(fromBox, toBox)
+    ? Math.max(fromBox.x + fromBox.width, toBox.x + toBox.width) + 16 + laneOffset
+    : ((fromBox.x < toBox.x
+      ? fromBox.x + fromBox.width + toBox.x
+      : toBox.x + toBox.width + fromBox.x) / 2) + laneOffset;
+  appendPoint(points, gutter, from.y);
+  appendPoint(points, gutter, to.y);
+  appendPoint(points, to.x, to.y);
+  return points;
+}
+
 function routeEdges(fromBox: CardBox, toBox: CardBox): { fromEdge: 'left' | 'right'; toEdge: 'left' | 'right' } {
   if (fromBox.id === toBox.id || fromBox.col === toBox.col) {
     return { fromEdge: 'right', toEdge: 'right' };
@@ -328,7 +360,10 @@ export function ErDiagramTab({ metadata }: ErDiagramTabProps) {
   const [pinned, setPinned] = useState<ColumnFocus | null>(null);
   const [collapseJunctionTables, setCollapseJunctionTables] = useState(false);
   const [lines, setLines] = useState<RelationLine[]>([]);
+  const [positions, setPositions] = useState<Record<string, { x: number; y: number }>>({});
+  const [draggingTableId, setDraggingTableId] = useState<string | null>(null);
   const drag = useRef<{ pointerX: number; pointerY: number; x: number; y: number } | null>(null);
+  const cardDrag = useRef<{ id: string; pointerX: number; pointerY: number; x: number; y: number } | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const rowRefs = useRef(new Map<string, HTMLDivElement>());
 
@@ -339,6 +374,8 @@ export function ErDiagramTab({ metadata }: ErDiagramTabProps) {
     setHover(null);
     setPinned(null);
     setCollapseJunctionTables(false);
+    setPositions({});
+    setDraggingTableId(null);
     tableService.getErDiagram(
       String(metadata.connectionId),
       metadata.catalog ?? undefined,
@@ -375,11 +412,31 @@ export function ErDiagramTab({ metadata }: ErDiagramTabProps) {
   }, [shown]);
 
   const layout = useMemo(() => (shown ? layoutCards(shown) : null), [shown]);
+  const placedBoxes = useMemo(() => {
+    if (!layout) return [];
+    return layout.boxes.map((box) => {
+      const moved = positions[box.id];
+      return moved ? { ...box, x: moved.x, y: moved.y } : box;
+    });
+  }, [layout, positions]);
+  const canvasSize = useMemo(() => {
+    if (!layout) return { width: 0, height: 0 };
+    return placedBoxes.reduce((size, box) => ({
+      width: Math.max(size.width, box.x + box.width + 24),
+      height: Math.max(size.height, box.y + box.height + 24),
+    }), { width: layout.width, height: layout.height });
+  }, [layout, placedBoxes]);
   const boxById = useMemo(() => {
+    const map = new Map<string, CardBox>();
+    placedBoxes.forEach((box) => map.set(box.id, box));
+    return map;
+  }, [placedBoxes]);
+  const layoutBoxById = useMemo(() => {
     const map = new Map<string, CardBox>();
     layout?.boxes.forEach((box) => map.set(box.id, box));
     return map;
   }, [layout]);
+  const layoutMoved = Object.keys(positions).length > 0;
   const linkedColumns = useMemo(() => {
     const linked = new Set<string>();
     shown?.relations.forEach((relation) => {
@@ -421,7 +478,7 @@ export function ErDiagramTab({ metadata }: ErDiagramTabProps) {
     });
     const focusRow = rowRefs.current.get(focusKey);
     if (focusRow) revealRow(focusRow);
-    const channels = buildChannels([...boxById.values()]);
+    const channels = buildChannels(layout?.boxes ?? []);
     const laneSpread = 8;
     const next: RelationLine[] = [];
     activeRelations.forEach((relation, index) => {
@@ -430,10 +487,11 @@ export function ErDiagramTab({ metadata }: ErDiagramTabProps) {
       const anchors = anchorColumns(relation, active);
       const fromRow = rowRefs.current.get(columnKey(fromId, anchors.from));
       const toRow = rowRefs.current.get(columnKey(toId, anchors.to));
-      const fromBox = boxById.get(fromId);
-      const toBox = boxById.get(toId);
+      const custom = positions[fromId] != null || positions[toId] != null;
+      const fromBox = (custom ? boxById : layoutBoxById).get(fromId);
+      const toBox = (custom ? boxById : layoutBoxById).get(toId);
       if (!fromRow || !toRow || !fromBox || !toBox) return;
-      const edges = routeEdges(fromBox, toBox);
+      const edges = custom ? routeEdgesFree(fromBox, toBox) : routeEdges(fromBox, toBox);
       const from = endpoint(canvas, fromRow, edges.fromEdge, view.scale);
       const to = endpoint(canvas, toRow, edges.toEdge, view.scale);
       const lane = index - (activeRelations.length - 1) / 2;
@@ -442,7 +500,9 @@ export function ErDiagramTab({ metadata }: ErDiagramTabProps) {
       const label = `${relationMapping(relation)} ${cardinalityLabel(relation)}`;
       next.push({
         key: `${label}-${index}`,
-        d: pointsToPath(routeAroundCards(fromBox, toBox, from, to, channels, laneOffset)),
+        d: pointsToPath(custom
+          ? routeFree(fromBox, toBox, from, to, laneOffset)
+          : routeAroundCards(fromBox, toBox, from, to, channels, laneOffset)),
         cross: isCrossRelation(relation),
         manyToMany: relation.cardinality === 'MANY_TO_MANY',
         fromMark: marks.from,
@@ -462,7 +522,7 @@ export function ErDiagramTab({ metadata }: ErDiagramTabProps) {
       }
       return next;
     });
-  }, [active, activeRelations, boxById, view.scale]);
+  }, [active, activeRelations, boxById, layout, layoutBoxById, positions, view.scale]);
 
   useLayoutEffect(() => {
     measureLines();
@@ -513,6 +573,16 @@ export function ErDiagramTab({ metadata }: ErDiagramTabProps) {
             />
             {t(I18N_KEYS.EXPLORER.ER_DIAGRAM_COLLAPSE_JUNCTIONS)}
           </label>
+        )}
+        {shown && shown.tables.length > 0 && (
+          <button
+            type="button"
+            className="rounded border theme-border px-2 py-0.5 theme-text-primary disabled:opacity-40"
+            disabled={!layoutMoved}
+            onClick={() => setPositions({})}
+          >
+            {t(I18N_KEYS.EXPLORER.ER_DIAGRAM_RESET_LAYOUT)}
+          </button>
         )}
         {shown && shown.tables.length > 0 && (
           <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1 border-l theme-border pl-3">
@@ -586,12 +656,12 @@ export function ErDiagramTab({ metadata }: ErDiagramTabProps) {
             style={{
               transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})`,
               transformOrigin: '0 0',
-              width: layout.width,
-              height: layout.height,
+              width: canvasSize.width,
+              height: canvasSize.height,
               position: 'relative',
             }}
           >
-            <svg className="pointer-events-none absolute inset-0 h-full w-full" width={layout.width} height={layout.height}>
+            <svg className="pointer-events-none absolute inset-0 h-full w-full" width={canvasSize.width} height={canvasSize.height}>
               <defs>
                 <CardinalityMarker id={`${markerPrefix}-one`} mark="one" color={ROSE} />
                 <CardinalityMarker id={`${markerPrefix}-many`} mark="many" color={ROSE} />
@@ -624,7 +694,42 @@ export function ErDiagramTab({ metadata }: ErDiagramTabProps) {
                   className={`absolute overflow-hidden rounded-md border theme-bg-popup shadow-sm ${table.external ? 'border-dashed border-rose-400/80' : 'theme-border'}`}
                   style={{ left: box.x, top: box.y, width: box.width, height: box.height }}
                 >
-                  <div className="flex h-[34px] items-center gap-1 border-b theme-border px-2 text-xs font-semibold theme-text-primary">
+                  <div
+                    className="flex h-[34px] cursor-grab select-none items-center gap-1 border-b theme-border px-2 text-xs font-semibold theme-text-primary active:cursor-grabbing"
+                    style={{ cursor: draggingTableId === id ? 'grabbing' : undefined }}
+                    title={t(I18N_KEYS.EXPLORER.ER_DIAGRAM_DRAG_TABLE)}
+                    onPointerDown={(event) => {
+                      if (event.button !== 0) return;
+                      event.stopPropagation();
+                      event.preventDefault();
+                      cardDrag.current = {
+                        id,
+                        pointerX: event.clientX,
+                        pointerY: event.clientY,
+                        x: box.x,
+                        y: box.y,
+                      };
+                      setDraggingTableId(id);
+                      event.currentTarget.setPointerCapture(event.pointerId);
+                    }}
+                    onPointerMove={(event) => {
+                      const current = cardDrag.current;
+                      if (!current || current.id !== id) return;
+                      const x = Math.max(CARD_EDGE, current.x + (event.clientX - current.pointerX) / view.scale);
+                      const y = Math.max(CARD_EDGE, current.y + (event.clientY - current.pointerY) / view.scale);
+                      setPositions((previous) => ({ ...previous, [id]: { x, y } }));
+                    }}
+                    onPointerUp={() => {
+                      if (cardDrag.current?.id !== id) return;
+                      cardDrag.current = null;
+                      setDraggingTableId(null);
+                    }}
+                    onPointerCancel={() => {
+                      if (cardDrag.current?.id !== id) return;
+                      cardDrag.current = null;
+                      setDraggingTableId(null);
+                    }}
+                  >
                     <span className="truncate" title={table.comment || title}>{title}</span>
                     {table.external && (
                       <span className="shrink-0 rounded px-1 text-[10px] font-normal theme-text-secondary">
