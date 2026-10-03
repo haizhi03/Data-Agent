@@ -84,6 +84,8 @@ public final class JdbcMetaDataConstants {
     public static final String FKCOLUMN_NAME = "FKCOLUMN_NAME";
     /** Foreign-key constraint name in ResultSet from getImportedKeys. */
     public static final String FK_NAME = "FK_NAME";
+    /** Column position within a composite foreign key, from getImportedKeys / getExportedKeys. */
+    public static final String KEY_SEQ = "KEY_SEQ";
 
     /**
      * Table type constant for base tables.

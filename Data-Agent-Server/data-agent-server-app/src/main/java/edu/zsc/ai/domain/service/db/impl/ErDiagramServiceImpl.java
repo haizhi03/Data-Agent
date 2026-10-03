@@ -6,6 +6,7 @@ import edu.zsc.ai.domain.service.db.ConnectionService;
 import edu.zsc.ai.domain.service.db.ErDiagramService;
 import edu.zsc.ai.plugin.capability.ColumnManager;
 import edu.zsc.ai.plugin.capability.ConstraintManager;
+import edu.zsc.ai.plugin.capability.IndexManager;
 import edu.zsc.ai.plugin.capability.TableManager;
 import edu.zsc.ai.plugin.constant.JdbcMetaDataConstants;
 import edu.zsc.ai.plugin.manager.DefaultPluginManager;
@@ -84,7 +85,10 @@ public class ErDiagramServiceImpl implements ErDiagramService {
             }
             appendConstraintKeys(keys, connection, active.pluginId(), db.catalog(), db.schema(), schemaScoped, tableNames);
 
-            ErDiagramGraph.AssembleResult graph = ErDiagramGraph.assemble(scope, canonicalNames, keys);
+            List<ErDiagramGraph.UniqueKey> uniqueKeys = new ArrayList<>();
+            appendPrimaryKeys(uniqueKeys, erTables);
+            appendIndexKeys(uniqueKeys, connection, active.pluginId(), scope, canonicalNames, keys);
+            ErDiagramGraph.AssembleResult graph = ErDiagramGraph.assemble(scope, canonicalNames, keys, uniqueKeys);
             for (ErDiagramGraph.Endpoint endpoint : graph.externalTables()) {
                 erTables.add(loadExternalTable(columns, connection, endpoint, graph.relations()));
             }
@@ -168,6 +172,10 @@ public class ErDiagramServiceImpl implements ErDiagramService {
 
     private void readKeyRows(List<ErDiagramGraph.KeyRow> keys, ResultSet rs) throws SQLException {
         while (rs.next()) {
+            int keySeq = rs.getInt(JdbcMetaDataConstants.KEY_SEQ);
+            if (rs.wasNull()) {
+                keySeq = 0;
+            }
             keys.add(new ErDiagramGraph.KeyRow(
                     rs.getString(JdbcMetaDataConstants.PKTABLE_CAT),
                     rs.getString(JdbcMetaDataConstants.PKTABLE_SCHEM),
@@ -177,7 +185,8 @@ public class ErDiagramServiceImpl implements ErDiagramService {
                     rs.getString(JdbcMetaDataConstants.FKTABLE_SCHEM),
                     rs.getString(JdbcMetaDataConstants.FKTABLE_NAME),
                     rs.getString(JdbcMetaDataConstants.FKCOLUMN_NAME),
-                    rs.getString(JdbcMetaDataConstants.FK_NAME)));
+                    rs.getString(JdbcMetaDataConstants.FK_NAME),
+                    keySeq));
         }
     }
 
@@ -220,10 +229,16 @@ public class ErDiagramServiceImpl implements ErDiagramService {
                     .fromSchema(relation.from().schema())
                     .fromTable(relation.from().table())
                     .fromColumn(relation.fromColumn())
+                    .fromColumns(relation.fromColumns())
                     .toCatalog(relation.to().catalog())
                     .toSchema(relation.to().schema())
                     .toTable(relation.to().table())
                     .toColumn(relation.toColumn())
+                    .toColumns(relation.toColumns())
+                    .cardinality(relation.cardinality().name())
+                    .viaCatalog(relation.via() == null ? null : relation.via().catalog())
+                    .viaSchema(relation.via() == null ? null : relation.via().schema())
+                    .viaTable(relation.via() == null ? null : relation.via().table())
                     .build());
         }
         return result;
@@ -280,6 +295,44 @@ public class ErDiagramServiceImpl implements ErDiagramService {
             }
         }
         return merged;
+    }
+
+    private static void appendPrimaryKeys(List<ErDiagramGraph.UniqueKey> uniqueKeys, List<ErDiagramResponse.ErTable> tables) {
+        for (ErDiagramResponse.ErTable table : tables) {
+            if (table.getColumns() == null) {
+                continue;
+            }
+            List<String> primaryKey = new ArrayList<>();
+            for (ErDiagramResponse.ErColumn column : table.getColumns()) {
+                if (column.isPrimaryKey() && StringUtils.isNotBlank(column.getName())) {
+                    primaryKey.add(column.getName());
+                }
+            }
+            if (!primaryKey.isEmpty()) {
+                uniqueKeys.add(new ErDiagramGraph.UniqueKey(
+                        table.getCatalog(), table.getSchema(), table.getName(), primaryKey));
+            }
+        }
+    }
+
+    private void appendIndexKeys(List<ErDiagramGraph.UniqueKey> uniqueKeys, Connection connection, String pluginId,
+                                 ErDiagramGraph.Scope scope, Map<String, String> localNames, List<ErDiagramGraph.KeyRow> keys) {
+        IndexManager indexes;
+        try {
+            indexes = DefaultPluginManager.getInstance().getIndexManagerByPluginId(pluginId);
+        } catch (RuntimeException e) {
+            log.debug("Index metadata is unavailable: {}", e.getMessage());
+            return;
+        }
+        for (ErDiagramGraph.TableRef table : ErDiagramGraph.foreignKeyTables(scope, localNames, keys)) {
+            try {
+                uniqueKeys.addAll(ErDiagramGraph.uniqueKeysFromIndexes(
+                        table.catalog(), table.schema(), table.table(),
+                        indexes.getIndexes(connection, table.catalog(), table.schema(), table.table())));
+            } catch (RuntimeException e) {
+                log.debug("Unique indexes unavailable for {}: {}", table.table(), e.getMessage());
+            }
+        }
     }
 
     private static String blankToNull(String value) {

@@ -1,9 +1,27 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type WheelEvent } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type WheelEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { KeyRound } from 'lucide-react';
 import { I18N_KEYS } from '../../constants/i18nKeys';
-import { tableService, type ErDiagram, type ErRelation, type ErTable } from '../../services/table.service';
+import { tableService, type ErDiagram, type ErTable } from '../../services/table.service';
 import type { ErDiagramTabMetadata } from '../../types/tab';
+import {
+  anchorColumns,
+  cardinalityLabel,
+  columnKey,
+  endMarks,
+  isCrossRelation,
+  junctionTableId,
+  relationFromId,
+  relationMapping,
+  relationToId,
+  relationTouches,
+  sideColumns,
+  tableId,
+  viaTableName,
+  collapseJunctions,
+  type ColumnFocus,
+  type EndMark,
+} from './erDiagramRelations';
 
 const CARD_WIDTH = 260;
 const COLUMN_GAP = 72;
@@ -33,41 +51,17 @@ interface Channels {
   horizontal: number[];
 }
 
-interface ColumnFocus {
-  tableId: string;
-  column: string;
-}
-
 interface RelationLine {
   key: string;
   d: string;
-  label: string;
   cross: boolean;
-}
-
-function tableId(table: { catalog?: string | null; schema?: string | null; name: string }) {
-  return `${table.catalog ?? ''}\0${table.schema ?? ''}\0${table.name}`;
-}
-
-function relationFromId(relation: ErRelation) {
-  return tableId({ catalog: relation.fromCatalog, schema: relation.fromSchema, name: relation.fromTable });
-}
-
-function relationToId(relation: ErRelation) {
-  return tableId({ catalog: relation.toCatalog, schema: relation.toSchema, name: relation.toTable });
-}
-
-function columnKey(table: string, column: string) {
-  return `${table}\0${column}`;
+  manyToMany: boolean;
+  fromMark: EndMark;
+  toMark: EndMark;
 }
 
 function scopeLabel(catalog?: string | null, schema?: string | null) {
   return schema || catalog || '';
-}
-
-function isCrossRelation(relation: ErRelation) {
-  return `${relation.fromCatalog ?? ''}\0${relation.fromSchema ?? ''}`
-    !== `${relation.toCatalog ?? ''}\0${relation.toSchema ?? ''}`;
 }
 
 function tableTitle(table: ErTable) {
@@ -139,23 +133,46 @@ function layoutCards(diagram: ErDiagram): { boxes: CardBox[]; width: number; hei
   return { boxes, width, height: Math.max(localHeight, externalHeight) };
 }
 
-function relationsForColumn(relations: ErRelation[], focus: ColumnFocus) {
-  return relations.filter((relation) => (
-    (relationFromId(relation) === focus.tableId && relation.fromColumn === focus.column)
-    || (relationToId(relation) === focus.tableId && relation.toColumn === focus.column)
-  ));
+const ROSE = '#e11d48';
+const VIOLET = '#7c3aed';
+
+function CardinalityMarker({ id, mark, color }: { id: string; mark: EndMark; color: string }) {
+  return (
+    <marker
+      id={id}
+      viewBox="0 0 14 14"
+      refX="13"
+      refY="7"
+      markerWidth="13"
+      markerHeight="13"
+      orient="auto-start-reverse"
+      markerUnits="userSpaceOnUse"
+    >
+      {mark === 'one' ? (
+        <path d="M11 1 V13" fill="none" stroke={color} strokeWidth="1.6" />
+      ) : (
+        <path d="M1 7 L13 1 M1 7 L13 7 M1 7 L13 13" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" />
+      )}
+    </marker>
+  );
 }
 
-function qualifiedColumn(catalog: string | null | undefined, schema: string | null | undefined, table: string, column: string) {
-  const scope = scopeLabel(catalog, schema);
-  return scope ? `${scope}.${table}.${column}` : `${table}.${column}`;
-}
-
-function relationLabel(relation: ErRelation) {
-  if (!isCrossRelation(relation)) {
-    return `${relation.fromTable}.${relation.fromColumn} → ${relation.toTable}.${relation.toColumn}`;
-  }
-  return `${qualifiedColumn(relation.fromCatalog, relation.fromSchema, relation.fromTable, relation.fromColumn)} → ${qualifiedColumn(relation.toCatalog, relation.toSchema, relation.toTable, relation.toColumn)}`;
+function LegendSample({ mark, label, color, dashed }: { mark?: EndMark; label: string; color?: string; dashed?: boolean }) {
+  const stroke = color ?? 'currentColor';
+  return (
+    <span className="inline-flex items-center gap-1">
+      <svg width="26" height="12" aria-hidden="true">
+        {mark === 'many' ? (
+          <path d="M1 6 L8 1 M1 6 H25 M1 6 L8 11" fill="none" stroke={stroke} strokeWidth="1.4" strokeDasharray={dashed ? '3 2' : undefined} />
+        ) : mark === 'one' ? (
+          <path d="M2 1 V11 M6 6 H25" fill="none" stroke={stroke} strokeWidth="1.4" />
+        ) : (
+          <path d="M1 6 H25" fill="none" stroke={stroke} strokeWidth="1.4" strokeDasharray="3 2" />
+        )}
+      </svg>
+      <span>{label}</span>
+    </span>
+  );
 }
 
 function revealRow(row: HTMLElement) {
@@ -302,12 +319,14 @@ interface ErDiagramTabProps {
 
 export function ErDiagramTab({ metadata }: ErDiagramTabProps) {
   const { t } = useTranslation();
+  const markerPrefix = useId().replace(/:/g, '');
   const [diagram, setDiagram] = useState<ErDiagram | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState({ x: 0, y: 0, scale: 1 });
   const [hover, setHover] = useState<ColumnFocus | null>(null);
   const [pinned, setPinned] = useState<ColumnFocus | null>(null);
+  const [collapseJunctionTables, setCollapseJunctionTables] = useState(false);
   const [lines, setLines] = useState<RelationLine[]>([]);
   const drag = useRef<{ pointerX: number; pointerY: number; x: number; y: number } | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -319,6 +338,7 @@ export function ErDiagramTab({ metadata }: ErDiagramTabProps) {
     setError('');
     setHover(null);
     setPinned(null);
+    setCollapseJunctionTables(false);
     tableService.getErDiagram(
       String(metadata.connectionId),
       metadata.catalog ?? undefined,
@@ -335,7 +355,26 @@ export function ErDiagramTab({ metadata }: ErDiagramTabProps) {
     };
   }, [metadata.catalog, metadata.connectionId, metadata.schema, t]);
 
-  const layout = useMemo(() => (diagram ? layoutCards(diagram) : null), [diagram]);
+  const junctionTables = useMemo(() => {
+    const tables = new Set<string>();
+    diagram?.relations.forEach((relation) => {
+      const id = junctionTableId(relation);
+      if (id) tables.add(id);
+    });
+    return tables;
+  }, [diagram]);
+  const shown = useMemo(
+    () => (diagram ? collapseJunctions(diagram, collapseJunctionTables) : null),
+    [collapseJunctionTables, diagram],
+  );
+
+  useEffect(() => {
+    const visible = new Set(shown?.tables.map((table) => tableId(table)) ?? []);
+    setHover((current) => (current && !visible.has(current.tableId) ? null : current));
+    setPinned((current) => (current && !visible.has(current.tableId) ? null : current));
+  }, [shown]);
+
+  const layout = useMemo(() => (shown ? layoutCards(shown) : null), [shown]);
   const boxById = useMemo(() => {
     const map = new Map<string, CardBox>();
     layout?.boxes.forEach((box) => map.set(box.id, box));
@@ -343,23 +382,23 @@ export function ErDiagramTab({ metadata }: ErDiagramTabProps) {
   }, [layout]);
   const linkedColumns = useMemo(() => {
     const linked = new Set<string>();
-    diagram?.relations.forEach((relation) => {
-      linked.add(columnKey(relationFromId(relation), relation.fromColumn));
-      linked.add(columnKey(relationToId(relation), relation.toColumn));
+    shown?.relations.forEach((relation) => {
+      sideColumns(relation, 'from').forEach((column) => linked.add(columnKey(relationFromId(relation), column)));
+      sideColumns(relation, 'to').forEach((column) => linked.add(columnKey(relationToId(relation), column)));
     });
     return linked;
-  }, [diagram]);
+  }, [shown]);
 
   const active = hover ?? pinned;
   const activeRelations = useMemo(
-    () => (diagram && active ? relationsForColumn(diagram.relations, active) : []),
-    [active, diagram],
+    () => (shown && active ? shown.relations.filter((relation) => relationTouches(relation, active)) : []),
+    [active, shown],
   );
   const highlightedColumns = useMemo(() => {
     const highlighted = new Set<string>();
     activeRelations.forEach((relation) => {
-      highlighted.add(columnKey(relationFromId(relation), relation.fromColumn));
-      highlighted.add(columnKey(relationToId(relation), relation.toColumn));
+      sideColumns(relation, 'from').forEach((column) => highlighted.add(columnKey(relationFromId(relation), column)));
+      sideColumns(relation, 'to').forEach((column) => highlighted.add(columnKey(relationToId(relation), column)));
     });
     return highlighted;
   }, [activeRelations]);
@@ -370,20 +409,27 @@ export function ErDiagramTab({ metadata }: ErDiagramTabProps) {
       setLines((current) => (current.length === 0 ? current : []));
       return;
     }
+    const focusKey = columnKey(active.tableId, active.column);
+    const revealKeys: string[] = [];
     activeRelations.forEach((relation) => {
-      const fromRow = rowRefs.current.get(columnKey(relationFromId(relation), relation.fromColumn));
-      const toRow = rowRefs.current.get(columnKey(relationToId(relation), relation.toColumn));
-      if (fromRow) revealRow(fromRow);
-      if (toRow) revealRow(toRow);
+      sideColumns(relation, 'from').forEach((column) => revealKeys.push(columnKey(relationFromId(relation), column)));
+      sideColumns(relation, 'to').forEach((column) => revealKeys.push(columnKey(relationToId(relation), column)));
     });
+    revealKeys.filter((key) => key !== focusKey).forEach((key) => {
+      const row = rowRefs.current.get(key);
+      if (row) revealRow(row);
+    });
+    const focusRow = rowRefs.current.get(focusKey);
+    if (focusRow) revealRow(focusRow);
     const channels = buildChannels([...boxById.values()]);
     const laneSpread = 8;
     const next: RelationLine[] = [];
     activeRelations.forEach((relation, index) => {
       const fromId = relationFromId(relation);
       const toId = relationToId(relation);
-      const fromRow = rowRefs.current.get(columnKey(fromId, relation.fromColumn));
-      const toRow = rowRefs.current.get(columnKey(toId, relation.toColumn));
+      const anchors = anchorColumns(relation, active);
+      const fromRow = rowRefs.current.get(columnKey(fromId, anchors.from));
+      const toRow = rowRefs.current.get(columnKey(toId, anchors.to));
       const fromBox = boxById.get(fromId);
       const toBox = boxById.get(toId);
       if (!fromRow || !toRow || !fromBox || !toBox) return;
@@ -392,16 +438,25 @@ export function ErDiagramTab({ metadata }: ErDiagramTabProps) {
       const to = endpoint(canvas, toRow, edges.toEdge, view.scale);
       const lane = index - (activeRelations.length - 1) / 2;
       const laneOffset = Math.max(-10, Math.min(10, lane * laneSpread));
+      const marks = endMarks(relation);
+      const label = `${relationMapping(relation)} ${cardinalityLabel(relation)}`;
       next.push({
-        key: `${relationLabel(relation)}-${index}`,
+        key: `${label}-${index}`,
         d: pointsToPath(routeAroundCards(fromBox, toBox, from, to, channels, laneOffset)),
-        label: relationLabel(relation),
         cross: isCrossRelation(relation),
+        manyToMany: relation.cardinality === 'MANY_TO_MANY',
+        fromMark: marks.from,
+        toMark: marks.to,
       });
     });
     setLines((current) => {
       if (current.length === next.length && current.every((line, index) => (
-        line.key === next[index].key && line.d === next[index].d
+        line.key === next[index].key
+        && line.d === next[index].d
+        && line.fromMark === next[index].fromMark
+        && line.toMark === next[index].toMark
+        && line.manyToMany === next[index].manyToMany
+        && line.cross === next[index].cross
       ))) {
         return current;
       }
@@ -430,11 +485,11 @@ export function ErDiagramTab({ metadata }: ErDiagramTabProps) {
       <div className="flex min-h-10 shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b theme-border px-3 py-2 text-xs theme-text-secondary">
         <span className="theme-text-primary font-medium">{t(I18N_KEYS.EXPLORER.ER_DIAGRAM)}</span>
         <span>{metadata.databaseName || metadata.schemaName || metadata.connectionName}</span>
-        {diagram && (
+        {shown && (
           <span>
             {t(I18N_KEYS.EXPLORER.ER_DIAGRAM_SUMMARY, {
-              tables: diagram.tables.length,
-              relations: diagram.relations.length,
+              tables: shown.tables.length,
+              relations: shown.relations.length,
             })}
           </span>
         )}
@@ -448,12 +503,39 @@ export function ErDiagramTab({ metadata }: ErDiagramTabProps) {
             count: diagram.tables.filter((table) => table.external).length,
           })}</span>
         )}
+        {junctionTables.size > 0 && (
+          <label className="inline-flex items-center gap-1">
+            <input
+              type="checkbox"
+              className="accent-violet-600"
+              checked={collapseJunctionTables}
+              onChange={(event) => setCollapseJunctionTables(event.target.checked)}
+            />
+            {t(I18N_KEYS.EXPLORER.ER_DIAGRAM_COLLAPSE_JUNCTIONS)}
+          </label>
+        )}
+        {shown && shown.tables.length > 0 && (
+          <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1 border-l theme-border pl-3">
+            <LegendSample mark="one" label={t(I18N_KEYS.EXPLORER.ER_DIAGRAM_LEGEND_ONE)} color={ROSE} />
+            <LegendSample mark="many" label={t(I18N_KEYS.EXPLORER.ER_DIAGRAM_LEGEND_MANY)} color={ROSE} />
+            <LegendSample mark="many" label={t(I18N_KEYS.EXPLORER.ER_DIAGRAM_LEGEND_MANY_TO_MANY)} color={VIOLET} />
+            <LegendSample label={t(I18N_KEYS.EXPLORER.ER_DIAGRAM_LEGEND_CROSS)} dashed />
+          </span>
+        )}
         {activeRelations.length > 0 ? (
-          activeRelations.map((relation, index) => (
-            <span key={`${relationLabel(relation)}-${index}`} className="theme-text-primary">
-              {relationLabel(relation)}
-            </span>
-          ))
+          activeRelations.map((relation, index) => {
+            const via = viaTableName(relation);
+            return (
+              <span key={`${relationMapping(relation)}-${index}`} className="theme-text-primary">
+                {relationMapping(relation)}
+                {' '}
+                <span className={relation.cardinality === 'MANY_TO_MANY' ? 'text-violet-600' : undefined}>
+                  {cardinalityLabel(relation)}
+                </span>
+                {via ? ` ${t(I18N_KEYS.EXPLORER.ER_DIAGRAM_VIA, { table: via })}` : ''}
+              </span>
+            );
+          })
         ) : (
           <span className="truncate">{t(I18N_KEYS.EXPLORER.ER_DIAGRAM_HINT)}</span>
         )}
@@ -498,7 +580,7 @@ export function ErDiagramTab({ metadata }: ErDiagramTabProps) {
             {t(I18N_KEYS.EXPLORER.ER_DIAGRAM_EMPTY)}
           </div>
         )}
-        {layout && diagram && diagram.tables.length > 0 && (
+        {layout && shown && shown.tables.length > 0 && (
           <div
             ref={canvasRef}
             style={{
@@ -510,20 +592,28 @@ export function ErDiagramTab({ metadata }: ErDiagramTabProps) {
             }}
           >
             <svg className="pointer-events-none absolute inset-0 h-full w-full" width={layout.width} height={layout.height}>
+              <defs>
+                <CardinalityMarker id={`${markerPrefix}-one`} mark="one" color={ROSE} />
+                <CardinalityMarker id={`${markerPrefix}-many`} mark="many" color={ROSE} />
+                <CardinalityMarker id={`${markerPrefix}-one-many`} mark="one" color={VIOLET} />
+                <CardinalityMarker id={`${markerPrefix}-many-many`} mark="many" color={VIOLET} />
+              </defs>
               {lines.map((line) => (
                 <path
                   key={line.key}
                   d={line.d}
                   fill="none"
-                  stroke="#e11d48"
+                  stroke={line.manyToMany ? VIOLET : ROSE}
                   strokeWidth="1.6"
                   strokeDasharray={line.cross ? '5 4' : undefined}
                   strokeLinejoin="round"
                   strokeLinecap="round"
+                  markerStart={`url(#${markerPrefix}-${line.fromMark}${line.manyToMany ? '-many' : ''})`}
+                  markerEnd={`url(#${markerPrefix}-${line.toMark}${line.manyToMany ? '-many' : ''})`}
                 />
               ))}
             </svg>
-            {diagram.tables.map((table) => {
+            {shown.tables.map((table) => {
               const id = tableId(table);
               const box = boxById.get(id);
               const title = tableTitle(table);
@@ -539,6 +629,11 @@ export function ErDiagramTab({ metadata }: ErDiagramTabProps) {
                     {table.external && (
                       <span className="shrink-0 rounded px-1 text-[10px] font-normal theme-text-secondary">
                         {t(I18N_KEYS.EXPLORER.ER_DIAGRAM_EXTERNAL)}
+                      </span>
+                    )}
+                    {junctionTables.has(id) && (
+                      <span className="shrink-0 rounded bg-violet-500/15 px-1 text-[10px] font-normal text-violet-600">
+                        {t(I18N_KEYS.EXPLORER.ER_DIAGRAM_JUNCTION)}
                       </span>
                     )}
                   </div>

@@ -28,16 +28,31 @@ export interface ErTable {
   columns: ErColumn[];
 }
 
+/**
+ * ONE_TO_ONE and ONE_TO_MANY describe a foreign key: the referenced side is one.
+ * MANY_TO_MANY connects the two tables referenced by a junction table.
+ */
+export type ErCardinality = 'ONE_TO_ONE' | 'ONE_TO_MANY' | 'MANY_TO_MANY';
+
 export interface ErRelation {
   name: string;
   fromCatalog?: string | null;
   fromSchema?: string | null;
   fromTable: string;
+  /** First foreign-key column. Composite keys also fill fromColumns. */
   fromColumn: string;
+  fromColumns: string[];
   toCatalog?: string | null;
   toSchema?: string | null;
   toTable: string;
+  /** First referenced column. Composite keys also fill toColumns. */
   toColumn: string;
+  toColumns: string[];
+  cardinality: ErCardinality;
+  /** Junction table for MANY_TO_MANY. */
+  viaCatalog?: string | null;
+  viaSchema?: string | null;
+  viaTable?: string | null;
 }
 
 export interface ErDiagram {

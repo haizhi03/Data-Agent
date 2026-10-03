@@ -58,10 +58,24 @@ public class ErDiagramResponse {
         private String fromCatalog;
         private String fromSchema;
         private String fromTable;
+        /** First foreign-key column. Composite keys also fill {@link #fromColumns}. */
         private String fromColumn;
+        private List<String> fromColumns;
         private String toCatalog;
         private String toSchema;
         private String toTable;
+        /** First referenced column. Composite keys also fill {@link #toColumns}. */
         private String toColumn;
+        private List<String> toColumns;
+        /**
+         * ONE_TO_ONE, ONE_TO_MANY, or MANY_TO_MANY. For a foreign key the referenced
+         * end is one, and ONE_TO_MANY means the foreign-key end is many.
+         * MANY_TO_MANY connects the two tables referenced by a junction table.
+         */
+        private String cardinality;
+        /** Junction table for MANY_TO_MANY. Null for a foreign key. */
+        private String viaCatalog;
+        private String viaSchema;
+        private String viaTable;
     }
 }
