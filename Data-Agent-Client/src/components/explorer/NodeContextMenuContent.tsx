@@ -10,6 +10,7 @@ import {
 } from '../ui/ContextMenu';
 import { ExplorerNodeType } from '../../constants/explorer';
 import type { ExplorerNode } from '../../types/explorer';
+import type { SqlStatementType } from '../../utils/sqlGenerator';
 import { I18N_KEYS } from '../../constants/i18nKeys';
 
 interface NodeContextMenuContentProps {
@@ -18,6 +19,7 @@ interface NodeContextMenuContentProps {
   onOpenQueryConsole: (node: ExplorerNode) => void;
   onRunSqlScript: (node: ExplorerNode) => void;
   onSqlGenerator: (node: ExplorerNode) => void;
+  onGenerateSql: (node: ExplorerNode, statementType: SqlStatementType) => void;
   onCreateTable: (node: ExplorerNode) => void;
   onOpenErDiagram: (node: ExplorerNode) => void;
   onViewDdl: (node: ExplorerNode) => void;
@@ -36,6 +38,7 @@ export function NodeContextMenuContent({
   onOpenQueryConsole,
   onRunSqlScript,
   onSqlGenerator,
+  onGenerateSql,
   onCreateTable,
   onOpenErDiagram,
   onViewDdl,
@@ -159,6 +162,34 @@ export function NodeContextMenuContent({
           </ContextMenuItem>
           {hasDataOperations && <ContextMenuSeparator />}
         </>
+      )}
+
+      {/* 2.5 SQL & Code - statement templates for a concrete table */}
+      {isConnected && node.type === ExplorerNodeType.TABLE && (
+        <ContextMenuSub>
+          <ContextMenuSubTrigger>
+            <FileCode2 className="w-3.5 h-3.5 mr-2" />
+            {t(I18N_KEYS.EXPLORER.SQL_AND_CODE)}
+          </ContextMenuSubTrigger>
+          <ContextMenuSubContent>
+            <ContextMenuItem onSelect={() => onGenerateSql(node, 'SELECT')}>
+              {t(I18N_KEYS.EXPLORER.GENERATE_SQL_SELECT)}
+            </ContextMenuItem>
+            <ContextMenuItem onSelect={() => onGenerateSql(node, 'INSERT')}>
+              {t(I18N_KEYS.EXPLORER.GENERATE_SQL_INSERT)}
+            </ContextMenuItem>
+            <ContextMenuItem onSelect={() => onGenerateSql(node, 'UPDATE')}>
+              {t(I18N_KEYS.EXPLORER.GENERATE_SQL_UPDATE)}
+            </ContextMenuItem>
+            <ContextMenuItem onSelect={() => onGenerateSql(node, 'DELETE')}>
+              {t(I18N_KEYS.EXPLORER.GENERATE_SQL_DELETE)}
+            </ContextMenuItem>
+            <ContextMenuSeparator />
+            <ContextMenuItem onSelect={() => onViewDdl(node)}>
+              {t(I18N_KEYS.EXPLORER.GENERATE_SQL_DDL)}
+            </ContextMenuItem>
+          </ContextMenuSubContent>
+        </ContextMenuSub>
       )}
 
       {/* 3. View Data - for tables/views and their children */}

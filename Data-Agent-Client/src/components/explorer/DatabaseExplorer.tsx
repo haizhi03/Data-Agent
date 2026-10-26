@@ -118,7 +118,7 @@ export function DatabaseExplorer() {
   });
 
   // Data view actions
-  const { handleViewDdl, handleGenerateIndexes, handleViewData, handleTableOrViewDoubleClick, handleOpenQueryConsole, handleCreateTable, handleOpenErDiagram, getDdlConfig, resolveConsoleContext } = useDataViewActions({
+  const { handleViewDdl, handleGenerateIndexes, handleGenerateSql, handleViewData, handleTableOrViewDoubleClick, handleOpenQueryConsole, handleCreateTable, handleOpenErDiagram, getDdlConfig, resolveConsoleContext } = useDataViewActions({
     setSelectedDdlNode,
     setDdlDialogOpen,
     setTableDataDialogOpen,
@@ -355,6 +355,7 @@ export function DatabaseExplorer() {
           onOpenQueryConsole={handleOpenQueryConsole}
           onRunSqlScript={handleRunSqlScript}
           onSqlGenerator={handleSqlGenerator}
+          onGenerateSql={handleGenerateSql}
           onCreateTable={handleCreateTable}
           onImportData={handleImportData}
           onExportData={handleExportData}

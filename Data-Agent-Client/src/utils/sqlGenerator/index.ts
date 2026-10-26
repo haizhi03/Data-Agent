@@ -9,10 +9,12 @@ export {
 export { toSqlLiteral, toWhereCondition } from './literals';
 export {
   generateSql,
+  generateSqlTemplate,
   DEFAULT_SQL_GENERATE_OPTIONS,
   type SqlStatementType,
   type SqlGenerateOptions,
   type SqlGenerateRequest,
+  type SqlTemplateRequest,
   type GeneratedSql,
 } from './generate';
 export {

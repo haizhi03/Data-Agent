@@ -94,6 +94,55 @@ export function generateSql(req: SqlGenerateRequest, profile: SqlDialectProfile)
   return { sql: body, consoleSql, statementCount: statements.length, whereColumns };
 }
 
+export interface SqlTemplateRequest {
+  statementType: SqlStatementType;
+  table: { catalog?: string | null; schema?: string | null; name: string };
+  /** Table columns, in display order. */
+  columns: string[];
+  /** Primary-key columns used as UPDATE/DELETE WHERE keys; empty -> all columns. */
+  pkColumns?: string[];
+  /** Defaults to true: prefix the table with catalog/schema. */
+  qualifyWithSchema?: boolean;
+}
+
+/**
+ * Column-only statement template for callers without selected rows (explorer
+ * tree right-click). Values are emitted as NULL placeholders so the result
+ * stays syntactically valid.
+ */
+export function generateSqlTemplate(req: SqlTemplateRequest, profile: SqlDialectProfile): string {
+  const tableName = req.qualifyWithSchema === false
+    ? quoteIdent(req.table.name, profile)
+    : qualifyName(req.table, profile);
+  const pkColumns = (req.pkColumns ?? []).filter((column) => req.columns.includes(column));
+  const whereColumns = pkColumns.length > 0 ? pkColumns : req.columns;
+
+  switch (req.statementType) {
+    case 'SELECT':
+      return `SELECT ${req.columns.map((column) => quoteIdent(column, profile)).join(', ')}\nFROM ${tableName};`;
+    case 'INSERT': {
+      const values = req.columns.map(() => 'NULL').join(', ');
+      return `INSERT INTO ${tableName} (${req.columns.map((column) => quoteIdent(column, profile)).join(', ')})\nVALUES (${values});`;
+    }
+    case 'UPDATE': {
+      const setColumns = req.columns.filter((column) => !whereColumns.includes(column));
+      const assignments = (setColumns.length > 0 ? setColumns : req.columns)
+        .map((column) => `  ${quoteIdent(column, profile)} = NULL`)
+        .join(',\n');
+      const where = whereColumns
+        .map((column) => `  ${quoteIdent(column, profile)} = NULL`)
+        .join(' AND\n');
+      return `UPDATE ${tableName}\nSET\n${assignments}\nWHERE\n${where};`;
+    }
+    case 'DELETE': {
+      const where = whereColumns
+        .map((column) => `  ${quoteIdent(column, profile)} = NULL`)
+        .join(' AND\n');
+      return `DELETE FROM ${tableName}\nWHERE\n${where};`;
+    }
+  }
+}
+
 function generateInsert(req: SqlGenerateRequest, tableName: string, profile: SqlDialectProfile): string[] {
   const columnList = req.columns.map((c) => quoteIdent(c, profile)).join(', ');
   const values = req.rows.map((row) => {

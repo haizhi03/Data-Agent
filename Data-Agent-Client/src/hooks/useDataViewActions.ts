@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ExplorerNodeType, FolderName, INDEX_UNIQUE_SUFFIX } from '../constants/explorer';
 import { tableService } from '../services/table.service';
+import { columnService } from '../services/column.service';
 import { viewService } from '../services/view.service';
 import { functionService } from '../services/function.service';
 import { procedureService } from '../services/procedure.service';
@@ -16,6 +17,7 @@ import type { ExplorerNode } from '../types/explorer';
 import type { DbTypeOption, IdentifierQuoteStyle } from '../types/dbType';
 import type { ConsoleTabMetadata } from '../types/tab';
 import type { DbConnection } from '../types/connection';
+import { generateSqlTemplate, resolveProfile, type SqlStatementType } from '../utils/sqlGenerator';
 
 interface DataViewActionsProps {
   setSelectedDdlNode: (node: ExplorerNode | null) => void;
@@ -278,6 +280,45 @@ export function useDataViewActions({
     [ensureConsoleTab, updateTabContent, t],
   );
 
+  // Table-node "SQL & Code" templates: no grid rows are selected in the tree,
+  // so statements are generated from column metadata with NULL placeholders.
+  const handleGenerateSql = useCallback(
+    async (node: ExplorerNode, statementType: SqlStatementType) => {
+      const consoleContext = ensureConsoleTab(node);
+      if (!consoleContext) return;
+
+      const objectName = node.tableName || node.objectName || node.name;
+      const profile = resolveProfile(consoleContext.dbType, consoleContext.dbTypeConfig?.identifierQuoteStyle);
+
+      try {
+        const columns = await columnService.listColumns(
+          String(consoleContext.connectionId),
+          objectName,
+          node.catalog ?? '',
+          node.schema ?? '',
+        );
+        const ordered = [...columns].sort((a, b) => (a.ordinalPosition ?? 0) - (b.ordinalPosition ?? 0));
+        const sql = generateSqlTemplate(
+          {
+            statementType,
+            table: { catalog: node.catalog, schema: node.schema, name: objectName },
+            columns: ordered.map((column) => column.name),
+            pkColumns: ordered.filter((column) => column.isPrimaryKeyPart).map((column) => column.name),
+          },
+          profile,
+        );
+
+        const existingContent = tabs.find((tab) => tab.id === consoleContext.tabId)?.content ?? '';
+        updateTabContent(consoleContext.tabId, appendSql(existingContent, sql));
+        switchTab(consoleContext.tabId);
+      } catch (err) {
+        const errMsg = (err as Error).message || t(I18N_KEYS.EXPLORER.LOAD_COLUMNS_FAILED);
+        updateTabContent(consoleContext.tabId, `-- ${errMsg}\n`);
+      }
+    },
+    [ensureConsoleTab, switchTab, t, tabs, updateTabContent],
+  );
+
   const handleViewData = useCallback(
     (node: ExplorerNode, highlightCol?: string) => {
       if (!node.connectionId) return;
@@ -440,6 +481,7 @@ export function useDataViewActions({
   return {
     handleViewDdl,
     handleGenerateIndexes,
+    handleGenerateSql,
     handleViewData,
     handleTableOrViewDoubleClick,
     handleOpenQueryConsole,
