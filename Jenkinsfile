@@ -66,6 +66,15 @@ pipeline {
                         set -e
                         printf '\\n\\033[1;36m========== [BUILD BACKEND] ==========\\033[0m\\n'
 
+                        if [ -n "${JAVA_HOME:-}" ]; then
+                          export PATH="${JAVA_HOME}/bin:$PATH"
+                        fi
+                        BUILD_JAVA_SPEC=$(java -XshowSettings:properties -version 2>&1 | awk -F '= ' '/^[[:space:]]*java.specification.version =/ {print $2; exit}')
+                        if [ "$BUILD_JAVA_SPEC" != "21" ]; then
+                          echo "Backend requires JDK 21. Configure this Jenkins agent's JAVA_HOME to a JDK 21 installation."
+                          exit 1
+                        fi
+
                         echo "JAVA_HOME=$JAVA_HOME"
                         which java || true
                         which javac || true
