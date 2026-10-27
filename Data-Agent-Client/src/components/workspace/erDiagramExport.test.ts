@@ -33,6 +33,7 @@ describe('ER diagram export', () => {
     expect(erDiagramFilename('   ', 'svg')).toBe('er-diagram.svg');
     expect(erDiagramFilename('sakila', 'json')).toBe('sakila.json');
     expect(erDiagramFilename('sakila', 'mmd')).toBe('sakila.mmd');
+    expect(erDiagramFilename('sakila', 'sql')).toBe('sakila.sql');
     expect(erDiagramCsvFilename('sakila', 'tables')).toBe('sakila-tables.csv');
     expect(erDiagramCsvFilename('ER/DEMO:1', 'relations')).toBe('ER-DEMO-1-relations.csv');
     expect(erDiagramCsvFilename('   ', 'tables')).toBe('er-diagram-tables.csv');
