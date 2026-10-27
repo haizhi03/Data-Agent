@@ -31,6 +31,7 @@ import {
 } from './erDiagramExport';
 import { erDiagramCsvHeaders, renderErDiagramCsv } from './erDiagramCsv';
 import { renderErDiagramJson, toErDiagramDocument } from './erDiagramDocument';
+import { renderErDiagramMermaid } from './erDiagramMermaid';
 import { renderErDiagramPdf } from './erDiagramPdf';
 import { vectorTablesFromNodes } from './erDiagramVectorSvg';
 import {
@@ -524,7 +525,7 @@ function ErDiagramCanvas({ metadata }: ErDiagramTabProps) {
     setHasCustomLayout(true);
   };
 
-  const exportImage = async (format: Exclude<ErDiagramExportFormat, 'json'>) => {
+  const exportImage = async (format: Exclude<ErDiagramExportFormat, 'json' | 'mmd'>) => {
     const viewport = flowRef.current?.querySelector('.react-flow__viewport');
     if (!(viewport instanceof HTMLElement) || exporting || layouting) return;
     const currentNodes = getNodes();
@@ -582,6 +583,18 @@ function ErDiagramCanvas({ metadata }: ErDiagramTabProps) {
       const type = 'text/csv;charset=utf-8';
       downloadBlob(new Blob([csv.tables], { type }), erDiagramCsvFilename(name, 'tables'));
       downloadBlob(new Blob([csv.relations], { type }), erDiagramCsvFilename(name, 'relations'));
+      toast.success(t(I18N_KEYS.EXPLORER.ER_DIAGRAM_EXPORTED));
+    } catch {
+      toast.error(t(I18N_KEYS.EXPLORER.ER_DIAGRAM_EXPORT_FAILED));
+    }
+  };
+
+  const exportMermaid = () => {
+    if (!shown || exporting || layouting) return;
+    const name = metadata.databaseName || metadata.schemaName || metadata.connectionName || 'er-diagram';
+    try {
+      const text = renderErDiagramMermaid(toErDiagramDocument(shown));
+      downloadBlob(new Blob([text], { type: 'text/plain;charset=utf-8' }), erDiagramFilename(name, 'mmd'));
       toast.success(t(I18N_KEYS.EXPLORER.ER_DIAGRAM_EXPORTED));
     } catch {
       toast.error(t(I18N_KEYS.EXPLORER.ER_DIAGRAM_EXPORT_FAILED));
@@ -697,6 +710,9 @@ function ErDiagramCanvas({ metadata }: ErDiagramTabProps) {
                     </DropdownMenuItem>
                     <DropdownMenuItem className="text-xs" onClick={exportCsv}>
                       {t(I18N_KEYS.EXPLORER.ER_DIAGRAM_EXPORT_CSV)}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem className="text-xs" onClick={exportMermaid}>
+                      {t(I18N_KEYS.EXPLORER.ER_DIAGRAM_EXPORT_MERMAID)}
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>

@@ -481,6 +481,7 @@
     "er_diagram_export_pdf": "PDF 文档",
     "er_diagram_export_json": "JSON 文档",
     "er_diagram_export_csv": "CSV 表格",
+    "er_diagram_export_mermaid": "Mermaid 图",
     "er_diagram_csv_schema": "schema",
     "er_diagram_csv_table": "表名",
     "er_diagram_csv_table_comment": "表注释",

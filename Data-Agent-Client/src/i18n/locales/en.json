@@ -481,6 +481,7 @@
     "er_diagram_export_pdf": "PDF document",
     "er_diagram_export_json": "JSON document",
     "er_diagram_export_csv": "CSV spreadsheet",
+    "er_diagram_export_mermaid": "Mermaid diagram",
     "er_diagram_csv_schema": "schema",
     "er_diagram_csv_table": "table",
     "er_diagram_csv_table_comment": "table comment",

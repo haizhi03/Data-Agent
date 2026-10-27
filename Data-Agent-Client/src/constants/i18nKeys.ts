@@ -270,6 +270,7 @@ export const I18N_KEYS = {
     ER_DIAGRAM_EXPORT_PDF: 'explorer.er_diagram_export_pdf',
     ER_DIAGRAM_EXPORT_JSON: 'explorer.er_diagram_export_json',
     ER_DIAGRAM_EXPORT_CSV: 'explorer.er_diagram_export_csv',
+    ER_DIAGRAM_EXPORT_MERMAID: 'explorer.er_diagram_export_mermaid',
     ER_DIAGRAM_CSV_SCHEMA: 'explorer.er_diagram_csv_schema',
     ER_DIAGRAM_CSV_TABLE: 'explorer.er_diagram_csv_table',
     ER_DIAGRAM_CSV_TABLE_COMMENT: 'explorer.er_diagram_csv_table_comment',
