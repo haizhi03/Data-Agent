@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { ChevronDown } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import {
   Background,
@@ -18,7 +19,24 @@ import { TableDblClickConsoleTargetEnum } from '../../constants/workspacePrefere
 import type { ConsoleTabMetadata, ErDiagramTabMetadata } from '../../types/tab';
 import { useToast } from '../../hooks/useToast';
 import { useTheme } from '../../hooks/useTheme';
-import { downloadBlob, erDiagramFilename, renderErDiagramPng } from './erDiagramExport';
+import {
+  collectVectorEdges,
+  downloadBlob,
+  erDiagramFilename,
+  renderErDiagramPng,
+  renderErDiagramSvg,
+  vectorTheme,
+  type ErDiagramExportFormat,
+} from './erDiagramExport';
+import { renderErDiagramJson, toErDiagramDocument } from './erDiagramDocument';
+import { renderErDiagramPdf } from './erDiagramPdf';
+import { vectorTablesFromNodes } from './erDiagramVectorSvg';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '../ui/DropdownMenu';
 import { ErRelationEdgeView } from './ErDiagramEdge';
 import { ErTableNode, type ErTableNodeType } from './ErDiagramNode';
 import { ErDiagramMiniMap } from './ErDiagramMiniMap';
@@ -504,7 +522,7 @@ function ErDiagramCanvas({ metadata }: ErDiagramTabProps) {
     setHasCustomLayout(true);
   };
 
-  const exportImage = async () => {
+  const exportImage = async (format: Exclude<ErDiagramExportFormat, 'json'>) => {
     const viewport = flowRef.current?.querySelector('.react-flow__viewport');
     if (!(viewport instanceof HTMLElement) || exporting || layouting) return;
     const currentNodes = getNodes();
@@ -514,14 +532,43 @@ function ErDiagramCanvas({ metadata }: ErDiagramTabProps) {
     const background = getComputedStyle(document.documentElement).getPropertyValue('--bg-main').trim() || '#f4f7fb';
     setExporting(true);
     try {
-      const blob = await renderErDiagramPng(viewport, bounds, background);
+      const diagram = {
+        tables: vectorTablesFromNodes(currentNodes as ErTableNodeType[], {
+          linked: linkedColumns,
+          highlighted: highlightedColumns,
+          junctions: junctionTables,
+          external: t(I18N_KEYS.EXPLORER.ER_DIAGRAM_EXTERNAL),
+          junction: t(I18N_KEYS.EXPLORER.ER_DIAGRAM_JUNCTION),
+          expand: (hidden: number) => t(I18N_KEYS.EXPLORER.ER_DIAGRAM_EXPAND_COLUMNS, { count: hidden }),
+          collapse: t(I18N_KEYS.EXPLORER.ER_DIAGRAM_COLLAPSE_COLUMNS),
+        }),
+        edges: collectVectorEdges(viewport, edges),
+        theme: vectorTheme(background),
+      };
+      const blob = format === 'png'
+        ? await renderErDiagramPng(viewport, bounds, background)
+        : format === 'pdf'
+          ? await renderErDiagramPdf(diagram)
+          : renderErDiagramSvg(diagram);
       const name = metadata.databaseName || metadata.schemaName || metadata.connectionName || 'er-diagram';
-      downloadBlob(blob, erDiagramFilename(name));
+      downloadBlob(blob, erDiagramFilename(name, format));
       toast.success(t(I18N_KEYS.EXPLORER.ER_DIAGRAM_EXPORTED));
     } catch {
       toast.error(t(I18N_KEYS.EXPLORER.ER_DIAGRAM_EXPORT_FAILED));
     } finally {
       setExporting(false);
+    }
+  };
+
+  const exportJson = () => {
+    if (!shown || exporting || layouting) return;
+    const name = metadata.databaseName || metadata.schemaName || metadata.connectionName || 'er-diagram';
+    try {
+      const json = renderErDiagramJson(toErDiagramDocument(shown));
+      downloadBlob(new Blob([json], { type: 'application/json;charset=utf-8' }), erDiagramFilename(name, 'json'));
+      toast.success(t(I18N_KEYS.EXPLORER.ER_DIAGRAM_EXPORTED));
+    } catch {
+      toast.error(t(I18N_KEYS.EXPLORER.ER_DIAGRAM_EXPORT_FAILED));
     }
   };
 
@@ -608,14 +655,32 @@ function ErDiagramCanvas({ metadata }: ErDiagramTabProps) {
                 </button>
               )}
               {showCanvas && (
-                <button
-                  type="button"
-                  className="rounded border theme-border px-2 py-0.5 theme-text-primary disabled:opacity-40"
-                  disabled={exporting || layouting || nodes.length === 0}
-                  onClick={() => { void exportImage(); }}
-                >
-                  {t(I18N_KEYS.EXPLORER.ER_DIAGRAM_EXPORT)}
-                </button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 rounded border theme-border px-2 py-0.5 theme-text-primary disabled:opacity-40"
+                      disabled={exporting || layouting || nodes.length === 0}
+                    >
+                      {t(I18N_KEYS.EXPLORER.ER_DIAGRAM_EXPORT)}
+                      <ChevronDown className="h-3 w-3" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="min-w-[8rem]">
+                    <DropdownMenuItem className="text-xs" onClick={() => { void exportImage('png'); }}>
+                      {t(I18N_KEYS.EXPLORER.ER_DIAGRAM_EXPORT_PNG)}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem className="text-xs" onClick={() => { void exportImage('svg'); }}>
+                      {t(I18N_KEYS.EXPLORER.ER_DIAGRAM_EXPORT_SVG)}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem className="text-xs" onClick={() => { void exportImage('pdf'); }}>
+                      {t(I18N_KEYS.EXPLORER.ER_DIAGRAM_EXPORT_PDF)}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem className="text-xs" onClick={exportJson}>
+                      {t(I18N_KEYS.EXPLORER.ER_DIAGRAM_EXPORT_JSON)}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               )}
               {showCanvas && (
                 <button
