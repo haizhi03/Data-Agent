@@ -22,12 +22,14 @@ import { useTheme } from '../../hooks/useTheme';
 import {
   collectVectorEdges,
   downloadBlob,
+  erDiagramCsvFilename,
   erDiagramFilename,
   renderErDiagramPng,
   renderErDiagramSvg,
   vectorTheme,
   type ErDiagramExportFormat,
 } from './erDiagramExport';
+import { erDiagramCsvHeaders, renderErDiagramCsv } from './erDiagramCsv';
 import { renderErDiagramJson, toErDiagramDocument } from './erDiagramDocument';
 import { renderErDiagramPdf } from './erDiagramPdf';
 import { vectorTablesFromNodes } from './erDiagramVectorSvg';
@@ -572,6 +574,20 @@ function ErDiagramCanvas({ metadata }: ErDiagramTabProps) {
     }
   };
 
+  const exportCsv = () => {
+    if (!shown || exporting || layouting) return;
+    const name = metadata.databaseName || metadata.schemaName || metadata.connectionName || 'er-diagram';
+    try {
+      const csv = renderErDiagramCsv(toErDiagramDocument(shown), erDiagramCsvHeaders((key) => t(key)));
+      const type = 'text/csv;charset=utf-8';
+      downloadBlob(new Blob([csv.tables], { type }), erDiagramCsvFilename(name, 'tables'));
+      downloadBlob(new Blob([csv.relations], { type }), erDiagramCsvFilename(name, 'relations'));
+      toast.success(t(I18N_KEYS.EXPLORER.ER_DIAGRAM_EXPORTED));
+    } catch {
+      toast.error(t(I18N_KEYS.EXPLORER.ER_DIAGRAM_EXPORT_FAILED));
+    }
+  };
+
   const relationSummary = activeRelations.map((relation) => {
     const via = viaTableName(relation);
     const text = `${relationMapping(relation)} ${cardinalityLabel(relation)}`;
@@ -678,6 +694,9 @@ function ErDiagramCanvas({ metadata }: ErDiagramTabProps) {
                     </DropdownMenuItem>
                     <DropdownMenuItem className="text-xs" onClick={exportJson}>
                       {t(I18N_KEYS.EXPLORER.ER_DIAGRAM_EXPORT_JSON)}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem className="text-xs" onClick={exportCsv}>
+                      {t(I18N_KEYS.EXPLORER.ER_DIAGRAM_EXPORT_CSV)}
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>

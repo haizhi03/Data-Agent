@@ -15,9 +15,16 @@ export { ER_EXPORT_PADDING, exportImageSize, includeBounds };
 
 export type ErDiagramExportFormat = 'png' | 'svg' | 'pdf' | 'json';
 
+function erDiagramBaseName(name: string) {
+  return name.trim().replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim() || 'er-diagram';
+}
+
 export function erDiagramFilename(name: string, extension: ErDiagramExportFormat = 'png') {
-  const safe = name.trim().replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim() || 'er-diagram';
-  return `${safe}.${extension}`;
+  return `${erDiagramBaseName(name)}.${extension}`;
+}
+
+export function erDiagramCsvFilename(name: string, part: 'tables' | 'relations') {
+  return `${erDiagramBaseName(name)}-${part}.csv`;
 }
 
 export function downloadBlob(blob: Blob, filename: string) {

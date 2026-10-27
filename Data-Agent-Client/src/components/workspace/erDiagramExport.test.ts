@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { getViewportForBounds } from '@xyflow/react';
-import { erDiagramFilename, exportImageSize, hasImageContent, includeBounds, svgHasDiagram } from './erDiagramExport';
+import { erDiagramCsvFilename, erDiagramFilename, exportImageSize, hasImageContent, includeBounds, svgHasDiagram } from './erDiagramExport';
 
 describe('ER diagram export', () => {
   it('includes routes outside the cards, including negative coordinates', () => {
@@ -32,6 +32,9 @@ describe('ER diagram export', () => {
     expect(erDiagramFilename('ER/DEMO:1', 'svg')).toBe('ER-DEMO-1.svg');
     expect(erDiagramFilename('   ', 'svg')).toBe('er-diagram.svg');
     expect(erDiagramFilename('sakila', 'json')).toBe('sakila.json');
+    expect(erDiagramCsvFilename('sakila', 'tables')).toBe('sakila-tables.csv');
+    expect(erDiagramCsvFilename('ER/DEMO:1', 'relations')).toBe('ER-DEMO-1-relations.csv');
+    expect(erDiagramCsvFilename('   ', 'tables')).toBe('er-diagram-tables.csv');
   });
 
   it('accepts a vector svg and rejects a foreign-object capture', () => {
