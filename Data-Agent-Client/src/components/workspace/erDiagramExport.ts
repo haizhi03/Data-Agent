@@ -13,7 +13,7 @@ import {
 
 export { ER_EXPORT_PADDING, exportImageSize, includeBounds };
 
-export type ErDiagramExportFormat = 'png' | 'svg' | 'pdf' | 'json' | 'mmd' | 'sql';
+export type ErDiagramExportFormat = 'png' | 'svg' | 'pdf' | 'json' | 'mmd';
 
 function erDiagramBaseName(name: string) {
   return name.trim().replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim() || 'er-diagram';

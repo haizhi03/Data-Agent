@@ -32,7 +32,6 @@ import {
 import { erDiagramCsvHeaders, renderErDiagramCsv } from './erDiagramCsv';
 import { renderErDiagramJson, toErDiagramDocument } from './erDiagramDocument';
 import { renderErDiagramMermaid } from './erDiagramMermaid';
-import { erDiagramSqlIncomplete, erDiagramSqlSettings, renderErDiagramSql } from './erDiagramSql';
 import { renderErDiagramPdf } from './erDiagramPdf';
 import { vectorTablesFromNodes } from './erDiagramVectorSvg';
 import {
@@ -153,7 +152,6 @@ function ErDiagramCanvas({ metadata }: ErDiagramTabProps) {
   const updateTabMetadata = useWorkspaceStore((state) => state.updateTabMetadata);
   const switchTab = useWorkspaceStore((state) => state.switchTab);
   const tableDblClickConsoleTarget = useWorkspaceStore((state) => state.tableDblClickConsoleTarget);
-  const supportedDbTypes = useWorkspaceStore((state) => state.supportedDbTypes);
   const { getNodes, setViewport } = useReactFlow();
   const [diagram, setDiagram] = useState<ErDiagram | null>(null);
   const [error, setError] = useState('');
@@ -527,7 +525,7 @@ function ErDiagramCanvas({ metadata }: ErDiagramTabProps) {
     setHasCustomLayout(true);
   };
 
-  const exportImage = async (format: Exclude<ErDiagramExportFormat, 'json' | 'mmd' | 'sql'>) => {
+  const exportImage = async (format: Exclude<ErDiagramExportFormat, 'json' | 'mmd'>) => {
     const viewport = flowRef.current?.querySelector('.react-flow__viewport');
     if (!(viewport instanceof HTMLElement) || exporting || layouting) return;
     const currentNodes = getNodes();
@@ -597,28 +595,6 @@ function ErDiagramCanvas({ metadata }: ErDiagramTabProps) {
     try {
       const text = renderErDiagramMermaid(toErDiagramDocument(shown));
       downloadBlob(new Blob([text], { type: 'text/plain;charset=utf-8' }), erDiagramFilename(name, 'mmd'));
-      toast.success(t(I18N_KEYS.EXPLORER.ER_DIAGRAM_EXPORTED));
-    } catch {
-      toast.error(t(I18N_KEYS.EXPLORER.ER_DIAGRAM_EXPORT_FAILED));
-    }
-  };
-
-  const exportSql = () => {
-    if (!shown || exporting || layouting) return;
-    const name = metadata.databaseName || metadata.schemaName || metadata.connectionName || 'er-diagram';
-    const quoteStyle = supportedDbTypes.find((item) => item.code === metadata.dbType)?.identifierQuoteStyle;
-    try {
-      const sql = renderErDiagramSql(toErDiagramDocument(shown), {
-        ...erDiagramSqlSettings(metadata.dbType, quoteStyle),
-        incomplete: erDiagramSqlIncomplete(shown),
-        notes: {
-          incomplete: t(I18N_KEYS.EXPLORER.ER_DIAGRAM_SQL_INCOMPLETE),
-          omittedColumn: (table, column) => t(I18N_KEYS.EXPLORER.ER_DIAGRAM_SQL_OMITTED_COLUMN, { table, column }),
-          omittedTable: (table) => t(I18N_KEYS.EXPLORER.ER_DIAGRAM_SQL_OMITTED_TABLE, { table }),
-          omittedForeignKey: (name) => t(I18N_KEYS.EXPLORER.ER_DIAGRAM_SQL_OMITTED_FOREIGN_KEY, { name }),
-        },
-      });
-      downloadBlob(new Blob([sql], { type: 'text/plain;charset=utf-8' }), erDiagramFilename(name, 'sql'));
       toast.success(t(I18N_KEYS.EXPLORER.ER_DIAGRAM_EXPORTED));
     } catch {
       toast.error(t(I18N_KEYS.EXPLORER.ER_DIAGRAM_EXPORT_FAILED));
@@ -737,9 +713,6 @@ function ErDiagramCanvas({ metadata }: ErDiagramTabProps) {
                     </DropdownMenuItem>
                     <DropdownMenuItem className="text-xs" onClick={exportMermaid}>
                       {t(I18N_KEYS.EXPLORER.ER_DIAGRAM_EXPORT_MERMAID)}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem className="text-xs" onClick={exportSql}>
-                      {t(I18N_KEYS.EXPLORER.ER_DIAGRAM_EXPORT_SQL)}
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
