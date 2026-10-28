@@ -266,7 +266,7 @@ class ConversationMemoryAutoWriteCoordinatorTest {
                 .id(conversationId)
                 .userId(userId)
                 .build());
-        when(cursorService.getOne(any(), eq(false))).thenReturn(cursor);
+        when(cursorService.findByConversationId(conversationId)).thenReturn(cursor);
     }
 
     private AiConversationMemoryCursor cursor(Long conversationId, Long userId, Long lastProcessedMessageId) {

@@ -1,6 +1,5 @@
 package edu.zsc.ai.domain.model.dto.response.base;
 
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -45,16 +44,4 @@ public class PageResponse<T> {
      */
     private List<T> records;
 
-    /**
-     * Create page response from MyBatis-Plus page
-     */
-    public static <T> PageResponse<T> of(Page<T> page) {
-        return PageResponse.<T>builder()
-                .current(page.getCurrent())
-                .size(page.getSize())
-                .total(page.getTotal())
-                .pages(page.getPages())
-                .records(page.getRecords())
-                .build();
-    }
 }

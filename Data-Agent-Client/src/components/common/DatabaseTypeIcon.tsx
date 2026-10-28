@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Database } from 'lucide-react';
 import dmLogo from '../../assets/dm-logo.png';
-import { useRuntimeStore } from '../../store/runtimeStore';
 
 interface DatabaseTypeIconProps {
   dbType?: string;
@@ -35,7 +34,6 @@ export function DatabaseTypeIcon({
   fallbackClassName = 'text-blue-400',
 }: DatabaseTypeIconProps) {
   const [failed, setFailed] = useState(false);
-  const local = useRuntimeStore((state) => state.mode === 'LOCAL');
 
   const iconSrc = useMemo(() => {
     const normalized = (dbType || '').toLowerCase();
@@ -47,7 +45,7 @@ export function DatabaseTypeIcon({
     return matchedRule?.iconUrl ?? '';
   }, [dbType]);
 
-  if (!iconSrc || failed || (local && /^https?:\/\//.test(iconSrc))) {
+  if (!iconSrc || failed || /^https?:\/\//.test(iconSrc)) {
     return <Database className={`${className} ${fallbackClassName}`.trim()} />;
   }
 

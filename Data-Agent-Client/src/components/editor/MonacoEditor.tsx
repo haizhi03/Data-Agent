@@ -6,7 +6,6 @@ import { useTranslation } from 'react-i18next';
 import type { SqlCompletionItem, SqlCompletionKind, SqlSyntaxError } from '../../types/sql';
 import { sqlCompletionService } from '../../services/sqlCompletion.service';
 import { useTheme } from '../../hooks/useTheme';
-import { useAuthStore } from '../../store/authStore';
 import { EXPLORER_SQL_OBJECT_CHANGED } from '../../constants/explorer';
 import { SqlCompletionSession, staticCompletions, completionSortText } from './completion/sqlCompletion';
 import { parameterSpans } from './completion/sqlSignatureHelp';
@@ -107,8 +106,7 @@ export const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(
     const monacoRef = useRef<any>(null);
     const completionContextRef = useRef<SqlCompletionContext | undefined>(completionContext);
     completionContextRef.current = completionContext;
-    const workspace = useAuthStore(state => `${state.user?.id ?? ''}:${state.workspaceType}:${state.workspaceOrgId ?? ''}`);
-    const binding = JSON.stringify([workspace, completionContext?.connectionId, completionContext?.databaseName, completionContext?.schemaName]);
+    const binding = JSON.stringify([completionContext?.connectionId, completionContext?.databaseName, completionContext?.schemaName]);
     const bindingRef = useRef(binding);
     bindingRef.current = binding;
     const sessionRef = useRef<SqlCompletionSession | null>(null);

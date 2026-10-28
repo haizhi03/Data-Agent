@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { groupBackgroundToolSegments } from './groupBackgroundToolSegments';
 import { SegmentKind, ToolExecutionState, type Segment } from './types';
-import { PermissionGrantPreset, PermissionScopeType } from '../../../types/permission';
 
 function toolRun(toolName: string, overrides?: Partial<Extract<Segment, { kind: SegmentKind.TOOL_RUN }>>): Segment {
   return {
@@ -60,21 +59,7 @@ describe('groupBackgroundToolSegments', () => {
       toolRun('exportFile'),
       toolRun('askUserQuestion'),
       toolRun('executeNonSelectSql', {
-        responseData: JSON.stringify({
-          status: 'REQUIRES_CONFIRMATION',
-          ruleMatched: false,
-          requiresConfirmation: true,
-          confirmation: {
-            conversationId: 1,
-            connectionId: 8,
-            sql: 'DELETE FROM users',
-            sqlPreview: 'DELETE FROM users',
-            availableGrantOptions: [{
-              scopeType: PermissionScopeType.CONVERSATION,
-              grantPreset: PermissionGrantPreset.EXACT_SCHEMA,
-            }],
-          },
-        }),
+        responseData: JSON.stringify({ status: 'EXECUTED' }),
       }),
       toolRun('callingExplorerSubAgent'),
     ]);
@@ -84,7 +69,7 @@ describe('groupBackgroundToolSegments', () => {
       SegmentKind.TOOL_RUN,
       SegmentKind.TOOL_RUN,
       SegmentKind.TOOL_RUN,
-      SegmentKind.TOOL_RUN,
+      SegmentKind.TOOL_GROUP,
       SegmentKind.TOOL_RUN,
     ]);
     expect(grouped[0]?.kind === SegmentKind.TOOL_GROUP ? grouped[0].nestedToolRuns : []).toHaveLength(3);

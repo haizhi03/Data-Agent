@@ -1,12 +1,11 @@
 package edu.zsc.ai.domain.service.ai;
 
-import com.baomidou.mybatisplus.extension.service.IService;
 import dev.langchain4j.data.message.ChatMessage;
 import edu.zsc.ai.domain.model.entity.ai.StoredChatMessage;
 
 import java.util.List;
 
-public interface AiMessageService extends IService<StoredChatMessage> {
+public interface AiMessageService {
 
     List<StoredChatMessage> getByConversationIdOrderByCreatedAtAsc(Long conversationId);
 

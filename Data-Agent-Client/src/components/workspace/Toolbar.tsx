@@ -1,4 +1,4 @@
-import { Play, Square, CheckCircle, RotateCcw, WandSparkles } from 'lucide-react';
+import { Play, Square, WandSparkles } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { ReactNode } from 'react';
 import { I18N_KEYS } from '../../constants/i18nKeys';
@@ -11,11 +11,8 @@ import {
 } from '../ui/DropdownMenu';
 import { databaseService } from '../../services/database.service';
 import { Button } from '../ui/Button';
-import { TransactionMode, IsolationLevel } from '../../constants/transactionSettings';
-import { TransactionModeSelector } from './TransactionModeSelector';
 import { getPlatformShortcuts } from '../../lib/platformShortcuts';
 import type { SqlBatchMode } from '../../types/sql';
-import { useRuntimeStore } from '../../store/runtimeStore';
 
 interface ToolbarProps {
   onRun: () => void;
@@ -44,21 +41,15 @@ export function Toolbar({
   currentDatabase,
   onDatabaseChange,
   extraActions,
-  scriptMode,
-  onScriptModeChange,
   timeoutSeconds,
   onTimeoutSecondsChange,
   maxRows,
   onMaxRowsChange,
-  showTransactionControls = true,
 }: ToolbarProps) {
   const { t } = useTranslation();
-  const local = useRuntimeStore((s) => s.mode === 'LOCAL');
   const shortcuts = getPlatformShortcuts();
   const [databases, setDatabases] = useState<string[]>([]);
   const [loadingDatabases, setLoadingDatabases] = useState(false);
-  const [transactionMode, setTransactionMode] = useState<TransactionMode>(TransactionMode.AUTO);
-  const [isolationLevel, setIsolationLevel] = useState<IsolationLevel>(IsolationLevel.DEFAULT);
 
   useEffect(() => {
     if (!connectionId) {
@@ -122,29 +113,6 @@ export function Toolbar({
       {/* Divider */}
       <div className="mx-1 workbench-toolbar-divider" />
 
-      {/* Transaction Mode Selector */}
-      {showTransactionControls && (
-        <TransactionModeSelector
-          transactionMode={transactionMode}
-          isolationLevel={isolationLevel}
-          onTransactionModeChange={setTransactionMode}
-          onIsolationLevelChange={setIsolationLevel}
-        />
-      )}
-
-      {!local && onScriptModeChange && (
-        <select
-          aria-label="SQL script execution mode"
-          className="workbench-pill theme-text-primary text-[10px]"
-          value={scriptMode ?? 'ATOMIC'}
-          disabled={isRunning}
-          onChange={event => onScriptModeChange(event.target.value as SqlBatchMode)}
-          title="Atomic: validated queries and DML only. Stepwise: each statement commits separately, including DDL."
-        >
-          <option value="ATOMIC">Atomic script</option>
-          <option value="STEPWISE">Stepwise script</option>
-        </select>
-      )}
       {onTimeoutSecondsChange && (
         <label className="flex items-center gap-1 text-[10px]" title="Per-statement timeout in seconds">
           Timeout
@@ -171,28 +139,6 @@ export function Toolbar({
           <div className="flex items-center gap-1">
             {extraActions}
           </div>
-        </>
-      )}
-
-      {/* Commit and Rollback Buttons (Manual Mode Only) */}
-      {showTransactionControls && transactionMode === TransactionMode.MANUAL && (
-        <>
-          <Button
-            variant="ghost"
-            size="icon"
-            className={actionButtonClass}
-            title={t(I18N_KEYS.WORKSPACE.COMMIT)}
-          >
-            <CheckCircle className="w-3.5 h-3.5 text-green-500 hover:text-green-600" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className={actionButtonClass}
-            title={t(I18N_KEYS.WORKSPACE.ROLLBACK)}
-          >
-            <RotateCcw className="w-3.5 h-3.5 text-orange-500 hover:text-orange-600" />
-          </Button>
         </>
       )}
 

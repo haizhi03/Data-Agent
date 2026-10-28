@@ -1,21 +1,11 @@
-import { ExecuteNonSelectToolStatus, parseExecuteNonSelectToolResult } from '../blocks/executeNonSelectTypes';
 import { getToolType, ToolType } from '../blocks/toolTypes';
 import type { Segment } from './types';
 import { SegmentKind } from './types';
 
 type ToolRunSegment = Extract<Segment, { kind: SegmentKind.TOOL_RUN }>;
 
-function isWriteConfirmation(segment: ToolRunSegment): boolean {
-  if (segment.toolName !== 'executeNonSelectSql') return false;
-  return parseExecuteNonSelectToolResult(segment.responseData)?.status === ExecuteNonSelectToolStatus.REQUIRES_CONFIRMATION;
-}
-
 function isBackgroundToolCandidate(segment: Segment): segment is ToolRunSegment {
   if (segment.kind !== SegmentKind.TOOL_RUN || segment.parentToolCallId) {
-    return false;
-  }
-
-  if (isWriteConfirmation(segment)) {
     return false;
   }
 

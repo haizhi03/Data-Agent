@@ -1,50 +1,19 @@
 import axios from 'axios';
-import { useAuthStore } from '../store/authStore';
-import { HttpStatusCode, ErrorCode } from '../constants/errorCode';
-import {
-    applyRefreshedTokens,
-    clearAuthAndOpenLogin,
-    ensureValidAccessToken,
-    resolveRefreshAccessTokenResult,
-} from './authToken';
+import { ErrorCode } from '../constants/errorCode';
 import { X_ORG_ID, X_WORKSPACE_TYPE } from '../constants/workspaceHeaders';
 import { useRuntimeStore } from '../store/runtimeStore';
 import { failLocalRuntime, localRequestTransport } from './localRuntime';
 
 const http = axios.create({
-    baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
     timeout: 10000,
     headers: {
         'Content-Type': 'application/json',
     },
 });
 
-function readRequestHeader(
-    headers: typeof axios.defaults.headers.common | undefined,
-    name: string
-): string | undefined {
-    if (!headers) return undefined;
-    const maybeHeaders = headers as unknown as { get?: (k: string) => unknown };
-    if (typeof maybeHeaders.get === 'function') {
-        const v = maybeHeaders.get(name);
-        return v != null && String(v).length > 0 ? String(v) : undefined;
-    }
-    const rec = headers as Record<string, unknown>;
-    const direct = rec[name] ?? rec[name.toLowerCase()];
-    if (direct == null) return undefined;
-    const s = String(direct);
-    return s.length > 0 ? s : undefined;
-}
-
-const isAuthEndpoint = (url?: string) => {
-    const path = url ?? '';
-    return path.includes('/auth/refresh') || path.includes('/auth/login');
-};
-
 function redactLocalError(error: any) {
-    if (useRuntimeStore.getState().mode !== 'LOCAL') return error;
     for (const config of [error?.config, error?.response?.config]) {
-        if (config) delete config.data; // Draft model keys / database passwords must not survive on loggable error objects.
+        if (config) delete config.data;
         const headers = config?.headers;
         if (typeof headers?.delete === 'function') headers.delete('Authorization');
         else if (headers) for (const key of Object.keys(headers)) if (key.toLowerCase() === 'authorization') delete headers[key];
@@ -53,60 +22,23 @@ function redactLocalError(error: any) {
     return error;
 }
 
-http.interceptors.request.use(
-    async (config) => {
-        if (useRuntimeStore.getState().mode === 'LOCAL') {
-            const local = localRequestTransport(config.url);
-            config.baseURL = local.baseURL;
-            if (local.authorization) config.headers.Authorization = local.authorization;
-            else config.headers.delete('Authorization');
-            config.headers.set(X_WORKSPACE_TYPE, 'PERSONAL');
-            config.headers.delete(X_ORG_ID);
-            config.headers.set('X-Local-Runtime-Id', useRuntimeStore.getState().capabilities!.runtimeInstanceId);
-            return config;
-        }
-        if (isAuthEndpoint(config.url)) {
-            return config;
-        }
-        const token = await ensureValidAccessToken();
-        if (token) {
-            config.headers.Authorization = `Bearer ${token}`;
-        } else {
-            const { accessToken } = useAuthStore.getState();
-            if (accessToken) {
-                config.headers.Authorization = `Bearer ${accessToken}`;
-            }
-        }
-
-        const { workspaceType, workspaceOrgId } = useAuthStore.getState();
-        const explicitWorkspaceType = readRequestHeader(config.headers, X_WORKSPACE_TYPE);
-        const effectiveWorkspaceType = explicitWorkspaceType ?? workspaceType;
-        config.headers[X_WORKSPACE_TYPE] = effectiveWorkspaceType;
-        if (effectiveWorkspaceType === 'ORGANIZATION') {
-            const explicitOrgId = readRequestHeader(config.headers, X_ORG_ID);
-            if (explicitOrgId == null && workspaceOrgId != null) {
-                config.headers[X_ORG_ID] = String(workspaceOrgId);
-            }
-        } else {
-            delete (config.headers as Record<string, unknown>)[X_ORG_ID];
-        }
-
-        return config;
-    },
-    (error) => {
-        return Promise.reject(error);
-    }
-);
+http.interceptors.request.use((config) => {
+    const local = localRequestTransport(config.url);
+    config.baseURL = local.baseURL;
+    if (local.authorization) config.headers.Authorization = local.authorization;
+    else config.headers.delete('Authorization');
+    config.headers.set(X_WORKSPACE_TYPE, 'PERSONAL');
+    config.headers.delete(X_ORG_ID);
+    config.headers.set('X-Local-Runtime-Id', useRuntimeStore.getState().capabilities!.runtimeInstanceId);
+    return config;
+});
 
 http.interceptors.response.use(
     (response) => {
-        // 检查后端返回的 code 字段，只有 code === 200 才是真正的成功
         const responseData = response.data;
         if (responseData && typeof responseData === 'object' && 'code' in responseData) {
             const code = responseData.code;
-            // 如果 code 不是 200，将其作为错误处理
             if (code !== ErrorCode.SUCCESS) {
-                // 构造一个错误对象，保持与 axios 错误格式一致
                 const error: any = new Error(responseData.message || 'Request failed');
                 error.response = {
                     status: response.status,
@@ -115,69 +47,15 @@ http.interceptors.response.use(
                 error.config = response.config;
                 return Promise.reject(redactLocalError(error));
             }
-            // code === 200，如果响应是 ApiResponse 格式，自动提取 data 字段
-            // 这样 service 层可以直接使用 response.data，无需关心 ApiResponse 结构
             if ('data' in responseData) {
                 response.data = responseData.data;
             }
         }
-        // code === 200 或没有 code 字段（兼容旧接口），返回响应
         return response;
     },
-    async (error) => {
-        if (useRuntimeStore.getState().mode === 'LOCAL') {
-            if (error.response?.status === 401) failLocalRuntime();
-            return Promise.reject(redactLocalError(error));
-        }
-        const originalRequest = error.config as any;
-        // HTTP 401 或 业务 code 401 任一成立即尝试刷新
-        const isNotLogin =
-            error.response?.status === HttpStatusCode.UNAUTHORIZED ||
-            error.response?.data?.code === ErrorCode.NOT_LOGIN_ERROR;
-
-        if (isNotLogin && originalRequest && !originalRequest._retry) {
-            originalRequest._retry = true;
-
-            const { refreshToken } = useAuthStore.getState();
-            if (!refreshToken) {
-                clearAuthAndOpenLogin();
-                return Promise.reject(error);
-            }
-
-            try {
-                const refreshResponse = await axios.post(
-                    '/api/auth/refresh',
-                    { refreshToken },
-                    {
-                        headers: { 'Content-Type': 'application/json' },
-                        validateStatus: () => true,
-                    }
-                );
-                const refreshResult = resolveRefreshAccessTokenResult(refreshResponse.status, refreshResponse.data);
-                if (refreshResult.status === 'auth-failed') {
-                    clearAuthAndOpenLogin();
-                    return Promise.reject(error);
-                }
-                if (refreshResult.status !== 'success') {
-                    return Promise.reject(error);
-                }
-
-                applyRefreshedTokens(refreshResult.tokens);
-
-                originalRequest.headers = originalRequest.headers || {};
-                originalRequest.headers.Authorization = `Bearer ${refreshResult.tokens.accessToken}`;
-                return http(originalRequest);
-            } catch (refreshError) {
-                return Promise.reject(refreshError);
-            }
-        }
-
-        if (error.response?.data?.code === ErrorCode.NOT_LOGIN_ERROR) {
-            const { openLoginModal } = useAuthStore.getState();
-            openLoginModal();
-        }
-
-        return Promise.reject(error);
+    (error) => {
+        if (error.response?.status === 401) failLocalRuntime();
+        return Promise.reject(redactLocalError(error));
     }
 );
 

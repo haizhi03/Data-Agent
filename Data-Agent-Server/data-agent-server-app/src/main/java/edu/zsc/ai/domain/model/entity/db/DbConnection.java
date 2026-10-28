@@ -1,6 +1,5 @@
 package edu.zsc.ai.domain.model.entity.db;
 
-import com.baomidou.mybatisplus.annotation.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -19,17 +18,15 @@ import java.time.LocalDateTime;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@TableName(value = "db_connections", autoResultMap = true)
 public class DbConnection {
 
     /**
      * Primary key
      */
-    @TableId(type = IdType.AUTO)
     private Long id;
 
     /**
-     * Associated system user ID, references sys_users.id
+     * Associated local owner ID
      */
     private Long userId;
 

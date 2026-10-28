@@ -1,7 +1,6 @@
 package edu.zsc.ai.config.ai.model;
 
 import edu.zsc.ai.common.enums.org.WorkspaceTypeEnum;
-import edu.zsc.ai.domain.service.org.OrgAccessService;
 import edu.zsc.ai.domain.service.ai.model.ModelThinkingOptions;
 import java.util.EnumMap;
 import java.util.List;
@@ -14,7 +13,6 @@ import static edu.zsc.ai.config.ai.model.StartupModelConfigRepository.sameScope;
 @RequiredArgsConstructor
 public class ModelConfigResolver {
     private final ModelConfigRepository repository;
-    private final OrgAccessService orgAccess;
 
     public boolean enabled() { return repository.enabled(); }
     public ModelRunSnapshot resolveRun(String modelConfigId, String legacyName) {
@@ -63,11 +61,9 @@ public class ModelConfigResolver {
                 c.capabilityProfile(), c.compatibilityProfile(), c.options(), c.maxContextTokens(), c.memoryThreshold(), c.chatVisible(), c.allowedPrivateHosts());
     }
     private void authorize(ModelAccessContext access) {
-        if (!enabled() || access.userId() <= 0) throw ModelIntegrationException.unavailable();
-        if (access.workspaceType() == WorkspaceTypeEnum.ORGANIZATION) {
-            try { orgAccess.loadActiveMembership(access.userId(), access.ownerId()); }
-            catch (RuntimeException e) { throw ModelIntegrationException.unavailable(); }
-        } else if (access.userId() != access.ownerId()) throw ModelIntegrationException.unavailable();
+        if (!enabled() || access.userId() <= 0
+                || access.workspaceType() != WorkspaceTypeEnum.PERSONAL
+                || access.userId() != access.ownerId()) throw ModelIntegrationException.unavailable();
     }
     private static boolean blank(String value) { return value == null || value.isBlank(); }
 }

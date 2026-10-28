@@ -4,13 +4,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.zsc.ai.DataAgentApplication;
 import edu.zsc.ai.api.model.request.BaseRequest;
-import edu.zsc.ai.config.sys.SaTokenConfigure;
 import edu.zsc.ai.context.AgentExecutionContext;
 import edu.zsc.ai.context.AgentRequestContext;
 import edu.zsc.ai.context.RequestContext;
 import edu.zsc.ai.context.RequestContextInfo;
-import edu.zsc.ai.domain.service.org.OrgAccessService;
-import edu.zsc.ai.domain.service.sys.SysSessionsService;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -81,9 +78,14 @@ class LocalRuntimeHttpTest {
         var address = (java.net.InetAddress) tomcat.getTomcat().getConnector().getProperty("address");
         assertThat(address.isLoopbackAddress()).isTrue();
         assertThat(context.getBeansOfType(DataSource.class)).isEmpty();
-        assertThat(context.getBeansOfType(SysSessionsService.class)).isEmpty();
-        assertThat(context.getBeansOfType(OrgAccessService.class)).isEmpty();
-        assertThat(context.getBeansOfType(SaTokenConfigure.class)).isEmpty();
+        for (String legacyType : java.util.List.of(
+                "edu.zsc.ai.domain.service.sys.SysSessionsService",
+                "edu.zsc.ai.domain.service.org.OrgAccessService",
+                "edu.zsc.ai.config.sys.SaTokenConfigure",
+                "org.apache.ibatis.session.SqlSessionFactory")) {
+            org.assertj.core.api.Assertions.assertThatThrownBy(() -> Class.forName(legacyType))
+                    .isInstanceOf(ClassNotFoundException.class);
+        }
         assertThat(context.getBeansOfType(cn.dev33.satoken.config.SaTokenConfig.class)).isEmpty();
         assertThat(context.getBeansOfType(edu.zsc.ai.domain.service.ai.model.FileModelStore.class)).hasSize(1);
         assertThat(context.getBeansOfType(edu.zsc.ai.domain.service.ai.model.FileCredentialStore.class)).hasSize(1);
@@ -92,7 +94,6 @@ class LocalRuntimeHttpTest {
         assertThat(directory.resolve("connections.json")).doesNotExist();
         assertThat(context.getEnvironment().getProperty("spring.datasource.url")).isNull();
         assertThat(context.getEnvironment().getActiveProfiles()).isEmpty();
-        assertThat(context.getBeansOfType(org.apache.ibatis.session.SqlSessionFactory.class)).isEmpty();
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> Class.forName("org.postgresql.Driver")).isInstanceOf(ClassNotFoundException.class);
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> Class.forName("dev.langchain4j.store.embedding.pgvector.PgVectorEmbeddingStore")).isInstanceOf(ClassNotFoundException.class);
     }

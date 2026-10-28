@@ -2,7 +2,6 @@ import { useRuntimeStore, localWorkbenchReady } from '../../store/runtimeStore';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useWorkspaceStore } from '../../store/workspaceStore';
-import { useAuthStore } from '../../store/authStore';
 import { useTabStore } from '../../store/tabStore';
 import { useToast } from '../../hooks/useToast';
 import type { TableTabMetadata } from '../../types/tab';
@@ -35,7 +34,6 @@ export function DatabaseExplorer() {
   const { t } = useTranslation();
   const toast = useToast();
   const { supportedDbTypes, supportedDbTypesLoading, openTab, fetchSupportedDbTypes } = useWorkspaceStore();
-  const accessToken = useAuthStore((state) => state.accessToken);
   const {
     connections,
     treeDataState,
@@ -267,9 +265,9 @@ export function DatabaseExplorer() {
   };
 
   useEffect(() => {
-    if (!(useRuntimeStore.getState().mode === 'LOCAL' ? localReady : accessToken)) return;
+    if (!localReady) return;
     fetchSupportedDbTypes();
-  }, [accessToken, localReady, fetchSupportedDbTypes]);
+  }, [localReady, fetchSupportedDbTypes]);
 
   useEffect(() => {
     const onSqlObjectChanged = (event: Event) => {

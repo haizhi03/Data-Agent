@@ -1,8 +1,4 @@
 export const ROUTES = {
   HOME: '/',
-  PROFILE: '/profile',
-  SETTINGS: '/settings',
-  MODELS: '/settings/models',
-  ORGANIZATION: '/organization',
-  PERMISSIONS: '/permissions',
+  MODELS: '/local/models',
 } as const;

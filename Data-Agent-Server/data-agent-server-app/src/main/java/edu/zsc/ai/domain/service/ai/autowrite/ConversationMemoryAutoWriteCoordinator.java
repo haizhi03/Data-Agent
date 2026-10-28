@@ -1,6 +1,5 @@
 package edu.zsc.ai.domain.service.ai.autowrite;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import edu.zsc.ai.domain.model.entity.ai.AiConversation;
 import edu.zsc.ai.domain.model.entity.ai.AiConversationMemoryCursor;
 import edu.zsc.ai.domain.model.entity.ai.StoredChatMessage;
@@ -220,9 +219,7 @@ public class ConversationMemoryAutoWriteCoordinator {
     }
 
     private AiConversationMemoryCursor getOrCreateCursor(Long conversationId, Long userId) {
-        LambdaQueryWrapper<AiConversationMemoryCursor> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(AiConversationMemoryCursor::getConversationId, conversationId);
-        AiConversationMemoryCursor cursor = cursorService.getOne(wrapper, false);
+        AiConversationMemoryCursor cursor = cursorService.findByConversationId(conversationId);
 
         if (cursor == null) {
             cursor = AiConversationMemoryCursor.builder()

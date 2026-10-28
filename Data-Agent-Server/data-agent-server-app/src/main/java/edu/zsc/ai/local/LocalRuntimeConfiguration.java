@@ -27,7 +27,6 @@ import org.springframework.context.ApplicationEventPublisher;
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnProperty(name = "app.runtime.mode", havingValue = "local", matchIfMissing = true)
 @EnableAutoConfiguration(exclude = DataSourceAutoConfiguration.class, excludeName = {
-        "com.baomidou.mybatisplus.autoconfigure.MybatisPlusAutoConfiguration",
         "cn.dev33.satoken.spring.SaTokenContextRegister",
         "cn.dev33.satoken.spring.SaBeanRegister",
         "cn.dev33.satoken.spring.SaBeanInject",

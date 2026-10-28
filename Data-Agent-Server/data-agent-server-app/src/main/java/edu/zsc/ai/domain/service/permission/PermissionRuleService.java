@@ -1,14 +1,12 @@
 package edu.zsc.ai.domain.service.permission;
 
-import com.baomidou.mybatisplus.extension.service.IService;
 import edu.zsc.ai.common.enums.permission.PermissionGrantPreset;
 import edu.zsc.ai.common.enums.permission.PermissionScopeType;
 import edu.zsc.ai.domain.model.dto.response.permission.PermissionRuleResponse;
-import edu.zsc.ai.domain.model.entity.ai.AiPermissionRule;
 
 import java.util.List;
 
-public interface PermissionRuleService extends IService<AiPermissionRule> {
+public interface PermissionRuleService {
 
     List<PermissionRuleResponse> listForCurrentUser(PermissionScopeType scopeType, Long conversationId);
 

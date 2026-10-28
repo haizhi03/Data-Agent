@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next';
 import { NodeApi } from 'react-arborist';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { connectionService } from '../services/connection.service';
-import { useAuthStore } from '../store/authStore';
 import { useRuntimeStore, localWorkbenchReady } from '../store/runtimeStore';
 import { useWorkspaceStore } from '../store/workspaceStore';
 import { useToast } from './useToast';
@@ -40,12 +39,11 @@ export function useConnectionTree() {
   const toast = useToast();
   const queryClient = useQueryClient();
   const { supportedDbTypes } = useWorkspaceStore();
-  const accessToken = useAuthStore((s) => s.accessToken);
 
   const { data, isLoading: isConnectionsLoading, refetch: refetchConnections } = useQuery({
     queryKey: QUERY_KEY_CONNECTIONS,
     queryFn: () => connectionService.getConnections(),
-    enabled: localReady || (useRuntimeStore.getState().mode !== 'LOCAL' && !!accessToken),
+    enabled: localReady,
   });
 
   const connections = useMemo(() => data || [], [data]);

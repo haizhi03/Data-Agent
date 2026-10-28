@@ -1,4 +1,3 @@
-import { useRuntimeStore } from '../store/runtimeStore';
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { TabBar } from "../components/workspace/TabBar";
@@ -18,7 +17,7 @@ import { connectionService } from "../services/connection.service";
 import { sqlAnalysisService } from "../services/sqlAnalysis.service";
 import { getSqlDialectByDbType } from "../constants/sqlDialect";
 import { formatSql } from "../utils/sql";
-import { containsNonAtomicStatement, statementSqlAtOffset } from "../utils/sqlRunner";
+import { statementSqlAtOffset } from "../utils/sqlRunner";
 import { extractSqlVariables, substituteSqlVariablesAtOffset, type SqlVariable } from "../utils/sqlVariables";
 import { SqlParameterDialog } from "../components/editor/SqlParameterDialog";
 import { useToast } from '../hooks/useToast';
@@ -29,7 +28,6 @@ const NO_VARIABLES: SqlVariable[] = [];
 
 export default function Home() {
     const { t } = useTranslation();
-    const local = useRuntimeStore((s) => s.mode === 'LOCAL');
     const toast = useToast();
     const preparingRunRef = useRef(false);
     const { tabs, activeTabId, updateTabContent, updateTabMetadata } = useWorkspaceStore();
@@ -62,7 +60,7 @@ export default function Home() {
         ? activeTab?.metadata as import('../types/tab').ConsoleTabMetadata | undefined
         : undefined;
 
-    const scriptMode: SqlBatchMode = local ? 'STEPWISE' : sqlContext?.sqlBatchMode ?? 'ATOMIC';
+    const scriptMode: SqlBatchMode = 'STEPWISE';
 
     useEffect(() => {
         const connectionId = sqlContext?.connectionId;
@@ -133,19 +131,13 @@ export default function Home() {
             }
         }
 
-        // ATOMIC mode only accepts queries and transactional DML; DDL (e.g. the
-        // generated DROP/CREATE/ALTER scripts) is rejected server-side. Auto-switch
-        // to STEPWISE for those scripts so they run instead of failing.
-        const effectiveMode: SqlBatchMode =
-            scriptMode === 'ATOMIC' && containsNonAtomicStatement(sql, connectionType?.dbType.toUpperCase() !== 'DM') ? 'STEPWISE' : scriptMode;
-
         await runSql({
             connectionId: sqlContext.connectionId,
             databaseName: sqlContext.databaseName,
             schemaName: sqlContext.schemaName,
             dbType: connectionType?.id === sqlContext.connectionId ? connectionType.dbType : undefined,
             sql,
-            mode: effectiveMode,
+            mode: scriptMode,
             timeoutMs: timeoutSeconds * 1000,
             maxRows,
         });
@@ -239,13 +231,10 @@ export default function Home() {
                                     onFormat={connectionType && connectionType.id === sqlContext?.connectionId ? handleFormatSql : undefined}
                                     onStop={handleStop}
                                     isRunning={isRunning}
-                                    scriptMode={scriptMode}
-                                    onScriptModeChange={(mode) => updateTabMetadata(activeTab.id, { sqlBatchMode: mode })}
                                     timeoutSeconds={timeoutSeconds}
                                     onTimeoutSecondsChange={setTimeoutSeconds}
                                     maxRows={maxRows}
                                     onMaxRowsChange={setMaxRows}
-                                    showTransactionControls={useRuntimeStore.getState().mode !== 'LOCAL' && connectionType?.dbType.toUpperCase() !== 'DM'}
                                     connectionId={sqlContext?.connectionId}
                                     currentDatabase={sqlContext?.databaseName}
                                     onDatabaseChange={(db) =>

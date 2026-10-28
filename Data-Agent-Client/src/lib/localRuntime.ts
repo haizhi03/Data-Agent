@@ -35,7 +35,6 @@ export function initializeRuntime(): Promise<void> {
     const host = typeof window !== 'undefined' ? window.dataAgentHost : undefined;
     useRuntimeStore.setState({ mode: 'LOCAL', status: 'STARTING', capabilities: null, error: null });
     try {
-      if (import.meta.env.VITE_RUNTIME_MODE && import.meta.env.VITE_RUNTIME_MODE !== 'local') throw new Error('Unsupported runtime mode');
       const bootstrap = host ? await host.getBootstrap() : {
         contractVersion: 1 as const, apiBaseURL: 'http://127.0.0.1:8081/api', runtimeInstanceId: '', transportToken: '',
       };

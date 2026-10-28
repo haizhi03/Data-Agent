@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { ArrowLeft, Plus, RefreshCw, FlaskConical, Star } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { useAuthStore } from '../store/authStore';
 import { useRuntimeStore } from '../store/runtimeStore';
 import { Button } from '../components/ui/Button';
 import { ModelSetupEditor } from '../components/ai/ModelSetupEditor';
@@ -14,17 +13,13 @@ import type { ManagedModel, ModelConnection, ModelManagementStatus, ModelProfile
 
 const selectClass = 'w-full h-10 px-3 rounded-md border border-input bg-background text-sm';
 export default function ModelSettings() {
-  const localId = useRuntimeStore((s) => s.mode === 'LOCAL' ? s.capabilities?.runtimeInstanceId : null);
-  const scope = useAuthStore((s) => `${s.user?.id ?? ''}/${s.workspaceType}/${s.workspaceOrgId ?? ''}/${s.workspaceOrgRole ?? ''}`);
-  return <ModelSettingsScope key={localId ?? scope} />;
+  const runtimeInstanceId = useRuntimeStore((s) => s.capabilities?.runtimeInstanceId);
+  return <ModelSettingsScope key={runtimeInstanceId} />;
 }
 
 function ModelSettingsScope() {
   const { t } = useTranslation();const navigate = useNavigate();const tr = (key: string) => t(`model_settings.${key}`);
   const api = useMemo(createModelManagementService, []);
-  const workspaceType = useAuthStore((s) => s.workspaceType);
-  const local = useRuntimeStore((s) => s.mode === 'LOCAL');
-  const orgName = useAuthStore((s) => s.user?.organizations?.find((o) => o.orgId === s.workspaceOrgId)?.orgName);
   const [status, setStatus] = useState<ModelManagementStatus | null>(null);
   const [connections, setConnections] = useState<ModelConnection[]>([]);
   const [models, setModels] = useState<ManagedModel[]>([]);
@@ -104,7 +99,7 @@ function ModelSettingsScope() {
     <header className="flex flex-wrap justify-between items-start gap-4">
       <div><button type="button" disabled={busy} className="flex items-center gap-1 text-sm text-muted-foreground mb-3 disabled:opacity-50" onClick={() => form ? closeForm() : navigate('/')}><ArrowLeft size={15} />{tr(form ? 'setup.back_to_list' : 'back')}</button>
         <h1 className="text-2xl font-semibold">{tr(form ? form.modelConfigId ? 'setup.edit' : 'setup.add' : 'title')}</h1><p className="text-sm text-muted-foreground mt-2">{tr('setup.subtitle')}</p>
-        <p className="text-sm mt-2">{tr('workspace')}: {local || workspaceType === 'PERSONAL' ? tr('personal') : orgName ?? tr('organization')}</p></div>
+        <p className="text-sm mt-2">{tr('workspace')}: {tr('personal')}</p></div>
       {!form && <Button variant="outline" disabled={loading || busy} onClick={() => { closeForm();void load(); }}><RefreshCw size={15} className="mr-2" />{tr('refresh')}</Button>}
     </header>
     {error && <div role="alert" className="rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm"><p>{tr(`errors.${error}`)}</p>

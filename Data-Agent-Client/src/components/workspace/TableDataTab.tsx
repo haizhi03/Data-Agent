@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '../ui/Button';
 import { I18N_KEYS } from '../../constants/i18nKeys';
@@ -23,7 +23,6 @@ import { TableDataPagination } from './TableDataPagination';
 import { TableDataToolbar } from './TableDataToolbar';
 import { useTableDataFind } from './useTableDataFind';
 import { useTableDataTabState } from './useTableDataTabState';
-import { useRuntimeStore } from '../../store/runtimeStore';
 
 interface TableDataTabProps {
   tabId: string;
@@ -31,7 +30,6 @@ interface TableDataTabProps {
 }
 
 export function TableDataTab({ tabId, metadata }: TableDataTabProps) {
-  const local = useRuntimeStore((s) => s.mode === 'LOCAL');
   const { t } = useTranslation();
   const isDm = metadata.dbType?.toLowerCase() === 'dm';
   const {
@@ -133,24 +131,6 @@ export function TableDataTab({ tabId, metadata }: TableDataTabProps) {
     onCloseFind,
   } = useTableDataFind({ data, viewMode, formatCellValue });
 
-  // Ctrl/Cmd + Enter submits all staged operations. Inputs, textareas and
-  // content-editable elements (SQL editor, find box) keep their own shortcuts.
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (local) return;
-      if (!(event.ctrlKey || event.metaKey) || event.key !== 'Enter') return;
-      const target = event.target as HTMLElement | null;
-      const tag = target?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable) {
-        return;
-      }
-      event.preventDefault();
-      void submitPendingOps(false);
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [submitPendingOps, local]);
-
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <TableDataToolbar
@@ -192,12 +172,6 @@ export function TableDataTab({ tabId, metadata }: TableDataTabProps) {
         onFindPrevious={onFindPrevious}
         onCloseFind={onCloseFind}
       />
-
-      {!local && isDm && isTable && !isAddingRow && (
-        <div className="px-3 py-1 text-[10px] theme-text-secondary border-b theme-border">
-          {t(I18N_KEYS.EXPLORER.DM_CELL_EDIT_HINT)}
-        </div>
-      )}
 
       <TableDataFilterBar
         columns={columns}
@@ -288,7 +262,7 @@ export function TableDataTab({ tabId, metadata }: TableDataTabProps) {
         orderByDirection={orderByDirection}
         selectedRowIndex={selectedRowIndex}
         startRow={startRow}
-        editable={!local && isTable && viewMode === 'grid'}
+        editable={false}
         matchedKeys={matchedKeys}
         currentMatch={currentMatch}
         dirtyCellKeys={dirtyCellKeys}

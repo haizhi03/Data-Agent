@@ -12,12 +12,12 @@ export interface RuntimeCapabilities {
   }>;
 }
 interface RuntimeState {
-  mode: 'SERVER' | 'LOCAL';
+  mode: 'LOCAL';
   status: 'STARTING' | 'READY' | 'FAILED';
   capabilities: RuntimeCapabilities | null;
   error: string | null;
 }
 // Deliberately not persisted. Authentication material never belongs in this store.
 export const useRuntimeStore = create<RuntimeState>(() => ({ mode: 'LOCAL', status: 'STARTING', capabilities: null, error: null }));
-export const localWorkbenchReady = (s: RuntimeState) => s.mode === 'LOCAL' && s.status === 'READY'
+export const localWorkbenchReady = (s: RuntimeState) => s.status === 'READY'
   && s.capabilities?.features.databaseWorkbench.state === 'READY';

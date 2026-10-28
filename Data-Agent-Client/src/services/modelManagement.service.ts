@@ -1,49 +1,36 @@
 import http from '../lib/http';
-import { useAuthStore } from '../store/authStore';
-import { useRuntimeStore } from '../store/runtimeStore';
-import { X_ORG_ID, X_WORKSPACE_TYPE } from '../constants/workspaceHeaders';
 import type { ConnectionInput, ConnectionTestInput, ConnectionTestResult, ManagedModel, ModelConnection, ModelInput, ModelManagementStatus, ModelProfile, ModelPurpose, ModelSetupInput, ModelSetupResult, ModelSpecification, ModelTest, PresetBindingInput, PurposeBinding, ThinkingMode } from '../types/modelManagement';
 
-/** Freeze request ownership when the screen is created, including during token refresh. */
 export function createModelManagementService() {
-  const { user, workspaceType, workspaceOrgId } = useAuthStore.getState();
-  const headers: Record<string, string> = { [X_WORKSPACE_TYPE]: workspaceType };
-  if (workspaceType === 'ORGANIZATION' && workspaceOrgId != null) headers[X_ORG_ID] = String(workspaceOrgId);
-  const principal = user?.id;
-  const options = () => {
-    if (useRuntimeStore.getState().mode === 'LOCAL') return { headers: { [X_WORKSPACE_TYPE]: 'PERSONAL' } };
-    if (useAuthStore.getState().user?.id !== principal) throw new Error('MODEL_MANAGEMENT_FORBIDDEN');
-    return { headers };
-  };
   return {
-    status: async () => (await http.get<ModelManagementStatus>('/ai/model-management', options())).data,
-    profiles: async () => (await http.get<ModelProfile[]>('/ai/model-profiles', options())).data,
-    specifications: async () => (await http.get<ModelSpecification[]>('/ai/model-specifications', options())).data,
-    connections: async () => (await http.get<ModelConnection[]>('/ai/model-connections', options())).data,
-    models: async () => (await http.get<ManagedModel[]>('/ai/model-configs', options())).data,
-    bindings: async () => (await http.get<PurposeBinding[]>('/ai/model-bindings', options())).data,
-    saveSetup: async (body: ModelSetupInput) => (await http.post<ModelSetupResult>('/ai/model-setups', body, options())).data,
+    status: async () => (await http.get<ModelManagementStatus>('/ai/model-management')).data,
+    profiles: async () => (await http.get<ModelProfile[]>('/ai/model-profiles')).data,
+    specifications: async () => (await http.get<ModelSpecification[]>('/ai/model-specifications')).data,
+    connections: async () => (await http.get<ModelConnection[]>('/ai/model-connections')).data,
+    models: async () => (await http.get<ManagedModel[]>('/ai/model-configs')).data,
+    bindings: async () => (await http.get<PurposeBinding[]>('/ai/model-bindings')).data,
+    saveSetup: async (body: ModelSetupInput) => (await http.post<ModelSetupResult>('/ai/model-setups', body)).data,
     saveConnection: async (body: ConnectionInput, id?: string) => id
-      ? (await http.patch<ModelConnection>(`/ai/model-connections/${id}`, body, options())).data
-      : (await http.post<ModelConnection>('/ai/model-connections', body, options())).data,
+      ? (await http.patch<ModelConnection>(`/ai/model-connections/${id}`, body)).data
+      : (await http.post<ModelConnection>('/ai/model-connections', body)).data,
     testConnection: async (body: ConnectionTestInput, signal?: AbortSignal) =>
-      (await http.post<ConnectionTestResult>('/ai/model-connections/test', body, { ...options(), timeout: 30000, signal })).data,
+      (await http.post<ConnectionTestResult>('/ai/model-connections/test', body, { timeout: 30000, signal })).data,
     credential: async (id: string, expectedVersion: number, action: 'REPLACE' | 'UNLINK', apiKey?: string) =>
-      (await http.post<ModelConnection>(`/ai/model-connections/${id}/credential`, { expectedVersion, action, ...(apiKey === undefined ? {} : { apiKey }) }, options())).data,
+      (await http.post<ModelConnection>(`/ai/model-connections/${id}/credential`, { expectedVersion, action, ...(apiKey === undefined ? {} : { apiKey }) })).data,
     disableConnection: async (id: string, expectedVersion: number) =>
-      (await http.post<ModelConnection>(`/ai/model-connections/${id}/disable`, { expectedVersion }, options())).data,
+      (await http.post<ModelConnection>(`/ai/model-connections/${id}/disable`, { expectedVersion })).data,
     saveModel: async (body: ModelInput, id?: string) => id
-      ? (await http.patch<ManagedModel>(`/ai/model-configs/${id}`, body, options())).data
-      : (await http.post<ManagedModel>('/ai/model-configs', body, options())).data,
+      ? (await http.patch<ManagedModel>(`/ai/model-configs/${id}`, body)).data
+      : (await http.post<ManagedModel>('/ai/model-configs', body)).data,
     disableModel: async (id: string, expectedVersion: number) =>
-      (await http.post<ManagedModel>(`/ai/model-configs/${id}/disable`, { expectedVersion }, options())).data,
+      (await http.post<ManagedModel>(`/ai/model-configs/${id}/disable`, { expectedVersion })).data,
     bind: async (purpose: ModelPurpose, modelConfigId: string, expectedVersion: number, thinkingMode?: ThinkingMode) =>
-      (await http.put<PurposeBinding>(`/ai/model-bindings/${purpose}`, { expectedVersion, modelConfigId, ...(thinkingMode === undefined ? {} : { thinkingMode }) }, options())).data,
+      (await http.put<PurposeBinding>(`/ai/model-bindings/${purpose}`, { expectedVersion, modelConfigId, ...(thinkingMode === undefined ? {} : { thinkingMode }) })).data,
     bindPreset: async (purpose: ModelPurpose, body: PresetBindingInput) =>
-      (await http.put<PurposeBinding>(`/ai/model-bindings/${purpose}/preset`, body, options())).data,
-    test: async (id: string, level: string) => (await http.post<ModelTest>(`/ai/model-configs/${id}/test`, { level }, options())).data,
-    testResult: async (id: string) => (await http.get<ModelTest>(`/ai/model-tests/${id}`, options())).data,
-    tests: async (id: string) => (await http.get<ModelTest[]>(`/ai/model-configs/${id}/tests`, options())).data,
+      (await http.put<PurposeBinding>(`/ai/model-bindings/${purpose}/preset`, body)).data,
+    test: async (id: string, level: string) => (await http.post<ModelTest>(`/ai/model-configs/${id}/test`, { level })).data,
+    testResult: async (id: string) => (await http.get<ModelTest>(`/ai/model-tests/${id}`)).data,
+    tests: async (id: string) => (await http.get<ModelTest[]>(`/ai/model-configs/${id}/tests`)).data,
   };
 }
 

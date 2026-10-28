@@ -7,7 +7,6 @@ import edu.zsc.ai.config.ai.model.*;
 import edu.zsc.ai.context.*;
 import edu.zsc.ai.domain.model.dto.request.ai.ModelManagementRequests;
 import edu.zsc.ai.domain.model.dto.response.ai.ModelManagementResponses;
-import edu.zsc.ai.domain.service.org.*;
 import java.nio.file.*;
 import java.time.Duration;
 import java.util.*;
@@ -32,7 +31,6 @@ class ModelConnectionTestServiceTest {
     CredentialService credentials;
     ModelConnectionProbe probe;
     ModelConnectionTestService tests;
-    OrgAccessService organizations;
 
     @BeforeEach void setup() {
         personal(1);
@@ -43,9 +41,7 @@ class ModelConnectionTestServiceTest {
         var cipher=new ModelCredentialCipher(environment,properties);
         var factory=new DefaultListableBeanFactory();factory.registerSingleton("credentials",new FileCredentialStore(files,cipher));
         credentials=new CredentialService(environment,new QwenProperties(),factory.getBeanProvider(FileCredentialStore.class));
-        organizations=mock(OrgAccessService.class);
-        when(organizations.loadActiveMembership(anyLong(),anyLong())).thenAnswer(call->new OrgMemberContext(call.getArgument(1),call.getArgument(0),OrganizationRoleEnum.ADMIN));
-        management=new ModelManagementService(files,new ModelManagementAccess(organizations),properties,cipher,factory.getBeanProvider(FileCredentialStore.class),new FileModelConfigRepository(files,properties));
+        management=new ModelManagementService(files,new ModelManagementAccess(),properties,cipher,factory.getBeanProvider(FileCredentialStore.class),new FileModelConfigRepository(files,properties));
         probe=mock(ModelConnectionProbe.class);tests=service(Duration.ofSeconds(2));
     }
     @AfterEach void cleanup() { tests.close();RequestContext.clear();AgentRequestContext.clear(); }
@@ -132,8 +128,7 @@ class ModelConnectionTestServiceTest {
         doAnswer(call->{management.credential(connection.id(),new ModelManagementRequests.Credential(1L,"REPLACE","rotated-fixture"));return null;}).when(probe).test(any(),anyString());
         var result=tests.test(input(connection.id(),1L,null,connection.endpoint()));assertFalse(result.success());assertEquals("MODEL_CONFIG_CONFLICT",result.code());
         reset(probe);organization(1,90);
-        doAnswer(call->{when(organizations.loadActiveMembership(1,90)).thenReturn(new OrgMemberContext(90,1,OrganizationRoleEnum.COMMON));return null;}).when(probe).test(any(),anyString());
-        result=tests.test(draft());assertFalse(result.success());assertEquals("MODEL_MANAGEMENT_FORBIDDEN",result.code());
+        assertEquals("MODEL_MANAGEMENT_FORBIDDEN",assertThrows(ModelManagementException.class,()->tests.test(draft())).getMessage());
     }
     @Test void rateLimitIsPerWorkspace() {
         for(int i=0;i<3;i++)assertTrue(tests.test(draft()).success());
@@ -162,7 +157,7 @@ class ModelConnectionTestServiceTest {
             verify(probe,times(2)).test(any(),anyString());
         }finally{release.countDown();callers.shutdownNow();}
     }
-    @Test void controllerReturnsSafeResultsAndDeniesOrdinaryOrganizationMembers() throws Exception {
+    @Test void controllerReturnsSafeResultsAndDeniesOrganizationWorkspace() throws Exception {
         var mvc=MockMvcBuilders.standaloneSetup(new ModelManagementController(management,mock(ModelDiagnosticService.class),tests))
                 .setControllerAdvice(new ModelManagementErrorHandler()).build();
         doThrow(new ModelIntegrationException("MODEL_AUTH_FAILED",HttpStatus.BAD_GATEWAY)).when(probe).test(any(),anyString());
@@ -174,7 +169,7 @@ class ModelConnectionTestServiceTest {
         mvc.perform(post("/api/ai/model-connections/test").contentType("application/json").content(ModelManagementJson.write(draft())))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.code").value("MODEL_TEST_FAILED"))
                 .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("must-not-escape"))));
-        organization(1,90);when(organizations.loadActiveMembership(1,90)).thenReturn(new OrgMemberContext(90,1,OrganizationRoleEnum.COMMON));
+        organization(1,90);
         mvc.perform(post("/api/ai/model-connections/test").contentType("application/json").content(ModelManagementJson.write(draft())))
                 .andExpect(status().isForbidden());verify(probe,times(2)).test(any(),anyString());
     }

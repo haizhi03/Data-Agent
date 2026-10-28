@@ -1,18 +1,5 @@
 import { I18N_KEYS } from './i18nKeys';
 
-/**
- * API paths and error/label constants for chat and AI assistant.
- */
-
-/** Default chat stream API path. */
-export const CHAT_STREAM_API = '/api/chat/stream';
-
-/** Thrown when no valid access token. */
-export const NOT_AUTHENTICATED = 'Not authenticated';
-
-/** Shown when session expired and user must login again. */
-export const SESSION_EXPIRED_MESSAGE = 'Session expired, please login again';
-
 /** ThoughtBlock label while streaming (thinking). */
 export const THOUGHT_LABEL_THINKING = 'Thinking';
 

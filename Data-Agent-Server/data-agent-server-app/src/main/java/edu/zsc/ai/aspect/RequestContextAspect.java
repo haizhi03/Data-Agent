@@ -9,9 +9,6 @@ import edu.zsc.ai.context.RequestContextInfo;
 import edu.zsc.ai.api.model.request.BaseRequest;
 import edu.zsc.ai.api.model.request.ChatRequest;
 import edu.zsc.ai.common.enums.org.WorkspaceTypeEnum;
-import edu.zsc.ai.domain.service.org.OrgAccessService;
-import edu.zsc.ai.domain.service.org.OrgMemberContext;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
@@ -26,10 +23,7 @@ import org.springframework.util.StringUtils;
 @Aspect
 @Component
 @Slf4j
-@RequiredArgsConstructor
 public class RequestContextAspect {
-
-    private final OrgAccessService orgAccessService;
     
     /**
      * Intercept all methods in classes annotated with @EnableRequestContext
@@ -99,39 +93,19 @@ public class RequestContextAspect {
         }
     }
 
-    /**
-     * When {@link ChatRequest} carries {@code clientWorkspaceType} / {@code clientOrgId}, apply validated
-     * org context if HTTP headers did not already establish an organization workspace.
-     */
     private RequestContextInfo applyChatWorkspaceBodyOverride(RequestContextInfo contextInfo,
                                                               BaseRequest request,
                                                               Long userId) {
-        if (!(request instanceof ChatRequest chat) || userId == null) {
+        if (!(request instanceof ChatRequest chat) || userId == null
+                || !StringUtils.hasText(chat.getClientWorkspaceType())) {
             return contextInfo;
         }
-        if (!StringUtils.hasText(chat.getClientWorkspaceType())) {
-            return contextInfo;
-        }
-        if (contextInfo.getWorkspaceType() == WorkspaceTypeEnum.ORGANIZATION
-                && contextInfo.getOrgId() != null) {
-            return contextInfo;
-        }
-        String type = chat.getClientWorkspaceType().trim().toUpperCase();
-        if ("PERSONAL".equals(type)) {
+        if ("PERSONAL".equals(chat.getClientWorkspaceType().trim().toUpperCase())) {
             return contextInfo.toBuilder()
                     .workspaceType(WorkspaceTypeEnum.PERSONAL)
                     .orgId(null)
                     .orgUserRelId(null)
                     .orgRole(null)
-                    .build();
-        }
-        if ("ORGANIZATION".equals(type) && chat.getClientOrgId() != null) {
-            OrgMemberContext membership = orgAccessService.loadActiveMembership(userId, chat.getClientOrgId());
-            return contextInfo.toBuilder()
-                    .workspaceType(WorkspaceTypeEnum.ORGANIZATION)
-                    .orgId(membership.orgId())
-                    .orgUserRelId(membership.organizationMemberId())
-                    .orgRole(membership.role())
                     .build();
         }
         return contextInfo;

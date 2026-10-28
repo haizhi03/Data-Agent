@@ -1,6 +1,5 @@
 import { Send, Square, ChevronDown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { ROUTES } from '../../constants/routes';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -56,7 +55,7 @@ export function ChatInputToolbar({
 }: ChatInputToolbarProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const configure = () => navigate(ROUTES.MODELS);
+  const configure = () => navigate('/local/models');
   const currentOption = modelOptions.find((m) => m.modelName === model);
 
   return (

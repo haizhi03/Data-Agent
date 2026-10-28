@@ -1,6 +1,5 @@
 package edu.zsc.ai.api.controller.ai;
 
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import edu.zsc.ai.agent.memory.ChatMemoryCompressor;
 import edu.zsc.ai.common.converter.ai.ConversationConverter;
 import edu.zsc.ai.config.ai.AiModelCatalog;
@@ -52,7 +51,7 @@ public class ConversationController {
             @RequestParam(defaultValue = "1") @Min(1) Integer current,
             @RequestParam(defaultValue = "10") @Min(1) @Max(100) Integer size) {
         PageRequest pageRequest = PageRequest.builder().current(current).size(size).build();
-        Page<AiConversation> page = aiConversationService.pageByCurrentUser(pageRequest);
+        PageResponse<AiConversation> page = aiConversationService.pageByCurrentUser(pageRequest);
         List<ConversationResponse> records = page.getRecords().stream()
                 .map(ConversationConverter::toResponse)
                 .toList();

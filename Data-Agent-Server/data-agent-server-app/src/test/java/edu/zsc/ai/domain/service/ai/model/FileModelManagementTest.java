@@ -12,7 +12,6 @@ import edu.zsc.ai.config.ai.model.*;
 import edu.zsc.ai.context.*;
 import edu.zsc.ai.domain.model.dto.request.ai.ModelManagementRequests;
 import edu.zsc.ai.domain.model.dto.response.ai.ModelManagementResponses;
-import edu.zsc.ai.domain.service.org.*;
 import java.util.*;
 import java.nio.file.*;
 import java.time.*;
@@ -41,7 +40,6 @@ class FileModelManagementTest {
     ModelManagementService service;
     ModelDiagnosticService diagnostics;
     CredentialService credentials;
-    OrgAccessService organizations;
     ModelClientRegistry registry;
 
     @BeforeEach void setUp() {
@@ -49,14 +47,12 @@ class FileModelManagementTest {
         properties=new MultiProviderProperties(); properties.getModelRouting().setEnabled(true); properties.getModelRouting().setPersistenceEnabled(true);
         properties.getModelRouting().setStorageDirectory(temporary.toString());
         files=new FileModelStore(properties);repository=new FileModelConfigRepository(files,properties);
-        organizations=mock(OrgAccessService.class);
-        when(organizations.loadActiveMembership(anyLong(),anyLong())).thenAnswer(a->new OrgMemberContext(a.getArgument(1),1,OrganizationRoleEnum.ADMIN));
         var env=new MockEnvironment(){@Override public Map<String,Object> getSystemEnvironment(){return Map.of("MODEL_CREDENTIAL_KEY_V1",Base64.getEncoder().encodeToString(new byte[32]),"FIXTURE_KEY","deployment-fixture");}};
         var cipher=new ModelCredentialCipher(env,properties); var store=new FileCredentialStore(files,cipher);
         var beans=new DefaultListableBeanFactory(); beans.registerSingleton("credentials",store);
-        service=new ModelManagementService(files,new ModelManagementAccess(organizations),properties,cipher,beans.getBeanProvider(FileCredentialStore.class),repository);
+        service=new ModelManagementService(files,new ModelManagementAccess(),properties,cipher,beans.getBeanProvider(FileCredentialStore.class),repository);
         credentials=new CredentialService(env,new QwenProperties(),beans.getBeanProvider(FileCredentialStore.class));
-        resolver=new ModelConfigResolver(repository,organizations);
+        resolver=new ModelConfigResolver(repository);
         var factory=mock(ModelClientFactory.class); when(factory.supports(any())).thenReturn(true);
         ChatModel chat=new ChatModel(){@Override public ChatResponse chat(ChatRequest request){
             String nonce=request.messages().stream().filter(m->m instanceof ToolExecutionResultMessage).map(m->((ToolExecutionResultMessage)m).text()).reduce((a,b)->b).orElse(null);
@@ -70,7 +66,7 @@ class FileModelManagementTest {
         StreamingChatModel streaming=new StreamingChatModel(){@Override public void chat(ChatRequest request,StreamingChatResponseHandler handler){handler.onPartialResponse("READY");handler.onCompleteResponse(ChatResponse.builder().aiMessage(AiMessage.from("READY")).finishReason(dev.langchain4j.model.output.FinishReason.STOP).build());}};
         when(factory.create(any())).thenReturn(new ModelClientBundle(chat,streaming));
         registry=new ModelClientRegistry(List.of(factory),resolver,credentials);
-        diagnostics=new ModelDiagnosticService(service,new ModelManagementAccess(organizations),registry,repository,clock);
+        diagnostics=new ModelDiagnosticService(service,new ModelManagementAccess(),registry,repository,clock);
     }
     @AfterEach void cleanup() { diagnostics.close(); RequestContext.clear();AgentRequestContext.clear(); }
     @Test void simpleSetupCreatesAUsableModelCredentialAndAllDefaultsInOneWrite() throws Exception {
@@ -213,19 +209,16 @@ class FileModelManagementTest {
         assertEquals(MultiProviderProperties.ThinkingMode.DISABLED,original.model(ModelPurpose.MAIN_CHAT).options().thinkingMode());
         assertEquals(defaults,service.bindings());assertEquals(first.model(),service.model(first.model().id()));assertEquals(before,Files.readString(path));
     }
-    @Test void conversationThinkingMetadataAndRuntimeEnforceCapabilitiesAndWorkspaceUseRights() {
+    @Test void conversationThinkingMetadataAndRuntimeEnforceCapabilitiesAndPersonalWorkspaceUseRights() {
         var plainConnection=connection("plain-conversation");var plain=model(plainConnection,"plain-conversation");bindAll(plain.id());
         var options=new AiConfigController(mock(AiModelCatalog.class),resolver).listModels().getData();
         assertEquals(List.of(MultiProviderProperties.ThinkingMode.DISABLED),options.get(0).getThinkingModes());assertFalse(options.get(0).isSupportThinking());
         assertEquals("MODEL_CAPABILITY_UNSUPPORTED",assertThrows(ModelIntegrationException.class,()->resolver.resolveRun(plain.id(),null,MultiProviderProperties.ThinkingMode.ENABLED)).getReason());
-        organization(8,90);var first=service.saveSetup(setup(null,null,"member-thinking","qwen3.8-max",false,null));
-        when(organizations.loadActiveMembership(8,90)).thenReturn(new OrgMemberContext(90,8,OrganizationRoleEnum.COMMON));
-        assertFalse(service.status().canManage());
-        var choice=resolver.listAvailable().stream().filter(c->c.modelId().equals("qwen-plus")).findFirst().orElseThrow();
-        assertEquals(MultiProviderProperties.ThinkingMode.ENABLED,resolver.resolveRun(choice.modelConfigId(),null,MultiProviderProperties.ThinkingMode.ENABLED).model(ModelPurpose.MAIN_CHAT).options().thinkingMode());
-        assertThrows(ModelIntegrationException.class,()->resolver.resolveRun(choice.modelConfigId(),null,MultiProviderProperties.ThinkingMode.ADAPTIVE));
-        assertEquals(MultiProviderProperties.ThinkingMode.DISABLED,service.bindings().get(0).thinkingMode());
-        personal(2);assertThrows(ModelIntegrationException.class,()->resolver.resolveRun(first.model().id(),null,MultiProviderProperties.ThinkingMode.ENABLED));
+        organization(8,90);
+        assertThrows(ModelManagementException.class,service::status);
+        assertThrows(ModelManagementException.class,()->service.saveSetup(setup(null,null,"member-thinking","qwen3.8-max",false,null)));
+        assertThrows(ModelIntegrationException.class,resolver::listAvailable);
+        personal(2);assertThrows(ModelIntegrationException.class,()->resolver.resolveRun(plain.id(),null,MultiProviderProperties.ThinkingMode.ENABLED));
     }
     @Test void switchingQwenTaskPresetsPreservesThinkingAndTheMainPreferenceAlsoAppliesToChatCandidates() {
         var first=service.saveSetup(setup(null,null,"thinking-presets","qwen3.8-max",false,null));
@@ -256,7 +249,7 @@ class FileModelManagementTest {
         assertThrows(ModelManagementException.class,()->service.bindPreset(ModelPurpose.EXPLORER,new ModelManagementRequests.PresetBinding(1L,first.connection().id(),first.connection().version(),"qwen-plus",MultiProviderProperties.ThinkingMode.ADAPTIVE)));
         assertEquals(before,Files.readString(path));
         personal(2);assertThrows(ModelManagementException.class,()->service.bind(ModelPurpose.PLANNER,new ModelManagementRequests.Binding(0L,first.model().id(),MultiProviderProperties.ThinkingMode.ENABLED)));
-        organization(8,90);when(organizations.loadActiveMembership(8,90)).thenReturn(new OrgMemberContext(90,8,OrganizationRoleEnum.COMMON));
+        organization(8,90);
         assertEquals("MODEL_MANAGEMENT_FORBIDDEN",assertThrows(ModelManagementException.class,()->service.bind(ModelPurpose.PLANNER,new ModelManagementRequests.Binding(1L,first.model().id(),MultiProviderProperties.ThinkingMode.ENABLED))).getMessage());
     }
     @Test void taskThinkingSupportsRequiredReasoningAndAnthropicAdaptiveOrManualModes() {
@@ -282,7 +275,7 @@ class FileModelManagementTest {
             assertEquals(MultiProviderProperties.ThinkingMode.DISABLED,selected.options().thinkingMode());assertNull(selected.options().thinkingBudget());assertEquals(0.5,selected.options().temperature());
         }
     }
-    @Test void chatChoicesUseEachConnectionsKeyAndRespectWorkspaceAndOrganizationUsePermissions() throws Exception {
+    @Test void chatChoicesUseEachConnectionsKeyAndRespectPersonalWorkspaceUsePermissions() throws Exception {
         var first=service.saveSetup(setup(null,null,"first-chat-key","qwen3.8-max",false,null));
         var second=service.saveSetup(setup(null,null,"second-chat-key","qwen3.8-max",false,null));
         var choices=resolver.listAvailable();assertEquals(8,choices.size());
@@ -292,17 +285,10 @@ class FileModelManagementTest {
         }
         String foreign=choices.stream().filter(c->c.modelId().equals("qwen-plus")).findFirst().orElseThrow().modelConfigId();
         personal(2);assertTrue(resolver.listAvailable().isEmpty());assertThrows(ModelIntegrationException.class,()->resolver.resolveRun(foreign,null));
-        organization(8,90);var shared=service.saveSetup(setup(null,null,"shared-chat-key","qwen3.8-max",false,null));
-        var path=temporary.resolve("ORGANIZATION/90/models.json");String before=Files.readString(path);
-        when(organizations.loadActiveMembership(8,90)).thenReturn(new OrgMemberContext(90,8,OrganizationRoleEnum.COMMON));
-        assertEquals(4,resolver.listAvailable().size());assertFalse(service.status().canManage());assertThrows(ModelManagementException.class,service::connections);
-        for(var choice:resolver.listAvailable()) {
-            var selected=resolver.resolveRun(choice.modelConfigId(),null).model(ModelPurpose.MAIN_CHAT);
-            assertEquals(shared.connection().id(),selected.connectionId());assertEquals("shared-chat-key",credentials.withSecret(selected,key->key));
-        }
-        assertEquals(before,Files.readString(path));assertNotEquals(first.connection().id(),second.connection().id());
-        when(organizations.loadActiveMembership(8,90)).thenThrow(new IllegalStateException("membership revoked"));
+        organization(8,90);
+        assertThrows(ModelManagementException.class,service::status);assertThrows(ModelManagementException.class,service::connections);
         assertThrows(ModelIntegrationException.class,resolver::listAvailable);
+        assertNotEquals(first.connection().id(),second.connection().id());
     }
     @Test void virtualChatChoicesAreRevokedWhenTheSourceIsDisabledOrItsKeyIsReplaced() {
         var first=service.saveSetup(setup(null,null,"old-chat-key","qwen3.8-max",false,null));
@@ -343,7 +329,7 @@ class FileModelManagementTest {
         assertEquals(before,Files.readString(path));assertEquals(1,service.models().size());
         personal(2);assertThrows(ModelManagementException.class,()->service.bindPreset(ModelPurpose.EXPLORER,new ModelManagementRequests.PresetBinding(0L,first.connection().id(),1L,"qwen3.6-flash")));
         personal(1);assertEquals(before,Files.readString(path));
-        organization(8,90);when(organizations.loadActiveMembership(8,90)).thenReturn(new OrgMemberContext(90,8,OrganizationRoleEnum.COMMON));
+        organization(8,90);
         assertEquals("MODEL_MANAGEMENT_FORBIDDEN",assertThrows(ModelManagementException.class,()->service.bindPreset(ModelPurpose.EXPLORER,new ModelManagementRequests.PresetBinding(0L,first.connection().id(),1L,"qwen3.6-flash"))).getMessage());
         personal(1);assertEquals(before,Files.readString(path));
         var openai=connection("non-qwen");String withOpenai=Files.readString(path);
@@ -537,7 +523,7 @@ class FileModelManagementTest {
         assertTrue(service.connections().isEmpty());assertTrue(service.models().isEmpty());
         var first=service.saveSetup(setup(null,null,"first-fixture","first",false,null));personal(2);
         assertThrows(ModelManagementException.class,()->service.saveSetup(setup(first.connection(),first.model(),null,"foreign",false,null)));assertTrue(service.models().isEmpty());
-        organization(8,90);when(organizations.loadActiveMembership(8,90)).thenReturn(new OrgMemberContext(90,8,OrganizationRoleEnum.COMMON));
+        organization(8,90);
         assertEquals("MODEL_MANAGEMENT_FORBIDDEN",assertThrows(ModelManagementException.class,()->service.saveSetup(setup(null,null,"secret","denied",false,null))).getMessage());
     }
     @Test void storesCiphertextOnlyAndDistinctDeploymentsUseStringIds() throws Exception {
@@ -549,21 +535,19 @@ class FileModelManagementTest {
         assertFalse(payload.contains("fixture-secret")); assertEquals("fixture-secret",credentials.withSecret(resolver.resolveRun(a.id(),null).model(ModelPurpose.MAIN_CHAT),s->s));
         assertEquals("https://example.com/proxy/v1/responses",c.requestUrl());
     }
-    @Test void enforcesPersonalOrganizationIsolationAndLiveRoles() {
+    @Test void enforcesPersonalIsolationAndRejectsOrganizationWorkspace() {
         var mine=model(connection("mine"),"mine"); personal(2);
         assertEquals(List.of(),resolver.listAvailable());assertEquals("MODEL_CONFIG_NOT_FOUND",assertThrows(ModelManagementException.class,()->service.model(mine.id())).getMessage());
         var request=modelInput("foreign", "1",null,"foreign"); assertThrows(ModelManagementException.class,()->service.createModel(request));
-        organization(7,90);var shared=model(connection("org"),"org");bindAll(shared.id());
-        when(organizations.loadActiveMembership(8,90)).thenReturn(new OrgMemberContext(90,8,OrganizationRoleEnum.COMMON));organization(8,90);
-        assertEquals(1,resolver.listAvailable().size()); assertFalse(service.status().canManage());assertThrows(ModelManagementException.class,service::connections);assertThrows(ModelManagementException.class,()->service.disableModel(shared.id(),new ModelManagementRequests.Version(1L)));
-        var run=resolver.resolveRun(shared.id(),null);
-        when(organizations.loadActiveMembership(8,90)).thenThrow(new IllegalStateException("removed"));
-        assertThrows(ModelIntegrationException.class,()->resolver.reauthorize(run.model(ModelPurpose.MAIN_CHAT)));
+        organization(8,90);
+        assertThrows(ModelManagementException.class,service::status);assertThrows(ModelManagementException.class,service::connections);
+        assertThrows(ModelManagementException.class,()->service.createModel(request));
+        assertThrows(ModelIntegrationException.class,resolver::listAvailable);
     }
     @Test void freshRepositoryAndCredentialReaderRecoverSavedConfiguration() {
         var c=connection("persisted");var m=model(c,"persisted");bindAll(m.id());
         var rebuiltStore=new FileModelStore(properties);var rebuiltRepository=new FileModelConfigRepository(rebuiltStore,properties);
-        var rebuiltResolver=new ModelConfigResolver(rebuiltRepository,organizations);var snapshot=rebuiltResolver.resolveRun(null,null).model(ModelPurpose.MAIN_CHAT);
+        var rebuiltResolver=new ModelConfigResolver(rebuiltRepository);var snapshot=rebuiltResolver.resolveRun(null,null).model(ModelPurpose.MAIN_CHAT);
         assertEquals(m.id(),snapshot.modelConfigId());assertEquals(c.id(),snapshot.connectionId());
         var env=new MockEnvironment(){@Override public Map<String,Object> getSystemEnvironment(){return Map.of("MODEL_CREDENTIAL_KEY_V1",Base64.getEncoder().encodeToString(new byte[32]));}};
         var reader=new FileCredentialStore(rebuiltStore,new ModelCredentialCipher(env,properties));
@@ -663,21 +647,12 @@ class FileModelManagementTest {
         assertDoesNotThrow(()->service.bind(ModelPurpose.COMPRESSION,new ModelManagementRequests.Binding(0L,hidden.id())));
         assertTrue(resolver.listAvailable().isEmpty());
     }
-    @Test void ordinaryMemberSelectorExposesNoManagementFields() throws Exception {
-        organization(7,90);var m=model(connection("org"),"org");bindAll(m.id());
-        organization(8,90);when(organizations.loadActiveMembership(8,90)).thenReturn(new OrgMemberContext(90,8,OrganizationRoleEnum.COMMON));
-        var mvc=MockMvcBuilders.standaloneSetup(new AiConfigController(mock(AiModelCatalog.class),resolver),new ModelManagementController(service,diagnostics,mock(ModelConnectionTestService.class))).setControllerAdvice(new ModelManagementErrorHandler()).build();
-        String body=mvc.perform(get("/api/ai/models")).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
-        assertTrue(body.contains("modelConfigId"));for(var forbidden:List.of("endpoint","credentialRef","fixture-secret","keyVersion","requestUrl"))assertFalse(body.contains(forbidden));
-        mvc.perform(get("/api/ai/model-connections")).andExpect(status().isForbidden());
-        mvc.perform(post("/api/ai/model-configs/"+m.id()+"/test").contentType("application/json").content("{\"level\":\"L1\"}")).andExpect(status().isForbidden());
-    }
     @Test void springWiringSelectsFileRepositoryAndSavesKeysWithoutEnvironmentOrDataSource() throws Exception {
         try(var context=new org.springframework.context.annotation.AnnotationConfigApplicationContext()) {
             var environment=new MockEnvironment(){@Override public Map<String,Object> getSystemEnvironment(){return Map.of();}};
             environment.withProperty("ai.model-routing.enabled","true").withProperty("ai.model-routing.persistence-enabled","true").withProperty("ai.model-routing.storage-directory",temporary.toString());
             context.setEnvironment(environment);
-            context.registerBean(OrgAccessService.class,()->organizations);context.registerBean(AiModelCatalog.class,()->mock(AiModelCatalog.class));
+            context.registerBean(AiModelCatalog.class,()->mock(AiModelCatalog.class));
             context.registerBean(ModelClientFactory.class,()->mock(ModelClientFactory.class));
             context.register(StartupModelConfigRepository.class,FileModelStore.class,FileModelConfigRepository.class,ModelConfigResolver.class,ModelManagementAccess.class,ModelCredentialCipher.class,FileCredentialStore.class,CredentialService.class,ModelManagementService.class,ModelClientRegistry.class,ModelDiagnosticService.class);
             context.refresh();

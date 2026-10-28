@@ -26,9 +26,6 @@ public class MemoryProperties {
     @Data
     public static class Autowrite {
 
-        /** When true, {@code pg_try_advisory_xact_lock} wraps each extraction (multi-instance safe). */
-        private boolean advisoryLockEnabled = true;
-
         /** If true, CREATE may merge into an existing enabled memory when embedding similarity is high. */
         private boolean vectorMergeEnabled = true;
 

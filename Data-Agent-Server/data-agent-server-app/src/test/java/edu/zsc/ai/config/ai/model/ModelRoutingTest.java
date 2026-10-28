@@ -11,7 +11,6 @@ import edu.zsc.ai.common.constant.InvocationContextConstant;
 import edu.zsc.ai.common.enums.org.WorkspaceTypeEnum;
 import edu.zsc.ai.config.ai.*;
 import edu.zsc.ai.context.*;
-import edu.zsc.ai.domain.service.org.OrgAccessService;
 import org.junit.jupiter.api.*;
 import org.springframework.mock.env.MockEnvironment;
 
@@ -28,7 +27,6 @@ class ModelRoutingTest {
     private MultiProviderProperties properties;
     private StartupModelConfigRepository repository;
     private ModelConfigResolver resolver;
-    private OrgAccessService orgAccess;
     private CredentialService credentials;
 
     @BeforeEach void setUp() {
@@ -46,8 +44,7 @@ class ModelRoutingTest {
         credentials = new CredentialService(new MockEnvironment(), qwen);
         repository = new StartupModelConfigRepository(properties, legacy, qwen);
         repository.initialize();
-        orgAccess = mock(OrgAccessService.class);
-        resolver = new ModelConfigResolver(repository, orgAccess);
+        resolver = new ModelConfigResolver(repository);
         personal(1L);
     }
     @AfterEach void clear() { RequestContext.clear(); AgentRequestContext.clear(); }
@@ -103,14 +100,10 @@ class ModelRoutingTest {
         assertThrows(ModelIntegrationException.class, () -> old.chat(request()));
     }
 
-    @Test void cachedHandlesRecheckActiveOrganizationMembershipOnEveryCall() {
+    @Test void organizationWorkspaceIsRejected() {
         RequestContext.set(RequestContextInfo.builder().userId(1L).workspaceType(WorkspaceTypeEnum.ORGANIZATION).orgId(7L).build());
-        ModelClientRegistry registry = new ModelClientRegistry(List.of(factory()), resolver, credentials);
-        var run = resolver.resolveRun(null, null);
-        ChatModel client = registry.clients(run, ModelPurpose.MAIN_CHAT).chatModel();
-        client.chat(request());
-        doThrow(new IllegalStateException("removed")).when(orgAccess).loadActiveMembership(1L, 7L);
-        assertThrows(ModelIntegrationException.class, () -> client.chat(request()));
+        assertThrows(ModelIntegrationException.class, () -> resolver.resolveRun(null, null));
+        assertThrows(ModelIntegrationException.class, resolver::listAvailable);
     }
 
     @Test void cacheDeduplicatesConcurrentCreationAndBudgetIsSharedAcrossPurposes() throws Exception {
@@ -293,7 +286,7 @@ class ModelRoutingTest {
                 .bind("ai", org.springframework.boot.context.properties.bind.Bindable.of(MultiProviderProperties.class)).get();
         var catalog = new AiModelCatalog(new AiModelProperties()); catalog.initialize();
         var imported = new StartupModelConfigRepository(sample, catalog, new QwenProperties()); imported.initialize();
-        var sampleResolver = new ModelConfigResolver(imported, orgAccess);
+        var sampleResolver = new ModelConfigResolver(imported);
         assertEquals(2, sampleResolver.listAvailable().size());
         var run = sampleResolver.resolveRun(null, null);
         assertEquals("startup/PERSONAL/1/analysis-main", run.model(ModelPurpose.MAIN_CHAT).modelConfigId());

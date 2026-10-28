@@ -1,18 +1,12 @@
 package edu.zsc.ai.domain.service.db;
 
-import com.baomidou.mybatisplus.extension.service.IService;
 import edu.zsc.ai.domain.model.dto.request.db.ConnectionCreateRequest;
 import edu.zsc.ai.domain.model.dto.response.db.ConnectionResponse;
 import edu.zsc.ai.domain.model.entity.db.DbConnection;
 
 import java.util.List;
 
-public interface DbConnectionService extends IService<DbConnection>, ConnectionDefinitionReader {
-
-    @Override
-    default DbConnection getById(Long id) {
-        return getById((java.io.Serializable) id);
-    }
+public interface DbConnectionService extends ConnectionDefinitionReader {
 
     DbConnection getByName(String name);
 

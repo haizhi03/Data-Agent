@@ -8,6 +8,5 @@ const ModelSettings = lazy(() => import('./pages/ModelSettings'));
 export const routerConfig: RouteObject[] = [
     { path: '/', element: <Suspense fallback={null}><Home /></Suspense> },
     { path: '/local/models', element: <Suspense fallback={null}><ModelSettings /></Suspense> },
-    { path: '/settings/models', element: <Navigate to="/local/models" replace /> },
     { path: '*', element: <Navigate to="/" replace /> },
 ];

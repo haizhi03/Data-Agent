@@ -176,15 +176,4 @@ class LocalConnectionRuntimeTest {
         } finally { release.countDown(); workers.shutdownNow(); }
     }
 
-    @Test void legacyServerAdapterStillDelegatesLookupToMybatis() {
-        var mapper = mock(edu.zsc.ai.domain.mapper.db.DbConnectionMapper.class);
-        var legacy = new edu.zsc.ai.domain.service.db.impl.DbConnectionServiceImpl(
-                mock(edu.zsc.ai.domain.service.db.ConnectionAccessService.class),
-                mock(edu.zsc.ai.domain.mapper.sys.SysOrganizationConnectionPermissionMapper.class));
-        org.springframework.test.util.ReflectionTestUtils.setField(legacy, "baseMapper", mapper);
-        var expected = edu.zsc.ai.domain.model.entity.db.DbConnection.builder().id(7L).build();
-        when(mapper.selectById(7L)).thenReturn(expected);
-        assertThat(((edu.zsc.ai.domain.service.db.ConnectionDefinitionReader) legacy).getById(7L)).isSameAs(expected);
-        verify(mapper).selectById(7L);
-    }
 }

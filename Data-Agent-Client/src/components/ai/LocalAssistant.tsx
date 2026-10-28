@@ -145,10 +145,9 @@ export function LocalAssistant({ onClose }: { onClose: () => void }) {
   };
   return <AIAssistantProvider value={context}>
     <div className="flex h-full flex-col overflow-hidden bg-transparent" data-local-assistant title={tr('ephemeral')}>
-      <AIAssistantHeader title={tr('title')} historyAriaLabel="" accessToken={false} currentConversationId={session.current}
+      <AIAssistantHeader currentConversationId={session.current}
         conversationTabs={[{ id: session.current, titleOverride: null, titleCandidate: messages.find(m => m.role === 'user')?.text ?? null, messageCount: messages.length, createdAt: 0, lastTouchedAt: 0 }]}
-        onSelectTab={() => {}} onCloseTab={() => void reset()} onNewChat={() => void reset()} onClosePanel={onClose}
-        historyMode="popover" isHistoryPopoverOpen={false} setIsHistoryPopoverOpen={() => {}} onSelectConversation={() => {}} />
+        onSelectTab={() => {}} onCloseTab={() => void reset()} onNewChat={() => void reset()} onClosePanel={onClose} />
       <AIAssistantContent messages={displayMessages} messagesEndRef={messagesEndRef} isLoading={running} isWaiting={false}
         waitingPromptMode="default" queue={[]} onRemoveFromQueue={() => {}} trailingContent={<>
           {writes.map(view => <article key={view.proposal.proposalId} data-local-write={view.status} className="mb-2 flex flex-col gap-3 rounded-lg border theme-border theme-bg-main p-4 shadow-sm text-xs">

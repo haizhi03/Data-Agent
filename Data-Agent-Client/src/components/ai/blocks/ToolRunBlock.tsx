@@ -22,7 +22,6 @@ import type { Segment } from '../messageListLib/types';
 import { SubAgentRunBlock } from './SubAgentRunBlock';
 import type { SubAgentProgressEvent } from './subAgentTypes';
 import { AskUserQuestionCard } from './AskUserQuestionCard';
-import { WriteExecutionConfirmCard } from './WriteExecutionConfirmCard';
 import { ExitPlanModeCard } from './ExitPlanModeCard';
 import { useWorkspaceStore } from '../../../store/workspaceStore';
 import { useAIAssistantContext } from '../AIAssistantContext';
@@ -59,7 +58,6 @@ export interface ToolRunBlockProps {
  * Tool types:
  * - TODO: TodoWrite → TodoListBlock
  * - ASK_USER: AskUserQuestion → AskUserQuestionCard (Inline)
- * - executeNonSelectSql (when confirmation required) → WriteExecutionConfirmCard (Inline)
  * - GENERIC: All other tools → ToolRunDetail
  */
 export function ToolRunBlock({
@@ -155,10 +153,6 @@ export function ToolRunBlock({
   }
 
   // 3. Dispatch Completed Tool Rendering by Category
-  if (executeNonSelectPayload?.status === ExecuteNonSelectToolStatus.REQUIRES_CONFIRMATION) {
-    return <WriteExecutionConfirmCard payload={executeNonSelectPayload} />;
-  }
-
   switch (toolType) {
     // CATEGORY A: Interactive Tools (Inline Cards)
     case ToolType.ASK_USER: {

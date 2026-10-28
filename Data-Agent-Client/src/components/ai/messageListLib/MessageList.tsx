@@ -10,7 +10,6 @@ import { PlanningIndicator } from '../blocks';
 import { getToolType, ToolType } from '../blocks/toolTypes';
 import type { Message, Segment, TodoBoxSpec } from './types';
 import { isTodoCompleted } from '../blocks/todoTypes';
-import { ExecuteNonSelectToolStatus, parseExecuteNonSelectToolResult } from '../blocks/executeNonSelectTypes';
 import { SegmentKind } from './types';
 import { isHiddenAskUserAnswerMessage } from './hiddenAskUserAnswer';
 
@@ -109,12 +108,6 @@ export function MessageList({
               }
               if (toolType === ToolType.ASK_USER) {
                 return false;
-              }
-              if (seg.toolName === 'executeNonSelectSql') {
-                const executeNonSelectPayload = parseExecuteNonSelectToolResult(seg.responseData);
-                if (executeNonSelectPayload?.status === ExecuteNonSelectToolStatus.REQUIRES_CONFIRMATION) {
-                  return false;
-                }
               }
             }
             return true;

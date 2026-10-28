@@ -42,16 +42,14 @@ class LocalAssistantConfiguration {
         return new FileModelConfigRepository(store, properties);
     }
     @Bean ModelManagementAccess localModelAccess(LocalConnectionService connections) {
-        // No organization bean is installed locally. Verify the trusted local scope before using the shared management service.
-        return new ModelManagementAccess(null) {
+        return new ModelManagementAccess() {
             @Override public ModelAccessContext current(boolean manage) {
-                connections.assertWorkbenchApiAllowed(); return ModelAccessContext.current();
+                connections.assertWorkbenchApiAllowed(); return super.current(manage);
             }
         };
     }
     @Bean ModelConfigResolver localModelResolver(ModelConfigRepository repository) {
-        // The transport only establishes PERSONAL/1. Shared resolver rejects non-personal scopes without an organization service.
-        return new ModelConfigResolver(repository, null);
+        return new ModelConfigResolver(repository);
     }
     @Bean CredentialService localModelCredentials(ConfigurableEnvironment environment,
             org.springframework.beans.factory.ObjectProvider<FileCredentialStore> stored) {

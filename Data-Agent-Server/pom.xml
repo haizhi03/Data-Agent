@@ -29,8 +29,7 @@
         <commons-collections4.version>4.5.0-M2</commons-collections4.version>
         <jakarta-validation.version>3.0.2</jakarta-validation.version>
         <hibernate-validator.version>8.0.1.Final</hibernate-validator.version>
-        <mybatis-plus.version>3.5.14</mybatis-plus.version>
-        <mybatis-plus-jsqlparser.version>3.5.14</mybatis-plus-jsqlparser.version>
+        <jsqlparser.version>5.3</jsqlparser.version>
         <sa-token.version>1.44.0</sa-token.version>
         <langchain4j.version>1.12.2</langchain4j.version>
         <langchain4j-community.version>1.12.2-beta22</langchain4j-community.version>
@@ -107,17 +106,10 @@
                 <artifactId>commons-codec</artifactId>
                 <version>1.17.1</version>
             </dependency>
-            <!-- MyBatis-Plus for Spring Boot 3.x -->
             <dependency>
-                <groupId>com.baomidou</groupId>
-                <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
-                <version>${mybatis-plus.version}</version>
-            </dependency>
-            <!-- MyBatis-Plus JSqlParser (Required for Pagination Plugin since 3.5.9) -->
-            <dependency>
-                <groupId>com.baomidou</groupId>
-                <artifactId>mybatis-plus-jsqlparser</artifactId>
-                <version>${mybatis-plus-jsqlparser.version}</version>
+                <groupId>com.github.jsqlparser</groupId>
+                <artifactId>jsqlparser</artifactId>
+                <version>${jsqlparser.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

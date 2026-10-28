@@ -1,11 +1,8 @@
-import { useRuntimeStore } from '../../store/runtimeStore';
-import { Play, Plus, Minus, FileText, ChevronDown, ChevronUp, RefreshCcw, Search, X, ArrowUp, Wand2, Upload, Download } from 'lucide-react';
+import { Play, FileText, ChevronDown, ChevronUp, RefreshCcw, Search, X } from 'lucide-react';
 import type { Ref } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '../ui/Button';
-import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '../ui/Tooltip';
 import { I18N_KEYS } from '../../constants/i18nKeys';
-import { TransactionModeSelector } from './TransactionModeSelector';
 import { TransactionMode, IsolationLevel } from '../../constants/transactionSettings';
 import {
   DropdownMenu,
@@ -57,29 +54,14 @@ interface TableDataToolbarProps {
 
 export function TableDataToolbar({
   loading,
-  isTable,
   viewMode,
-  hasRowSelection,
-  hasPendingOps,
-  pendingCount,
-  submittingEdits,
-  txMode,
-  isolationLevel,
   displayDbLabel,
   connectionName,
   databases,
   loadingDatabases,
   onRun,
   onRefresh,
-  onSubmit,
-  onTransactionModeChange,
-  onIsolationLevelChange,
-  onAddRow,
-  onDeleteRow,
   onOpenDdl,
-  onOpenSqlGenerator,
-  onImportData,
-  onExportData,
   onDatabaseChange,
   onViewModeChange,
   findVisible,
@@ -95,8 +77,6 @@ export function TableDataToolbar({
   onCloseFind,
 }: TableDataToolbarProps) {
   const { t } = useTranslation();
-  const local = useRuntimeStore((s) => s.mode === 'LOCAL');
-  const isTransposeMode = viewMode === 'transpose';
   const matchDisplay = matchCount > 0 ? `${currentMatchIndex + 1}/${matchCount}` : '0/0';
   const noMatches = matchCount === 0;
 
@@ -122,80 +102,6 @@ export function TableDataToolbar({
       >
         <RefreshCcw className="w-3.5 h-3.5 theme-text-secondary" />
       </Button>
-      {!local && <>
-      <TransactionModeSelector
-        transactionMode={txMode}
-        isolationLevel={isolationLevel}
-        onTransactionModeChange={onTransactionModeChange}
-        onIsolationLevelChange={onIsolationLevelChange}
-      />
-      <button
-        type="button"
-        onClick={onSubmit}
-        disabled={!hasPendingOps || submittingEdits}
-        title={t(I18N_KEYS.EXPLORER.BATCH_SUBMIT_TITLE)}
-        className={cn(
-          'h-6 min-w-[24px] rounded px-1 inline-flex items-center justify-center gap-1 transition-colors',
-          hasPendingOps
-            ? 'bg-green-500 text-white hover:bg-green-600'
-            : 'bg-transparent text-gray-400 dark:text-gray-500',
-        )}
-      >
-        {submittingEdits ? (
-          <span className="h-3 w-3 rounded-full border-[1.5px] border-white border-t-transparent animate-spin" />
-        ) : (
-          <ArrowUp className="w-3.5 h-3.5" />
-        )}
-        {hasPendingOps && (
-          <span className="text-[10px] font-semibold leading-none tabular-nums">{pendingCount}</span>
-        )}
-      </button>
-      <div className="w-px h-4 bg-border mx-0.5" />
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-6 w-6"
-        title={t(I18N_KEYS.EXPLORER.ADD_ROW)}
-        onClick={onAddRow}
-        disabled={!isTable || loading || isTransposeMode}
-      >
-        <Plus className="w-3.5 h-3.5 theme-text-secondary" />
-      </Button>
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-6 w-6"
-        title={t(I18N_KEYS.EXPLORER.DELETE_ROW)}
-        onClick={onDeleteRow}
-        disabled={!isTable || !hasRowSelection || isTransposeMode}
-      >
-        <Minus className="w-3.5 h-3.5 theme-text-secondary" />
-      </Button>
-      <div className="w-px h-4 bg-border mx-0.5" />
-      <Button
-        variant="ghost"
-        size="sm"
-        className="h-6 px-2 gap-1 text-[11px]"
-        title={t(I18N_KEYS.EXPLORER.IMPORT_DATA)}
-        onClick={onImportData}
-        disabled={!isTable}
-      >
-        <Upload className="w-3.5 h-3.5 theme-text-secondary" />
-        {t(I18N_KEYS.EXPLORER.IMPORT_DATA)}
-      </Button>
-      <Button
-        variant="ghost"
-        size="sm"
-        className="h-6 px-2 gap-1 text-[11px]"
-        title={t(I18N_KEYS.EXPLORER.EXPORT_DATA)}
-        onClick={onExportData}
-        disabled={!isTable}
-      >
-        <Download className="w-3.5 h-3.5 theme-text-secondary" />
-        {t(I18N_KEYS.EXPLORER.EXPORT_DATA)}
-      </Button>
-      <div className="w-px h-4 bg-border mx-0.5" />
-      </>}
       <Button
         variant="ghost"
         size="sm"
@@ -206,29 +112,6 @@ export function TableDataToolbar({
         <FileText className="w-3.5 h-3.5 theme-text-secondary" />
         DDL
       </Button>
-      {!local && <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span className="inline-flex">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 px-2 gap-1 text-[11px]"
-                onClick={onOpenSqlGenerator}
-                disabled={!hasRowSelection || isTransposeMode}
-              >
-                <Wand2 className="w-3.5 h-3.5 theme-text-secondary" />
-                {t(I18N_KEYS.EXPLORER.SQL_GENERATOR_DML)}
-              </Button>
-            </span>
-          </TooltipTrigger>
-          <TooltipContent side="bottom" className="max-w-xs text-xs">
-            {!hasRowSelection || isTransposeMode
-              ? t(I18N_KEYS.EXPLORER.SQL_GENERATOR_DML_DISABLED_HINT)
-              : t(I18N_KEYS.EXPLORER.SQL_GENERATOR_DML_HINT)}
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>}
       <div className="w-px h-4 bg-border mx-0.5" />
       <Button
         variant="ghost"

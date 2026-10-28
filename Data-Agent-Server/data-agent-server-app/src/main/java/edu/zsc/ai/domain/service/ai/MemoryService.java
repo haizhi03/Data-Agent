@@ -3,8 +3,6 @@ package edu.zsc.ai.domain.service.ai;
 import java.time.LocalDateTime;
 import java.util.List;
 
-import com.baomidou.mybatisplus.extension.service.IService;
-
 import edu.zsc.ai.domain.model.dto.request.ai.MemoryCreateRequest;
 import edu.zsc.ai.domain.model.dto.request.ai.MemoryMutationRequest;
 import edu.zsc.ai.domain.model.dto.request.ai.MemoryUpdateRequest;
@@ -16,7 +14,7 @@ import edu.zsc.ai.domain.service.ai.model.MemoryWriteContext.MemorySummary;
 import edu.zsc.ai.domain.service.ai.model.MemoryWriteResult;
 import edu.zsc.ai.domain.service.ai.recall.MemoryRecallQuery;
 
-public interface MemoryService extends IService<AiMemory> {
+public interface MemoryService {
 
     List<MemorySearchResult> searchEnabledMemories(String queryText, int limit, double minScore, String memoryType, String scope);
 

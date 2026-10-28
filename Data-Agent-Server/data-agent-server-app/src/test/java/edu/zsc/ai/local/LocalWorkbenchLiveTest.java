@@ -25,7 +25,8 @@ class LocalWorkbenchLiveTest {
                 "--app.runtime.mode=local", "--server.port=0", "--spring.main.banner-mode=off",
                 "--app.local.data-directory=" + directory, "--logging.config=classpath:local-runtime-logback.xml");
         assertThat(context.getBeansOfType(javax.sql.DataSource.class)).isEmpty();
-        assertThat(context.getBeansOfType(edu.zsc.ai.domain.service.sys.SysSessionsService.class)).isEmpty();
+        assertThatThrownBy(() -> Class.forName("edu.zsc.ai.domain.service.sys.SysSessionsService"))
+                .isInstanceOf(ClassNotFoundException.class);
         RequestContext.set(context.getBean(LocalRuntimeIdentity.class).newRequestContext());
         var service = context.getBean(LocalConnectionService.class);
         try {

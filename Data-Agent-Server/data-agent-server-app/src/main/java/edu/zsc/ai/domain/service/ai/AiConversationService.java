@@ -1,15 +1,16 @@
 package edu.zsc.ai.domain.service.ai;
 
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.baomidou.mybatisplus.extension.service.IService;
 import edu.zsc.ai.domain.model.dto.request.base.PageRequest;
 import edu.zsc.ai.domain.model.dto.response.ai.ConversationMessageResponse;
+import edu.zsc.ai.domain.model.dto.response.base.PageResponse;
 import edu.zsc.ai.domain.model.entity.ai.AiConversation;
 import edu.zsc.ai.domain.exception.BusinessException;
 
 import java.util.List;
 
-public interface AiConversationService extends IService<AiConversation> {
+public interface AiConversationService {
+
+    AiConversation getById(Long conversationId);
 
     /**
      * Verifies that the user has access to the conversation.
@@ -33,7 +34,7 @@ public interface AiConversationService extends IService<AiConversation> {
      * Returns a paginated list of conversations for the current user, ordered by updatedAt descending.
      * Current user ID is resolved from StpUtil in the service layer.
      */
-    Page<AiConversation> pageByCurrentUser(PageRequest pageRequest);
+    PageResponse<AiConversation> pageByCurrentUser(PageRequest pageRequest);
 
     /**
      * Returns the conversation by ID for the current user. Throws if not found or access denied.
