@@ -1,3 +1,4 @@
+import { useRuntimeStore } from '../../store/runtimeStore';
 import { Play, Plus, Minus, FileText, ChevronDown, ChevronUp, RefreshCcw, Search, X, ArrowUp, Wand2, Upload, Download } from 'lucide-react';
 import type { Ref } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -94,6 +95,7 @@ export function TableDataToolbar({
   onCloseFind,
 }: TableDataToolbarProps) {
   const { t } = useTranslation();
+  const local = useRuntimeStore((s) => s.mode === 'LOCAL');
   const isTransposeMode = viewMode === 'transpose';
   const matchDisplay = matchCount > 0 ? `${currentMatchIndex + 1}/${matchCount}` : '0/0';
   const noMatches = matchCount === 0;
@@ -120,6 +122,7 @@ export function TableDataToolbar({
       >
         <RefreshCcw className="w-3.5 h-3.5 theme-text-secondary" />
       </Button>
+      {!local && <>
       <TransactionModeSelector
         transactionMode={txMode}
         isolationLevel={isolationLevel}
@@ -192,6 +195,7 @@ export function TableDataToolbar({
         {t(I18N_KEYS.EXPLORER.EXPORT_DATA)}
       </Button>
       <div className="w-px h-4 bg-border mx-0.5" />
+      </>}
       <Button
         variant="ghost"
         size="sm"
@@ -202,7 +206,7 @@ export function TableDataToolbar({
         <FileText className="w-3.5 h-3.5 theme-text-secondary" />
         DDL
       </Button>
-      <TooltipProvider>
+      {!local && <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>
             <span className="inline-flex">
@@ -224,7 +228,7 @@ export function TableDataToolbar({
               : t(I18N_KEYS.EXPLORER.SQL_GENERATOR_DML_HINT)}
           </TooltipContent>
         </Tooltip>
-      </TooltipProvider>
+      </TooltipProvider>}
       <div className="w-px h-4 bg-border mx-0.5" />
       <Button
         variant="ghost"

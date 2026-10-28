@@ -28,6 +28,8 @@ export function ChatInput() {
   const [isComposing, setIsComposing] = useState(false);
   const {
     input,
+    supportedCommands,
+    canSend,
     setInput,
     onSend,
     onStop,
@@ -57,6 +59,7 @@ export function ChatInput() {
     input,
     setInput,
     onCommand,
+    supportedCommands,
   });
 
   const mentionLogic = useMentionLogic({
@@ -100,12 +103,12 @@ export function ChatInput() {
   // Build agent options
   const agents = useMemo(
     () =>
-      AGENT_TYPES.map((type) => ({
+      (agentState.availableAgents ?? AGENT_TYPES).map((type) => ({
         type,
         icon: AGENT_CONFIG[type].icon,
         label: t(AGENT_CONFIG[type].i18nKey),
       })),
-    [t]
+    [t, agentState.availableAgents]
   );
   const CurrentAgentIcon = AGENT_CONFIG[agent].icon;
   const contextUsage = useMemo(() => {
@@ -204,6 +207,7 @@ export function ChatInput() {
             thinkingMode={thinkingMode}
             setThinkingMode={setThinkingMode}
             onSend={onSend}
+            disabled={canSend === false}
             onStop={onStop}
             isLoading={isLoading}
             agents={agents}

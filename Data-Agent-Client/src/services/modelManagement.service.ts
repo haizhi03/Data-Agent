@@ -1,5 +1,6 @@
 import http from '../lib/http';
 import { useAuthStore } from '../store/authStore';
+import { useRuntimeStore } from '../store/runtimeStore';
 import { X_ORG_ID, X_WORKSPACE_TYPE } from '../constants/workspaceHeaders';
 import type { ConnectionInput, ConnectionTestInput, ConnectionTestResult, ManagedModel, ModelConnection, ModelInput, ModelManagementStatus, ModelProfile, ModelPurpose, ModelSetupInput, ModelSetupResult, ModelSpecification, ModelTest, PresetBindingInput, PurposeBinding, ThinkingMode } from '../types/modelManagement';
 
@@ -10,6 +11,7 @@ export function createModelManagementService() {
   if (workspaceType === 'ORGANIZATION' && workspaceOrgId != null) headers[X_ORG_ID] = String(workspaceOrgId);
   const principal = user?.id;
   const options = () => {
+    if (useRuntimeStore.getState().mode === 'LOCAL') return { headers: { [X_WORKSPACE_TYPE]: 'PERSONAL' } };
     if (useAuthStore.getState().user?.id !== principal) throw new Error('MODEL_MANAGEMENT_FORBIDDEN');
     return { headers };
   };

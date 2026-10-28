@@ -26,6 +26,21 @@ public final class ModelRunSnapshot {
     private final Set<Runnable> cancellations = ConcurrentHashMap.newKeySet();
     private final ConcurrentHashMap<String, ToolOutcome> tools = new ConcurrentHashMap<>();
     private final AtomicInteger toolCount = new AtomicInteger();
+    private final java.util.concurrent.atomic.AtomicLong inputTokens=new java.util.concurrent.atomic.AtomicLong();
+    private final java.util.concurrent.atomic.AtomicLong outputTokens=new java.util.concurrent.atomic.AtomicLong();
+    private final AtomicInteger usageReports=new AtomicInteger();
+    private final AtomicBoolean usageFieldsComplete=new AtomicBoolean(true);
+    public void recordUsage(dev.langchain4j.model.output.TokenUsage usage) {
+        if (usage==null) return;
+        if (usage.inputTokenCount()!=null) inputTokens.addAndGet(usage.inputTokenCount());
+        if (usage.outputTokenCount()!=null) outputTokens.addAndGet(usage.outputTokenCount());
+        if (usage.inputTokenCount()==null || usage.outputTokenCount()==null) usageFieldsComplete.set(false);
+        usageReports.incrementAndGet();
+    }
+    public Map<String,Object> statistics() {
+        return Map.of("modelCalls",calls.get(),"toolCalls",toolCount.get(),"inputTokens",inputTokens.get(),
+                "outputTokens",outputTokens.get(),"usageReports",usageReports.get(),"usageComplete",usageFieldsComplete.get() && usageReports.get()==calls.get() && calls.get()>0);
+    }
 
     public ModelRunSnapshot(Map<ModelPurpose, ResolvedModelConfig> models, int maxCalls) {
         this.models = Map.copyOf(models);

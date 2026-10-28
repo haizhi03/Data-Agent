@@ -17,6 +17,7 @@ interface UseSlashCommandLogicOptions {
   input: string;
   setInput: (value: string) => void;
   onCommand?: (commandId: string) => void;
+  supportedCommands?: string[];
 }
 
 /** Manages slash command state and logic */
@@ -24,6 +25,7 @@ export function useSlashCommandLogic({
   input,
   setInput,
   onCommand,
+  supportedCommands,
 }: UseSlashCommandLogicOptions): UseSlashCommandLogicReturn {
   const [slashOpen, setSlashOpen] = useState(false);
   const [slashQuery, setSlashQuery] = useState('');
@@ -32,10 +34,11 @@ export function useSlashCommandLogic({
 
   const filteredSlashCommands = useMemo(() => {
     const q = slashQuery.toLowerCase().trim();
+    const commands = supportedCommands ? SLASH_COMMANDS.filter(c => supportedCommands.includes(c.id)) : SLASH_COMMANDS;
     return q
-      ? SLASH_COMMANDS.filter((c) => c.slug.toLowerCase().startsWith(q))
-      : SLASH_COMMANDS;
-  }, [slashQuery]);
+      ? commands.filter((c) => c.slug.toLowerCase().startsWith(q))
+      : commands;
+  }, [slashQuery, supportedCommands]);
 
   const runSlashCommand = useCallback(
     (cmd: SlashCommandItem) => {

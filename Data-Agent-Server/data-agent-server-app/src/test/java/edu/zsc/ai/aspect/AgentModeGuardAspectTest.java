@@ -29,27 +29,32 @@ class AgentModeGuardAspectTest {
 
     @Test
     void disallowInPlanMode_blocksExecutionInPlanMode() {
-        GuardedService proxy = proxy(new GuardedService());
+        GuardedService target = new GuardedService();
+        GuardedService proxy = proxy(target);
 
         AgentSqlResult result = proxy.guardedCall(InvocationParameters.from(Map.of(
                 InvocationContextConstant.AGENT_MODE, "plan"
         )));
         assertFalse(result.isSuccess());
+        assertEquals(0, target.invocationCount);
+        // Tool diagnostics currently follow the Chinese main-agent prompt contract.
         assertEquals(
-                "executeSelectSql is disabled in Plan mode — execution tools cannot run during planning. "
-                        + "Keep the SQL in the planning response instead of executing it.",
+                "executeSelectSql 在 Plan 模式下不可用，规划期间不能运行执行类工具。"
+                        + "把 SQL 保留在计划答复中，不要执行它。",
                 result.getError()
         );
     }
 
     @Test
     void disallowInPlanMode_allowsExecutionOutsidePlanMode() {
-        GuardedService proxy = proxy(new GuardedService());
+        GuardedService target = new GuardedService();
+        GuardedService proxy = proxy(target);
 
         AgentSqlResult result = proxy.guardedCall(InvocationParameters.from(Map.of(
                 InvocationContextConstant.AGENT_MODE, "agent"
         )));
         assertTrue(result.isSuccess());
+        assertEquals(1, target.invocationCount);
         assertEquals("RESULT_SET", result.getType());
     }
 
@@ -63,8 +68,11 @@ class AgentModeGuardAspectTest {
     @AgentTool
     static class GuardedService {
 
+        private int invocationCount;
+
         @DisallowInPlanMode(ToolNameEnum.EXECUTE_SELECT_SQL)
         AgentSqlResult guardedCall(InvocationParameters parameters) {
+            invocationCount++;
             return AgentSqlResult.builder()
                     .success(true)
                     .type("RESULT_SET")

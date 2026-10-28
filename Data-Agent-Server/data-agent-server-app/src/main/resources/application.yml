@@ -1,15 +1,6 @@
+# Local single-user runtime. No account, application DataSource, ORM or vector-store configuration.
 server:
   port: 8081
-
-db:
-  pool:
-    maximum-pool-size: 10
-    minimum-idle: 1
-    connection-timeout-ms: 30000
-    validation-timeout-ms: 5000
-    idle-timeout-ms: 600000
-    max-lifetime-ms: 1800000
-
 spring:
   application:
     name: DataAgent
@@ -17,111 +8,8 @@ spring:
     multipart:
       max-file-size: 200MB
       max-request-size: 210MB
-  datasource:
-    driver-class-name: org.postgresql.Driver
-    url: jdbc:postgresql://localhost:5432/data_agent
-    username: postgres
-    password: postgres
-  profiles:
-    active: local
-# MyBatis-Plus configuration
-mybatis-plus:
-  configuration:
-    map-underscore-to-camel-case: true
-    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
-  global-config:
-    db-config:
-      logic-delete-field: deleteFlag
-      logic-delete-value: 1
-      logic-not-delete-value: 0
-  mapper-locations: classpath:mapper/*.xml
-
-sa-token:
-  jwt-secret-key: DataAgent-secret-key
-  timeout: 1800
-  token-name: Authorization
-  is-log: true
-  is-concurrent: true
-  is-share: false
-  token-style: jwt
-  is-write-header: true
-  token-prefix: Bearer
-
-auth:
-  refresh-token:
-    expire-seconds: 2592000     # 30 days
-
-ai:
-  model-routing:
-    enabled: ${MODEL_ROUTING_ENABLED:true}
-    persistence-enabled: ${MODEL_CONFIG_PERSISTENCE_ENABLED:true}
-    storage-directory: ${MODEL_CONFIG_DIRECTORY:${user.home}/.data-agent/model-config}
-    legacy-aliases-enabled: ${MODEL_LEGACY_ALIASES_ENABLED:true}
-    max-calls-per-run: 64
-    # Workspace JSON files; no model-management SQL migration. Explicit deployment-key grants only.
-    legacy-workspaces: []
-    allowed-private-hosts: []
-  model-credentials:
-    # Optional MODEL_CREDENTIAL_KEY_<version> takes priority; otherwise initialize <storage-directory>/.keys/<version>.key.
-    active-key-version: ${MODEL_CREDENTIAL_ACTIVE_KEY_VERSION:V1}
-  qwen:
-    api-key: ${ALIYUN_AI_API_KEY:}
-    gateway:
-      enabled: true
-      base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
-    parameters:
-      thinking-budget: 1000
-  embedding:
-    api-key: ${ALIYUN_AI_EMBEDDING_API_KEY}
-    model-name: text-embedding-v4
-    dimension: 1024
-  models:
-    default-model: qwen3.6-max-preview
-    compression-model: qwen3.6-plus
-    supported:
-      - model-name: qwen3.6-max-preview
-        api-model-name: qwen3.6-max-preview
-        support-thinking: true
-        chat-visible: true
-        max-context-tokens: 262144
-        memory-threshold: 230000
-      - model-name: qwen3-max-2026-01-23
-        api-model-name: qwen3-max-2026-01-23
-        support-thinking: true
-        chat-visible: true
-        max-context-tokens: 258048
-        memory-threshold: 230000
-      - model-name: qwen3.6-plus
-        api-model-name: qwen3.6-plus
-        support-thinking: false
-        chat-visible: false
-        max-context-tokens: 1000000
-        memory-threshold: 900000
-# 全局通用线程池（发现、异步任务等共用）
 app:
-  executor:
-    pool-size: 20
-
-agent:
-  sub-agent:
-    explorer:
-      timeout-seconds: 180
-      dispatch:
-        max-concurrency: 3
-        queue-capacity: 9
-    planner:
-      timeout-seconds: 180
-    max-explorer-loop: 3
-
-memory:
-  enabled: true
-  retrieval:
-    min-score: 0.72
-  autowrite:
-    advisory-lock-enabled: true
-    vector-merge-enabled: true
-    vector-merge-min-score: 0.92
-    executor:
-      core-pool-size: 4
-      max-pool-size: 4
-      queue-capacity: 200
+  runtime:
+    mode: local
+  # local.data-directory defaults to ${user.home}/.data-agent/local.
+  # The trusted host supplies exact allowed origins and the private stdio bootstrap.

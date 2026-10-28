@@ -432,6 +432,16 @@ public class SqlExecutionServiceImpl implements SqlExecutionService {
         return outcome == CancelOutcome.NO_ACTIVE_STATEMENT ? CancelOutcome.CANCEL_REQUESTED : outcome;
     }
 
+    /** Trusted application lifecycle hook; client cancellation still uses the scoped method above. */
+    public void cancelForConnection(long connectionId) {
+        executions.forEach((id, owner) -> {
+            if (Objects.equals(owner.db().connectionId(), connectionId)) {
+                owner.cancelRequested().set(true);
+                StatementCancellationRegistry.getInstance().cancel(id);
+            }
+        });
+    }
+
     /**
      * Read-only statements skip the explicit transaction (no useless commit round-trip).
      * Anything the plugin validator cannot confidently classify as read-only keeps the

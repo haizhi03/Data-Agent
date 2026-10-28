@@ -8,6 +8,8 @@ import {
     resolveRefreshAccessTokenResult,
 } from './authToken';
 import { X_ORG_ID, X_WORKSPACE_TYPE } from '../constants/workspaceHeaders';
+import { useRuntimeStore } from '../store/runtimeStore';
+import { failLocalRuntime, localRequestTransport } from './localRuntime';
 
 const http = axios.create({
     baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
@@ -39,8 +41,30 @@ const isAuthEndpoint = (url?: string) => {
     return path.includes('/auth/refresh') || path.includes('/auth/login');
 };
 
+function redactLocalError(error: any) {
+    if (useRuntimeStore.getState().mode !== 'LOCAL') return error;
+    for (const config of [error?.config, error?.response?.config]) {
+        if (config) delete config.data; // Draft model keys / database passwords must not survive on loggable error objects.
+        const headers = config?.headers;
+        if (typeof headers?.delete === 'function') headers.delete('Authorization');
+        else if (headers) for (const key of Object.keys(headers)) if (key.toLowerCase() === 'authorization') delete headers[key];
+    }
+    if (error) delete error.request;
+    return error;
+}
+
 http.interceptors.request.use(
     async (config) => {
+        if (useRuntimeStore.getState().mode === 'LOCAL') {
+            const local = localRequestTransport(config.url);
+            config.baseURL = local.baseURL;
+            if (local.authorization) config.headers.Authorization = local.authorization;
+            else config.headers.delete('Authorization');
+            config.headers.set(X_WORKSPACE_TYPE, 'PERSONAL');
+            config.headers.delete(X_ORG_ID);
+            config.headers.set('X-Local-Runtime-Id', useRuntimeStore.getState().capabilities!.runtimeInstanceId);
+            return config;
+        }
         if (isAuthEndpoint(config.url)) {
             return config;
         }
@@ -89,7 +113,7 @@ http.interceptors.response.use(
                     data: responseData,
                 };
                 error.config = response.config;
-                return Promise.reject(error);
+                return Promise.reject(redactLocalError(error));
             }
             // code === 200，如果响应是 ApiResponse 格式，自动提取 data 字段
             // 这样 service 层可以直接使用 response.data，无需关心 ApiResponse 结构
@@ -101,6 +125,10 @@ http.interceptors.response.use(
         return response;
     },
     async (error) => {
+        if (useRuntimeStore.getState().mode === 'LOCAL') {
+            if (error.response?.status === 401) failLocalRuntime();
+            return Promise.reject(redactLocalError(error));
+        }
         const originalRequest = error.config as any;
         // HTTP 401 或 业务 code 401 任一成立即尝试刷新
         const isNotLogin =

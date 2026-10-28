@@ -58,6 +58,7 @@ public class ModelClientRegistry {
                     ChatRequest effective = request.toBuilder().messages(ProtocolHistory.forTarget(request.messages(), config)).build();
                     ChatResponse response = raw.chatModel().chat(effective);
                     validateResponse(response, request);
+                    run.recordUsage(response.tokenUsage());
                     resolver.reauthorize(config);
                     run.ensureActive();
                     return response;
@@ -87,6 +88,7 @@ public class ModelClientRegistry {
                         if (!terminal.compareAndSet(false, true)) return;
                         try {
                             validateResponse(response, request);
+                    run.recordUsage(response.tokenUsage());
                             resolver.reauthorize(config);
                             run.ensureActive();
                         } catch (RuntimeException error) { handler.onError(safe(error)); return; }

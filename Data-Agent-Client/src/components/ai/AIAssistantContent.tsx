@@ -5,6 +5,7 @@ import type { WaitingPromptMode } from '../../types/chat';
 
 export interface AIAssistantContentProps {
   error?: Error;
+  trailingContent?: React.ReactNode;
   messages: Message[];
   messagesEndRef: React.Ref<HTMLDivElement>;
   isLoading: boolean;
@@ -16,6 +17,7 @@ export interface AIAssistantContentProps {
 
 export function AIAssistantContent({
   error,
+  trailingContent,
   messages,
   messagesEndRef,
   isLoading,
@@ -28,6 +30,7 @@ export function AIAssistantContent({
     <div className="flex-1 min-h-0 flex flex-col bg-transparent">
       {error && <ChatErrorStrip error={error} />}
       <MessageList
+        trailingContent={trailingContent}
         messages={messages}
         messagesEndRef={messagesEndRef}
         isLoading={isLoading}

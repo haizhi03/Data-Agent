@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import http from '../lib/http';
+import { useRuntimeStore } from '../store/runtimeStore';
 import { createModelManagementService, modelManagementError } from './modelManagement.service';
 import { setupFromModel } from '../lib/modelSetup';
 
@@ -7,7 +8,7 @@ const { scope } = vi.hoisted(() => ({ scope: { user: { id: 1 }, workspaceType: '
 vi.mock('../lib/http', () => ({ default: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), put: vi.fn() } }));
 vi.mock('../store/authStore', () => ({ useAuthStore: { getState: () => scope } }));
 describe('model management request ownership and credentials', () => {
-  beforeEach(() => { vi.resetAllMocks(); scope.user.id = 1; scope.workspaceType = 'ORGANIZATION'; scope.workspaceOrgId = 90; vi.mocked(http.get).mockResolvedValue({ data: [] }); vi.mocked(http.post).mockResolvedValue({ data: {} }); });
+  beforeEach(() => { useRuntimeStore.setState({ mode: 'SERVER', status: 'READY' }); vi.resetAllMocks(); scope.user.id = 1; scope.workspaceType = 'ORGANIZATION'; scope.workspaceOrgId = 90; vi.mocked(http.get).mockResolvedValue({ data: [] }); vi.mocked(http.post).mockResolvedValue({ data: {} }); });
   it('pins the original workspace even if the current selection changes', async () => {
     const api = createModelManagementService(); scope.workspaceOrgId = 91;
     await api.connections();

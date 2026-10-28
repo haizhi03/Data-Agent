@@ -27,7 +27,7 @@ import java.util.function.Supplier;
 public class SqlCompletionServiceImpl implements SqlCompletionService {
     private static final int MAX_ITEMS = 500;
     private final ConnectionService connectionService;
-    private final DbConnectionService dbConnectionService;
+    private final ConnectionDefinitionReader dbConnectionService;
     private final ConnectionAccessService accessService;
     private final SqlCompletionMetadataCache cache;
 

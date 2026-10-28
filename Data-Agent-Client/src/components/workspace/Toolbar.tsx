@@ -15,6 +15,7 @@ import { TransactionMode, IsolationLevel } from '../../constants/transactionSett
 import { TransactionModeSelector } from './TransactionModeSelector';
 import { getPlatformShortcuts } from '../../lib/platformShortcuts';
 import type { SqlBatchMode } from '../../types/sql';
+import { useRuntimeStore } from '../../store/runtimeStore';
 
 interface ToolbarProps {
   onRun: () => void;
@@ -52,6 +53,7 @@ export function Toolbar({
   showTransactionControls = true,
 }: ToolbarProps) {
   const { t } = useTranslation();
+  const local = useRuntimeStore((s) => s.mode === 'LOCAL');
   const shortcuts = getPlatformShortcuts();
   const [databases, setDatabases] = useState<string[]>([]);
   const [loadingDatabases, setLoadingDatabases] = useState(false);
@@ -130,7 +132,7 @@ export function Toolbar({
         />
       )}
 
-      {onScriptModeChange && (
+      {!local && onScriptModeChange && (
         <select
           aria-label="SQL script execution mode"
           className="workbench-pill theme-text-primary text-[10px]"

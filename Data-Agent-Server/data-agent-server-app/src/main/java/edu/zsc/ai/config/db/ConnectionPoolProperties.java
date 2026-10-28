@@ -9,6 +9,8 @@ import org.springframework.context.annotation.Configuration;
 @ConfigurationProperties(prefix = "db.pool")
 public class ConnectionPoolProperties {
 
+    private boolean readOnly = false;
+
     private int maximumPoolSize = 10;
 
     private int minimumIdle = 1;

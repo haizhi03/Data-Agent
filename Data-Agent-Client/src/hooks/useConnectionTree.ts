@@ -4,6 +4,7 @@ import { NodeApi } from 'react-arborist';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { connectionService } from '../services/connection.service';
 import { useAuthStore } from '../store/authStore';
+import { useRuntimeStore, localWorkbenchReady } from '../store/runtimeStore';
 import { useWorkspaceStore } from '../store/workspaceStore';
 import { useToast } from './useToast';
 import { ExplorerNodeType, FolderName, ExplorerIdPrefix, QUERY_KEY_CONNECTIONS } from '../constants/explorer';
@@ -34,6 +35,7 @@ export { ExplorerNodeType, FolderName };
 export type ExplorerNodeHydrationState = 'none' | 'full' | 'partial';
 
 export function useConnectionTree() {
+  const localReady = useRuntimeStore(localWorkbenchReady);
   const { t } = useTranslation();
   const toast = useToast();
   const queryClient = useQueryClient();
@@ -43,7 +45,7 @@ export function useConnectionTree() {
   const { data, isLoading: isConnectionsLoading, refetch: refetchConnections } = useQuery({
     queryKey: QUERY_KEY_CONNECTIONS,
     queryFn: () => connectionService.getConnections(),
-    enabled: !!accessToken,
+    enabled: localReady || (useRuntimeStore.getState().mode !== 'LOCAL' && !!accessToken),
   });
 
   const connections = useMemo(() => data || [], [data]);
@@ -79,7 +81,7 @@ export function useConnectionTree() {
   }, [treeData]);
 
   const deleteMutation = useMutation({
-    mutationFn: (id: number) => connectionService.deleteConnection(id),
+    mutationFn: (id: number) => connectionService.deleteConnection(id, connections.find((connection) => connection.id === id)?.version),
     onSuccess: (_, id) => {
       clearExplorerMetadataForConnection(queryClient, String(id));
       queryClient.invalidateQueries({ queryKey: QUERY_KEY_CONNECTIONS });

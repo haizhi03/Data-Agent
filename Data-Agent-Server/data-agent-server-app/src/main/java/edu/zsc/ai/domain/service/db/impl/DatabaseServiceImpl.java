@@ -3,7 +3,7 @@ package edu.zsc.ai.domain.service.db.impl;
 import edu.zsc.ai.domain.model.entity.db.DbConnection;
 import edu.zsc.ai.domain.service.db.ConnectionService;
 import edu.zsc.ai.domain.service.db.DatabaseService;
-import edu.zsc.ai.domain.service.db.DbConnectionService;
+import edu.zsc.ai.domain.service.db.ConnectionDefinitionReader;
 import edu.zsc.ai.plugin.capability.DatabaseManager;
 import edu.zsc.ai.plugin.manager.DefaultPluginManager;
 import lombok.RequiredArgsConstructor;
@@ -19,7 +19,7 @@ import java.util.List;
 public class DatabaseServiceImpl implements DatabaseService {
 
     private final ConnectionService connectionService;
-    private final DbConnectionService dbConnectionService;
+    private final ConnectionDefinitionReader dbConnectionService;
 
     @Override
     public List<String> getDatabases(Long connectionId) {

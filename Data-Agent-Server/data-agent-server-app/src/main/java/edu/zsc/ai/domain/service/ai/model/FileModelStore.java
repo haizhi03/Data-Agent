@@ -5,7 +5,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.*;
 import java.nio.file.*;
-import java.nio.file.attribute.PosixFilePermissions;
+import edu.zsc.ai.util.PrivateFiles;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.*;
@@ -46,7 +46,7 @@ public class FileModelStore {
             mutex=MUTEXES[(lock.hashCode() & Integer.MAX_VALUE)%MUTEXES.length];
             if(!(held=mutex.tryLock(5,TimeUnit.SECONDS))) throw ModelManagementException.unavailable();
             rejectLink(lock); rejectLink(target);
-            try(FileChannel channel=FileChannel.open(lock,Set.of(StandardOpenOption.CREATE,StandardOpenOption.WRITE,LinkOption.NOFOLLOW_LINKS),PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")))) {
+            try(FileChannel channel=FileChannel.open(lock,Set.of(StandardOpenOption.CREATE,StandardOpenOption.WRITE,LinkOption.NOFOLLOW_LINKS),new PrivateFiles(directory).creationAttributes(directory, false))) {
                 ownerOnly(lock,false);
                 try(FileLock ignored=acquire(channel)) {
                     var state=load(target,scope); String before=write?ModelManagementJson.write(state):null;
@@ -81,11 +81,11 @@ public class FileModelStore {
         if(configured==null || configured.isBlank())throw ModelManagementException.unavailable();
         Path root=Path.of(configured).normalize();
         if(!root.isAbsolute() || root.getParent()==null)throw ModelManagementException.unavailable();
-        rejectLink(root); Files.createDirectories(root,PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")));
+        rejectLink(root); new PrivateFiles(root).directory(root);
         root=root.toRealPath(); ownerOnly(root,true);
         for(String part:List.of(scope.workspaceType().name(),Long.toString(scope.ownerId()))) {
             root=root.resolve(part);rejectLink(root);
-            try { Files.createDirectory(root,PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------"))); }
+            try { Files.createDirectory(root,new PrivateFiles(root).creationAttributes(root.getParent(),true)); }
             catch(FileAlreadyExistsException e) { if(!Files.isDirectory(root,LinkOption.NOFOLLOW_LINKS))throw e; }
             ownerOnly(root,true);
         }
@@ -110,7 +110,7 @@ public class FileModelStore {
         var state=ModelManagementJson.read(json,FileModelState.class); validate(state,scope);return state;
     }
     private void save(Path target,byte[] bytes) throws IOException {
-        Path temporary=Files.createTempFile(target.getParent(),".models-",".tmp",PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")));
+        Path temporary=Files.createTempFile(target.getParent(),".models-",".tmp",new PrivateFiles(target.getParent()).creationAttributes(target.getParent(), false));
         try {
             try(var output=FileChannel.open(temporary,StandardOpenOption.WRITE,LinkOption.NOFOLLOW_LINKS)) {
                 var buffer=ByteBuffer.wrap(bytes);while(buffer.hasRemaining())output.write(buffer);output.force(true);
@@ -123,7 +123,7 @@ public class FileModelStore {
     }
     /** Separate seam for fault-injection tests; production never falls back to a non-atomic write. */
     protected void replace(Path temporary,Path target) throws IOException { Files.move(temporary,target,StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING); }
-    private static void ownerOnly(Path path,boolean directory) throws IOException { Files.setPosixFilePermissions(path,PosixFilePermissions.fromString(directory?"rwx------":"rw-------")); }
+    private static void ownerOnly(Path path,boolean directory) throws IOException { new PrivateFiles(path).protect(path,directory); }
     private static void rejectLink(Path path) throws IOException { if(Files.isSymbolicLink(path))throw new IOException("Invalid model storage path"); }
     private static void validate(FileModelState s,ModelAccessContext a) {
         try {

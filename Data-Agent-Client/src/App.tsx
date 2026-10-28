@@ -1,21 +1,17 @@
 import { useState, useEffect, useCallback } from "react";
 import { BrowserRouter as Router, useRoutes, useLocation } from "react-router-dom";
-import { Dialog } from "./components/ui/Dialog";
-import { LoginModal } from "./components/common/LoginModal";
-import { RegisterModal } from "./components/common/RegisterModal";
 import { SettingsModal } from "./components/common/SettingsModal";
 import { ThemeProvider } from "./hooks/useTheme";
 import { Header } from "./components/layouts/Header";
 import { ToastContainer } from "./components/ui/Toast";
-import { useAuthStore } from "./store/authStore";
-import { authService } from "./services/auth.service";
-import { AIAssistant } from "./components/ai/AIAssistant";
 import { useWorkspaceStore } from "./store/workspaceStore";
 import { routerConfig } from "./router.tsx";
 import { ROUTES } from "./constants/routes";
-import { AuthModalType } from "./constants/modal";
 import { DataAttributes } from "./constants/dataAttributes";
 import { WorkspaceLayout } from "./components/layouts/WorkspaceLayout";
+import { useRuntimeStore, localWorkbenchReady } from './store/runtimeStore';
+import { initializeRuntime } from './lib/localRuntime';
+import { useTranslation } from 'react-i18next';
 
 function AppRoutes({
     showAI,
@@ -30,20 +26,7 @@ function AppRoutes({
 }) {
     const element = useRoutes(routerConfig);
     const location = useLocation();
-    const isOrgCommonLayout = useAuthStore(
-        (s) => s.workspaceType === "ORGANIZATION" && s.workspaceOrgRole === "COMMON"
-    );
-    
-    // Show IDE layout (sidebar + AI assistant) only at root path "/"
     const isWorkspace = location.pathname === ROUTES.HOME;
-
-    if (isWorkspace && isOrgCommonLayout) {
-        return (
-            <div className="flex-1 flex flex-col min-h-0 overflow-hidden bg-background">
-                <AIAssistant historyAsLeftSidebar />
-            </div>
-        );
-    }
 
     if (!isWorkspace) {
         return (
@@ -68,51 +51,17 @@ function AppRoutes({
 }
 
 function App() {
-    const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-    const [modalType, setModalType] = useState<AuthModalType>(AuthModalType.LOGIN);
-    const { isLoginModalOpen, closeLoginModal } = useAuthStore();
+    const runtime = useRuntimeStore();
+    const { t } = useTranslation();
     const { setSettingsModalOpen } = useWorkspaceStore();
 
     // Layout state
     const [showAI, setShowAI] = useState(false);
     const [showExplorer, setShowExplorer] = useState(true);
 
-    // Wait until the persisted session is available. An earlier unauthenticated
-    // request fails once and leaves the add-database menu stuck on "loading".
-    const accessToken = useAuthStore((state) => state.accessToken);
     useEffect(() => {
-        if (!accessToken) return;
-        useWorkspaceStore.getState().fetchSupportedDbTypes();
-    }, [accessToken]);
-
-    // Hydrate user profile (organizations, etc.) when session exists
-    useEffect(() => {
-        let cancelled = false;
-        (async () => {
-            const { accessToken, refreshToken, user, setAuth, rememberMe } = useAuthStore.getState();
-            if (!accessToken) return;
-            try {
-                const full = await authService.getCurrentUser();
-                if (cancelled) return;
-                setAuth({ ...(user ?? { id: 0, username: "", email: "" }), ...full }, accessToken, refreshToken, rememberMe);
-                useAuthStore.getState().reconcileWorkspaceWithUser();
-            } catch {
-                /* ignore */
-            }
-        })();
-        return () => {
-            cancelled = true;
-        };
-    }, []);
-
-    const workspaceOrgKey = useAuthStore((s) => `${s.workspaceType}-${s.workspaceOrgId ?? ""}-${s.workspaceOrgRole ?? ""}`);
-
-    useEffect(() => {
-        if (useAuthStore.getState().workspaceType === "ORGANIZATION" && useAuthStore.getState().workspaceOrgRole === "COMMON") {
-            setShowAI(true);
-            setShowExplorer(false);
-        }
-    }, [workspaceOrgKey]);
+        if (localWorkbenchReady(runtime)) useWorkspaceStore.getState().fetchSupportedDbTypes();
+    }, [runtime.status]);
 
     // Disable browser context menu except where custom menus exist (e.g. Explorer ContextMenu)
     useEffect(() => {
@@ -134,14 +83,6 @@ function App() {
         return () => document.removeEventListener('contextmenu', handleContextMenu);
     }, []);
 
-    const handleSwitchToRegister = () => {
-        setModalType(AuthModalType.REGISTER);
-    };
-
-    const handleSwitchToLogin = () => {
-        setModalType(AuthModalType.LOGIN);
-    };
-
     const toggleAISidebar = useCallback(() => {
         setShowAI(prev => {
             const newState = !prev;
@@ -162,16 +103,10 @@ function App() {
     // Global keyboard shortcuts
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
-            const orgCommon =
-                useAuthStore.getState().workspaceType === "ORGANIZATION" &&
-                useAuthStore.getState().workspaceOrgRole === "COMMON";
-
             // Cmd+B or Ctrl+B: Toggle AI Sidebar
             if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "b") {
                 e.preventDefault();
-                if (!orgCommon) {
-                    toggleAISidebar();
-                }
+                toggleAISidebar();
             }
 
             // ESC: Toggle Database Explorer (if not in a text input)
@@ -181,7 +116,7 @@ function App() {
                                activeEl?.tagName === "TEXTAREA" ||
                                (activeEl as HTMLElement)?.isContentEditable;
 
-                if (!isInput && !orgCommon) {
+                if (!isInput) {
                     e.preventDefault();
                     toggleExplorer();
                 }
@@ -198,17 +133,18 @@ function App() {
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [toggleAISidebar, toggleExplorer, setSettingsModalOpen]);
 
+    if (runtime.status !== 'READY' || !localWorkbenchReady(runtime)) return (
+        <div className="h-screen flex items-center justify-center bg-background text-foreground" role="alert">
+            <div className="space-y-4 text-center"><p>{t(runtime.error ?? (runtime.status === 'READY' ? 'runtime.store_unavailable' : 'runtime.starting'))}</p>
+                <button type="button" onClick={() => void initializeRuntime()}>{t('runtime.retry')}</button></div>
+        </div>
+    );
     return (
         <ThemeProvider>
             <Router>
-                <div className="h-screen flex flex-col theme-bg-main theme-text-primary overflow-hidden">
-                    <Header 
-                        onLoginClick={() => {
-                            setModalType(AuthModalType.LOGIN);
-                            setIsAuthModalOpen(true);
-                        }}
-                    />
-                    
+                <div className="h-[100dvh] w-full min-w-0 flex flex-col theme-bg-main theme-text-primary overflow-hidden">
+                    <Header onToggleAI={toggleAISidebar} />
+
                     <AppRoutes 
                         showAI={showAI}
                         toggleAISidebar={toggleAISidebar}
@@ -216,29 +152,6 @@ function App() {
                         toggleExplorer={toggleExplorer}
                     />
 
-                    <Dialog
-                        open={isAuthModalOpen || isLoginModalOpen}
-                        onOpenChange={(open) => {
-                            setIsAuthModalOpen(open);
-                            if (!open) {
-                                closeLoginModal();
-                            } else if (open && isLoginModalOpen) {
-                                setModalType(AuthModalType.LOGIN);
-                            }
-                        }}
-                    >
-                        {modalType === AuthModalType.LOGIN ? (
-                            <LoginModal
-                                onSwitchToRegister={handleSwitchToRegister}
-                                onClose={() => {
-                                    setIsAuthModalOpen(false);
-                                    closeLoginModal();
-                                }}
-                            />
-                        ) : (
-                            <RegisterModal onSwitchToLogin={handleSwitchToLogin} />
-                        )}
-                    </Dialog>
                     <ToastContainer />
                     <SettingsModal />
                 </div>

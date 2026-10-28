@@ -34,6 +34,7 @@ interface ChatInputToolbarProps {
   onStop?: () => void;
   /** When true, show stop button instead of send. */
   isLoading?: boolean;
+  disabled?: boolean;
   agents: AgentOption[];
   CurrentAgentIcon: React.ElementType;
 }
@@ -49,6 +50,7 @@ export function ChatInputToolbar({
   onSend,
   onStop,
   isLoading = false,
+  disabled = false,
   agents,
   CurrentAgentIcon,
 }: ChatInputToolbarProps) {
@@ -94,7 +96,7 @@ export function ChatInputToolbar({
         <button
           type="button"
           onClick={isLoading ? (onStop ?? (() => {})) : onSend}
-          disabled={!isLoading && !currentOption}
+          disabled={!isLoading && (!currentOption || disabled)}
           className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${AGENT_COLORS[agent].sendBtn}`}
           aria-label={isLoading ? 'Stop' : 'Send'}
         >

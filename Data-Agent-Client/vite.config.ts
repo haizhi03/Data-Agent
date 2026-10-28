@@ -7,13 +7,8 @@ export default defineConfig({
         react(),
     ],
     server: {
+        host: '127.0.0.1',
         port: 5174,
-        proxy: {
-            '/api': {
-                target: 'http://localhost:8081',
-                changeOrigin: true,
-            },
-        },
     },
     build: {
         rollupOptions: {

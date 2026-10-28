@@ -11,6 +11,7 @@ import {
 import { ExplorerNodeType } from '../../constants/explorer';
 import type { ExplorerNode } from '../../types/explorer';
 import { I18N_KEYS } from '../../constants/i18nKeys';
+import { useRuntimeStore } from '../../store/runtimeStore';
 
 interface NodeContextMenuContentProps {
   node: ExplorerNode;
@@ -47,6 +48,7 @@ export function NodeContextMenuContent({
   onExportTablesWizard,
   onImportTablesWizard,
 }: NodeContextMenuContentProps) {
+  const local = useRuntimeStore((s) => s.mode === 'LOCAL');
   const { t } = useTranslation();
 
   // Determine node characteristics
@@ -101,6 +103,13 @@ export function NodeContextMenuContent({
   // Track if any data operation item was shown for separator logic
   let hasDataOperations = false;
   let hasDeleteOperation = false;
+
+  if (local) return <ContextMenuContent>
+    {isConnected && <ContextMenuItem onSelect={() => onOpenQueryConsole(node)}>{t(I18N_KEYS.EXPLORER.OPEN_QUERY_CONSOLE)}</ContextMenuItem>}
+    {isTableOrView && <ContextMenuItem onSelect={() => onViewData(node)}>{t(I18N_KEYS.EXPLORER.VIEW_DATA)}</ContextMenuItem>}
+    {isDdlNode && <ContextMenuItem onSelect={() => onViewDdl(node)}>{t(I18N_KEYS.EXPLORER.VIEW_DDL)}</ContextMenuItem>}
+    {isTablesFolder && <ContextMenuItem onSelect={() => onOpenErDiagram(node)}>{t(I18N_KEYS.EXPLORER.ER_DIAGRAM)}</ContextMenuItem>}
+  </ContextMenuContent>;
 
   return (
     <ContextMenuContent>

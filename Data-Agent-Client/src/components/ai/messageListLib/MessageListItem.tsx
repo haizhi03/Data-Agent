@@ -39,7 +39,7 @@ export function MessageListItem({
 }: MessageListItemProps) {
   return (
     <>
-      <div className="flex flex-col w-full">
+      <div className="flex flex-col w-full" data-local-message={msg.role}>
         <MessageBubble
           message={msg}
           segments={segments}

@@ -1,4 +1,6 @@
 export interface ConnectRequest {
+  connectionId?: number;
+  expectedVersion?: number;
   dbType: string;
   host: string;
   port: number;
@@ -12,6 +14,8 @@ export interface ConnectRequest {
 
 export interface ConnectionCreateRequest {
   connectionId?: number;
+  expectedVersion?: number;
+  credentialAction?: 'KEEP' | 'REMOVE';
   name: string;
   dbType: string;
   host: string;
@@ -26,6 +30,8 @@ export interface ConnectionCreateRequest {
 
 export interface DbConnection {
   id: number;
+  version?: number;
+  credentialConfigured?: boolean;
   name: string;
   dbType: string;
   host: string;

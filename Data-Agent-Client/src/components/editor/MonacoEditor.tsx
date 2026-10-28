@@ -1,4 +1,6 @@
 import Editor, { loader } from '@monaco-editor/react';
+import * as monacoRuntime from 'monaco-editor';
+import EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker';
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { SqlCompletionItem, SqlCompletionKind, SqlSyntaxError } from '../../types/sql';
@@ -11,8 +13,9 @@ import { parameterSpans } from './completion/sqlSignatureHelp';
 import { SqlCompletionDictionary } from './completion/sqlCompletionDictionary';
 import './MonacoEditor.css';
 
-// Configure Monaco CDN
-loader.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.43.0/min/vs' } });
+// Bundle the SQL editor and its worker so the local workbench also starts without a CDN.
+(globalThis as { MonacoEnvironment?: { getWorker: () => Worker } }).MonacoEnvironment = { getWorker: () => new EditorWorker() };
+loader.config({ monaco: monacoRuntime });
 
 export interface MonacoEditorHandle {
   /**
@@ -378,8 +381,7 @@ export const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(
         onMount={(editor, monaco) => {
           editorRef.current = editor;
           monacoRef.current = monaco;
-          // The pinned 0.43 runtime accepts a boolean; installed 0.55 typings use a string.
-          editorRef.current.updateOptions({ wordBasedSuggestions: false });
+          editorRef.current.updateOptions({ wordBasedSuggestions: 'off' });
           registerLanguageProviders(monaco);
           monaco.editor.setModelMarkers(editor.getModel(), 'dm-sql-parser', diagnostics.map(error => ({
             startLineNumber: error.line,

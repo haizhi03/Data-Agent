@@ -18,6 +18,7 @@ export type { Message } from './types';
 
 export interface MessageListProps {
   messages: Message[];
+  trailingContent?: React.ReactNode;
   messagesEndRef: React.Ref<HTMLDivElement>;
   isLoading?: boolean;
   isWaiting?: boolean;
@@ -26,6 +27,7 @@ export interface MessageListProps {
 
 export function MessageList({
   messages,
+  trailingContent,
   messagesEndRef,
   isLoading = false,
   isWaiting = false,
@@ -163,6 +165,7 @@ export function MessageList({
           </div>
         </div>
       )}
+      {trailingContent}
       <div ref={messagesEndRef} />
     </div>
   );

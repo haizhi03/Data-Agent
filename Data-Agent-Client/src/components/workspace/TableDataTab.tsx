@@ -23,6 +23,7 @@ import { TableDataPagination } from './TableDataPagination';
 import { TableDataToolbar } from './TableDataToolbar';
 import { useTableDataFind } from './useTableDataFind';
 import { useTableDataTabState } from './useTableDataTabState';
+import { useRuntimeStore } from '../../store/runtimeStore';
 
 interface TableDataTabProps {
   tabId: string;
@@ -30,6 +31,7 @@ interface TableDataTabProps {
 }
 
 export function TableDataTab({ tabId, metadata }: TableDataTabProps) {
+  const local = useRuntimeStore((s) => s.mode === 'LOCAL');
   const { t } = useTranslation();
   const isDm = metadata.dbType?.toLowerCase() === 'dm';
   const {
@@ -135,6 +137,7 @@ export function TableDataTab({ tabId, metadata }: TableDataTabProps) {
   // content-editable elements (SQL editor, find box) keep their own shortcuts.
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (local) return;
       if (!(event.ctrlKey || event.metaKey) || event.key !== 'Enter') return;
       const target = event.target as HTMLElement | null;
       const tag = target?.tagName;
@@ -146,7 +149,7 @@ export function TableDataTab({ tabId, metadata }: TableDataTabProps) {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [submitPendingOps]);
+  }, [submitPendingOps, local]);
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
@@ -190,7 +193,7 @@ export function TableDataTab({ tabId, metadata }: TableDataTabProps) {
         onCloseFind={onCloseFind}
       />
 
-      {isDm && isTable && !isAddingRow && (
+      {!local && isDm && isTable && !isAddingRow && (
         <div className="px-3 py-1 text-[10px] theme-text-secondary border-b theme-border">
           {t(I18N_KEYS.EXPLORER.DM_CELL_EDIT_HINT)}
         </div>
@@ -285,7 +288,7 @@ export function TableDataTab({ tabId, metadata }: TableDataTabProps) {
         orderByDirection={orderByDirection}
         selectedRowIndex={selectedRowIndex}
         startRow={startRow}
-        editable={isTable && viewMode === 'grid'}
+        editable={!local && isTable && viewMode === 'grid'}
         matchedKeys={matchedKeys}
         currentMatch={currentMatch}
         dirtyCellKeys={dirtyCellKeys}

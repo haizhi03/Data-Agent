@@ -11,7 +11,7 @@ import edu.zsc.ai.domain.model.entity.db.DbConnection;
 import edu.zsc.ai.context.RequestContext;
 import edu.zsc.ai.domain.service.db.ConnectionAccessService;
 import edu.zsc.ai.domain.service.db.ConnectionService;
-import edu.zsc.ai.domain.service.db.DbConnectionService;
+import edu.zsc.ai.domain.service.db.ConnectionDefinitionReader;
 import edu.zsc.ai.domain.service.db.ManagedDataSourceFactory;
 import edu.zsc.ai.domain.service.db.support.ConnectionManagerChain;
 import edu.zsc.ai.plugin.Plugin;
@@ -32,7 +32,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ConnectionServiceImpl implements ConnectionService {
 
-    private final DbConnectionService dbConnectionService;
+    private final ConnectionDefinitionReader dbConnectionService;
     private final ConnectionAccessService connectionAccessService;
     private final ManagedDataSourceFactory managedDataSourceFactory;
 

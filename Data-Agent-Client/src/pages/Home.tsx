@@ -1,3 +1,4 @@
+import { useRuntimeStore } from '../store/runtimeStore';
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { TabBar } from "../components/workspace/TabBar";
@@ -28,6 +29,7 @@ const NO_VARIABLES: SqlVariable[] = [];
 
 export default function Home() {
     const { t } = useTranslation();
+    const local = useRuntimeStore((s) => s.mode === 'LOCAL');
     const toast = useToast();
     const preparingRunRef = useRef(false);
     const { tabs, activeTabId, updateTabContent, updateTabMetadata } = useWorkspaceStore();
@@ -60,7 +62,7 @@ export default function Home() {
         ? activeTab?.metadata as import('../types/tab').ConsoleTabMetadata | undefined
         : undefined;
 
-    const scriptMode: SqlBatchMode = sqlContext?.sqlBatchMode ?? 'ATOMIC';
+    const scriptMode: SqlBatchMode = local ? 'STEPWISE' : sqlContext?.sqlBatchMode ?? 'ATOMIC';
 
     useEffect(() => {
         const connectionId = sqlContext?.connectionId;
@@ -243,7 +245,7 @@ export default function Home() {
                                     onTimeoutSecondsChange={setTimeoutSeconds}
                                     maxRows={maxRows}
                                     onMaxRowsChange={setMaxRows}
-                                    showTransactionControls={connectionType?.dbType.toUpperCase() !== 'DM'}
+                                    showTransactionControls={useRuntimeStore.getState().mode !== 'LOCAL' && connectionType?.dbType.toUpperCase() !== 'DM'}
                                     connectionId={sqlContext?.connectionId}
                                     currentDatabase={sqlContext?.databaseName}
                                     onDatabaseChange={(db) =>

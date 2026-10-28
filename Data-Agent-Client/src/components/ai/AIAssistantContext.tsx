@@ -15,6 +15,7 @@ export interface ModelState {
 export interface AgentState {
   agent: AgentType;
   setAgent: (agent: AgentType) => void;
+  availableAgents?: AgentType[];
 }
 
 export interface ChatContextState {
@@ -29,6 +30,8 @@ export interface MentionState {
 
 export interface AIAssistantContextValue {
   input: string;
+  supportedCommands?: string[];
+  canSend?: boolean;
   setInput: (value: string) => void;
   onSend: () => void;
   onStop?: () => void;

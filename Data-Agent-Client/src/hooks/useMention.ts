@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { connectionService } from '../services/connection.service';
 import { useWorkspaceStore } from '../store/workspaceStore';
 import { useAuthStore } from '../store/authStore';
+import { useRuntimeStore, localWorkbenchReady } from '../store/runtimeStore';
 import { MentionIdPrefix } from '../constants/explorer';
 import type { ChatUserMention } from '../types/chat';
 import type { ChatContext } from '../types/chat';
@@ -74,10 +75,11 @@ export function useMention(options: UseMentionOptions): UseMentionReturn {
   const [mentionHighlightedIndex, setMentionHighlightedIndex] = useState(0);
 
   const accessToken = useAuthStore((s) => s.accessToken);
+  const localReady = useRuntimeStore(localWorkbenchReady);
   const { data: connections = [] } = useQuery({
     queryKey: ['connections'],
     queryFn: () => connectionService.getConnections(),
-    enabled: mentionOpen && !!accessToken,
+    enabled: mentionOpen && (localReady || !!accessToken),
   });
 
   const supportSchema = mentionConnection

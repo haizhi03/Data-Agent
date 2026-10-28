@@ -90,6 +90,8 @@ export function ConnectionFormModal({
   const [driverModalOpen, setDriverModalOpen] = useState(false);
   const [isNameManuallyEdited, setIsNameManuallyEdited] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [removeCredential, setRemoveCredential] = useState(false);
+  useEffect(() => { setRemoveCredential(false); }, [open, editId]);
 
   const {
     register,
@@ -176,7 +178,10 @@ export function ConnectionFormModal({
   }, [formValues.host, formValues.port, isNameManuallyEdited, mode, setValue]);
 
   const testMutation = useMutation({
-    mutationFn: (values: ConnectionFormValues) => connectionService.testConnection(values as any),
+    mutationFn: (values: ConnectionFormValues) => connectionService.testConnection({
+      ...values,
+      ...(mode === 'edit' && connection?.version !== undefined ? { connectionId: editId, expectedVersion: connection.version } : {}),
+    } as any),
     onSuccess: (res) => {
       if (res.status === 'SUCCEEDED') {
         toast.success(t(I18N_KEYS.CONNECTIONS.TEST_SUCCEEDED) + ` (${t(I18N_KEYS.CONNECTIONS.TEST_PING_MS, { ping: res.ping })})`);
@@ -195,6 +200,9 @@ export function ConnectionFormModal({
         return connectionService.updateConnection({
           ...values,
           connectionId: editId,
+          expectedVersion: connection?.version,
+          properties: connection?.properties ?? {},
+          ...(removeCredential ? { credentialAction: 'REMOVE', password: '' } : {}),
         } as any);
       }
       return connectionService.createConnection(values as any);
@@ -299,7 +307,7 @@ export function ConnectionFormModal({
               <div className="grid gap-2">
                 <label className="text-sm font-medium">{t(I18N_KEYS.CONNECTIONS.PASSWORD)}</label>
                 <div className="relative">
-                  <Input type={showPassword ? 'text' : 'password'} {...register('password')} autoComplete="off" className="pr-10" />
+                  <Input type={showPassword ? 'text' : 'password'} {...register('password')} disabled={removeCredential} autoComplete="off" className="pr-10" />
                   <button
                     type="button"
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
@@ -311,6 +319,10 @@ export function ConnectionFormModal({
                 </div>
               </div>
 
+              {mode === 'edit' && connection?.version !== undefined && connection.credentialConfigured && (
+                <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={removeCredential}
+                  onChange={(event) => setRemoveCredential(event.target.checked)} />{t('runtime.remove_credential')}</label>
+              )}
               <div className="grid grid-cols-4 gap-4">
                 <div className="col-span-3 grid gap-2">
                   <div className="flex items-center justify-between">
@@ -335,7 +347,7 @@ export function ConnectionFormModal({
 
               <DialogFooter className="gap-2">
                 <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t(I18N_KEYS.CONNECTIONS.CANCEL)}</Button>
-                <Button type="button" variant="outline" onClick={handleTest} disabled={testMutation.isPending}>
+                <Button type="button" variant="outline" onClick={handleTest} disabled={testMutation.isPending || removeCredential}>
                   {testMutation.isPending ? t(I18N_KEYS.CONNECTIONS.TESTING) : t(I18N_KEYS.CONNECTIONS.TEST_CONNECTION)}
                 </Button>
                 <Button type="submit" disabled={submitMutation.isPending}>

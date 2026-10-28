@@ -7,7 +7,12 @@ import edu.zsc.ai.domain.model.entity.db.DbConnection;
 
 import java.util.List;
 
-public interface DbConnectionService extends IService<DbConnection> {
+public interface DbConnectionService extends IService<DbConnection>, ConnectionDefinitionReader {
+
+    @Override
+    default DbConnection getById(Long id) {
+        return getById((java.io.Serializable) id);
+    }
 
     DbConnection getByName(String name);
 

@@ -39,7 +39,7 @@ public class HikariManagedDataSourceFactory implements ManagedDataSourceFactory 
         // Explicit session baselines so Hikari's dirty-check reset on return actually applies;
         // transactionIsolation stays unset (driver default) unless configured.
         hikariConfig.setAutoCommit(true);
-        hikariConfig.setReadOnly(false);
+        hikariConfig.setReadOnly(connectionPoolProperties.isReadOnly());
         if (connectionPoolProperties.getTransactionIsolation() != null) {
             hikariConfig.setTransactionIsolation(connectionPoolProperties.getTransactionIsolation());
         }

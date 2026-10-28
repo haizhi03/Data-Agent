@@ -1,3 +1,4 @@
+import { useRuntimeStore, localWorkbenchReady } from '../../store/runtimeStore';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useWorkspaceStore } from '../../store/workspaceStore';
@@ -30,6 +31,7 @@ import { SchemaDdlGeneratorDialog } from './SchemaDdlGeneratorDialog';
 import { RunSqlScriptDialog } from './RunSqlScriptDialog';
 
 export function DatabaseExplorer() {
+  const localReady = useRuntimeStore(localWorkbenchReady);
   const { t } = useTranslation();
   const toast = useToast();
   const { supportedDbTypes, supportedDbTypesLoading, openTab, fetchSupportedDbTypes } = useWorkspaceStore();
@@ -265,9 +267,9 @@ export function DatabaseExplorer() {
   };
 
   useEffect(() => {
-    if (!accessToken) return;
+    if (!(useRuntimeStore.getState().mode === 'LOCAL' ? localReady : accessToken)) return;
     fetchSupportedDbTypes();
-  }, [accessToken, fetchSupportedDbTypes]);
+  }, [accessToken, localReady, fetchSupportedDbTypes]);
 
   useEffect(() => {
     const onSqlObjectChanged = (event: Event) => {

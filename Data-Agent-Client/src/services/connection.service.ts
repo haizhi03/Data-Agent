@@ -42,8 +42,9 @@ export const connectionService = {
   /**
    * Delete connection config
    */
-  deleteConnection: async (id: number): Promise<void> => {
-    await http.delete(`/connections/${id}`);
+  deleteConnection: async (id: number, expectedVersion?: number): Promise<void> => {
+    if (expectedVersion === undefined) await http.delete(`/connections/${id}`);
+    else await http.delete(`/connections/${id}`, { params: { expectedVersion } });
   },
 
   /**

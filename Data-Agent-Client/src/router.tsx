@@ -1,108 +1,13 @@
-import { lazy, Suspense } from "react";
-import { Navigate, type RouteObject } from "react-router-dom";
-import { RouteGuard } from "./components/auth/RouteGuard";
-import { ROUTES } from "./constants/routes";
+import { lazy, Suspense } from 'react';
+import { Navigate, type RouteObject } from 'react-router-dom';
 
-const Home = lazy(() => import("./pages/Home").then((m) => ({ default: m.default })));
-const Settings = lazy(() => import("./pages/Settings").then((m) => ({ default: m.default })));
-const ModelSettings = lazy(() => import("./pages/ModelSettings"));
-const Profile = lazy(() => import("./pages/Profile").then((m) => ({ default: m.default })));
-const PasswordReset = lazy(() => import("./pages/PasswordReset").then((m) => ({ default: m.default })));
-const Sessions = lazy(() => import("./pages/Sessions").then((m) => ({ default: m.default })));
-const Memories = lazy(() => import("./pages/Memories").then((m) => ({ default: m.default })));
-const Permissions = lazy(() => import("./pages/Permissions").then((m) => ({ default: m.default })));
-const OrganizationSettings = lazy(() =>
-    import("./pages/OrganizationSettings").then((m) => ({ default: m.default }))
-);
+const Home = lazy(() => import('./pages/Home'));
+const ModelSettings = lazy(() => import('./pages/ModelSettings'));
 
-interface RouterConfig {
-    path?: string;
-    element?: React.ReactNode;
-    children?: RouterConfig[];
-    index?: boolean;
-    /**
-     * 是否需要登录
-     */
-    requiresAuth?: boolean;
-}
-
-const routes: RouterConfig[] = [
-    {
-        path: ROUTES.HOME,
-        element: (
-            <Suspense fallback={null}>
-                <Home />
-            </Suspense>
-        ),
-    },
-    {
-        path: ROUTES.PERMISSIONS,
-        element: (
-            <Suspense fallback={null}>
-                <Permissions />
-            </Suspense>
-        ),
-        requiresAuth: true,
-    },
-    {
-        path: "/profile",
-        element: <Navigate to="/settings/profile" replace />,
-    },
-    {
-        path: ROUTES.ORGANIZATION,
-        element: (
-            <Suspense fallback={null}>
-                <OrganizationSettings />
-            </Suspense>
-        ),
-        requiresAuth: true,
-    },
-    {
-        path: "/settings",
-        element: (
-            <Suspense fallback={null}>
-                <Settings />
-            </Suspense>
-        ),
-        requiresAuth: true,
-        children: [
-            { index: true, element: <Navigate to="/settings/profile" replace /> },
-            { path: "profile", element: <Suspense fallback={null}><Profile /></Suspense>, requiresAuth: true },
-            { path: "password", element: <Suspense fallback={null}><PasswordReset /></Suspense>, requiresAuth: true },
-            { path: "sessions", element: <Suspense fallback={null}><Sessions /></Suspense>, requiresAuth: true },
-            { path: "models", element: <Suspense fallback={null}><ModelSettings /></Suspense>, requiresAuth: true },
-            { path: "organization", element: <Navigate to={ROUTES.ORGANIZATION} replace /> },
-        ],
-    },
-    {
-        path: "/memories",
-        element: (
-            <Suspense fallback={null}>
-                <Memories />
-            </Suspense>
-        ),
-        requiresAuth: true,
-    },
+/** Local-only routes. Old account, organization, archived-chat and permission pages have no entry. */
+export const routerConfig: RouteObject[] = [
+    { path: '/', element: <Suspense fallback={null}><Home /></Suspense> },
+    { path: '/local/models', element: <Suspense fallback={null}><ModelSettings /></Suspense> },
+    { path: '/settings/models', element: <Navigate to="/local/models" replace /> },
+    { path: '*', element: <Navigate to="/" replace /> },
 ];
-
-// 递归包装需要登录的路由
-const applyRouteGuard = (configs: RouterConfig[]): RouterConfig[] => {
-    return configs.map((route) => {
-        const guarded: RouterConfig = {
-            ...route,
-            element: route.requiresAuth ? (
-                <RouteGuard>{route.element}</RouteGuard>
-            ) : (
-                route.element
-            ),
-        };
-
-        if (route.children && route.children.length > 0) {
-            guarded.children = applyRouteGuard(route.children);
-        }
-
-        return guarded;
-    });
-};
-
-export const routerConfig: RouteObject[] = applyRouteGuard(routes) as RouteObject[];

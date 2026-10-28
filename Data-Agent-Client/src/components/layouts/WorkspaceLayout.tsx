@@ -6,7 +6,7 @@ import {
   PanelImperativeHandle
 } from 'react-resizable-panels';
 import { DatabaseExplorer } from '../explorer/DatabaseExplorer';
-import { AIAssistant } from '../ai/AIAssistant';
+import { LocalAssistant } from '../ai/LocalAssistant';
 
 interface WorkspaceLayoutProps {
     children: React.ReactNode;
@@ -61,7 +61,7 @@ export function WorkspaceLayout({ children, showAI, onToggleAI, showExplorer }: 
                             maxSize="42%"
                             className="workbench-panel workbench-panel--assistant animate-in slide-in-from-right duration-300"
                         >
-                            <AIAssistant onClosePanel={onToggleAI} />
+                            <LocalAssistant onClose={onToggleAI} />
                         </Panel>
                     </>
                 )}
