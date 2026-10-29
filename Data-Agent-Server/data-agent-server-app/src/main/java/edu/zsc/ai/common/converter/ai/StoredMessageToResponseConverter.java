@@ -1,5 +1,7 @@
 package edu.zsc.ai.common.converter.ai;
 
+import edu.zsc.ai.domain.service.agent.ChatTurnContext;
+
 import dev.langchain4j.data.message.*;
 import edu.zsc.ai.agent.memory.MemoryUtil;
 import edu.zsc.ai.common.enums.ai.MessageRoleEnum;
@@ -52,10 +54,18 @@ public class StoredMessageToResponseConverter {
             blocks = List.of();
         }
 
+        var turn = message instanceof UserMessage user ?
+                ChatTurnContext.decode(userMessageContent(user)) : null;
+        if (turn != null) {
+            content = turn.message();
+            blocks = List.of(ChatResponseBlock.text(content));
+        }
         return ConversationMessageResponse.builder()
                 .id(stored.getId() != null ? stored.getId().toString() : null)
                 .role(role)
                 .content(StringUtils.defaultString(content))
+                .userMentions(turn == null ? List.of() : turn.userMentions())
+                .defaultTarget(turn == null ? null : turn.defaultTarget())
                 .blocks(blocks)
                 .messageStatus(resolveMessageStatus(stored.getStatus(), message))
                 .createdAt(stored.getCreatedAt())

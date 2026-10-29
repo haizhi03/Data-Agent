@@ -1,5 +1,7 @@
 package edu.zsc.ai.domain.model.dto.response.ai;
 
+import edu.zsc.ai.api.model.request.ChatDefaultTarget;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -33,6 +35,8 @@ public class ConversationResponse {
      * Token usage count
      */
     private Integer tokenCount;
+
+    private ChatDefaultTarget defaultTarget;
 
     /**
      * Created time

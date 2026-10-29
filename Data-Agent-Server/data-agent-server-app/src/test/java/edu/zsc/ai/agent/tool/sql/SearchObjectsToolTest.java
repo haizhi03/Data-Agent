@@ -257,7 +257,9 @@ class SearchObjectsToolTest {
     }
 
     private SearchObjectsTool proxiedTool() {
-        AspectJProxyFactory factory = new AspectJProxyFactory(new SearchObjectsTool(discoveryService));
+        AspectJProxyFactory factory = new AspectJProxyFactory(new SearchObjectsTool(discoveryService,
+                mock(edu.zsc.ai.domain.service.db.DbConnectionService.class),
+                mock(edu.zsc.ai.domain.service.db.ConnectionAccessService.class)));
         factory.addAspect(new AgentToolContextAspect(new ToolErrorMapper()));
         return factory.getProxy();
     }

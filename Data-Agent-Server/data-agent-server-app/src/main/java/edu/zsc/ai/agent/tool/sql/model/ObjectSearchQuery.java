@@ -25,6 +25,6 @@ public class ObjectSearchQuery {
     private String databaseNamePattern;
 
     @JsonAlias("schemaName")
-    @Description("按 SQL 通配符模式过滤 schema，例如 'public' 或 '%core%'。需要同时提供 connectionId 和 databaseNamePattern。")
+    @Description("按 SQL 通配符模式过滤 schema，例如 'public' 或 '%core%'。需要 connectionId；数据库具有独立数据库层级时还需要 databaseNamePattern。")
     private String schemaNamePattern;
 }

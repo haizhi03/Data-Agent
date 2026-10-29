@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { connectionService } from '../services/connection.service';
@@ -6,7 +6,6 @@ import { useWorkspaceStore } from '../store/workspaceStore';
 import { useRuntimeStore, localWorkbenchReady } from '../store/runtimeStore';
 import { MentionIdPrefix } from '../constants/explorer';
 import type { ChatUserMention } from '../types/chat';
-import type { ChatContext } from '../types/chat';
 import type { DbConnection } from '../types/connection';
 import type { MentionItem, MentionLevel, MentionObjectType } from '../components/ai/mentionTypes';
 import {
@@ -38,6 +37,7 @@ export interface UseMentionReturn {
   closeMention: () => void;
   setMentionHighlightedIndex: (index: number | ((prev: number) => number)) => void;
   handleMentionSelect: (item: MentionItem) => void;
+  confirmMentionItem: (item: MentionItem) => void;
   handleMentionKeyDown: (e: React.KeyboardEvent) => boolean;
 }
 
@@ -51,16 +51,18 @@ export interface MentionDisplayPayload {
 }
 
 export interface UseMentionOptions {
-  setChatContext: React.Dispatch<React.SetStateAction<ChatContext>>;
   /** Called after Enter confirms selection; inserts short or full path into input based on disambiguation. */
   onConfirmDisplay?: (payload: MentionDisplayPayload) => void;
 }
 
+const EMPTY_CONNECTIONS: DbConnection[] = [];
+
 export function useMention(options: UseMentionOptions): UseMentionReturn {
-  const { setChatContext, onConfirmDisplay } = options;
+  const { onConfirmDisplay } = options;
   const { t } = useTranslation();
   const { supportedDbTypes } = useWorkspaceStore();
   const queryClient = useQueryClient();
+  const requestVersion = useRef(0);
 
   const [mentionOpen, setMentionOpen] = useState(false);
   const [mentionLevel, setMentionLevel] = useState<MentionLevel>('connection');
@@ -74,7 +76,7 @@ export function useMention(options: UseMentionOptions): UseMentionReturn {
   const [mentionHighlightedIndex, setMentionHighlightedIndex] = useState(0);
 
   const localReady = useRuntimeStore(localWorkbenchReady);
-  const { data: connections = [] } = useQuery({
+  const { data: connections = EMPTY_CONNECTIONS } = useQuery({
     queryKey: ['connections'],
     queryFn: () => connectionService.getConnections(),
     enabled: mentionOpen && localReady,
@@ -90,6 +92,7 @@ export function useMention(options: UseMentionOptions): UseMentionReturn {
     : false;
 
   const loadDatabases = useCallback(async (connectionId: number) => {
+    const version = ++requestVersion.current;
     setMentionError(null);
     try {
       const connId = String(connectionId);
@@ -98,6 +101,7 @@ export function useMention(options: UseMentionOptions): UseMentionReturn {
         setMentionLoading(true);
         return fetchExplorerDatabases(queryClient, connId);
       })();
+      if (version !== requestVersion.current) return;
       setMentionItems(
         names.map((name) => ({
           id: `${MentionIdPrefix.DB}${name}`,
@@ -106,15 +110,17 @@ export function useMention(options: UseMentionOptions): UseMentionReturn {
         }))
       );
     } catch (err) {
+      if (version !== requestVersion.current) return;
       setMentionError(err instanceof Error ? err.message : t('ai.mention_error_load'));
       setMentionItems([]);
     } finally {
-      setMentionLoading(false);
+      if (version === requestVersion.current) setMentionLoading(false);
     }
   }, [mentionConnection?.dbType, queryClient, t]);
 
   const loadSchemas = useCallback(
     async (connId: number, catalog: string) => {
+      const version = ++requestVersion.current;
       setMentionError(null);
       try {
         const connectionId = String(connId);
@@ -123,6 +129,7 @@ export function useMention(options: UseMentionOptions): UseMentionReturn {
           setMentionLoading(true);
           return fetchExplorerSchemas(queryClient, connectionId, catalog);
         })();
+        if (version !== requestVersion.current) return;
         setMentionItems(
           names.map((name) => ({
             id: `${MentionIdPrefix.SCHEMA}${name}`,
@@ -131,10 +138,11 @@ export function useMention(options: UseMentionOptions): UseMentionReturn {
           }))
         );
       } catch (err) {
+        if (version !== requestVersion.current) return;
         setMentionError(err instanceof Error ? err.message : t('ai.mention_error_load'));
         setMentionItems([]);
       } finally {
-        setMentionLoading(false);
+        if (version === requestVersion.current) setMentionLoading(false);
       }
     },
     [queryClient, t]
@@ -142,6 +150,7 @@ export function useMention(options: UseMentionOptions): UseMentionReturn {
 
   const loadObjects = useCallback(
     async (connId: number, catalog: string, schema?: string) => {
+      const version = ++requestVersion.current;
       setMentionError(null);
       try {
         const connectionId = String(connId);
@@ -222,6 +231,7 @@ export function useMention(options: UseMentionOptions): UseMentionReturn {
           },
         });
 
+        if (version !== requestVersion.current) return;
         setMentionItems([
           ...tables.map((name) => toMentionItem(name, 'TABLE')),
           ...views.map((name) => toMentionItem(name, 'VIEW')),
@@ -230,10 +240,11 @@ export function useMention(options: UseMentionOptions): UseMentionReturn {
           ...triggers.map((item) => toMentionItem(item.name, 'TRIGGER')),
         ]);
       } catch (err) {
+        if (version !== requestVersion.current) return;
         setMentionError(err instanceof Error ? err.message : t('ai.mention_error_load'));
         setMentionItems([]);
       } finally {
-        setMentionLoading(false);
+        if (version === requestVersion.current) setMentionLoading(false);
       }
     },
     [mentionConnection?.name, queryClient, t]
@@ -255,6 +266,8 @@ export function useMention(options: UseMentionOptions): UseMentionReturn {
   }, [mentionOpen, mentionLevel, connections]);
 
   const openMention = useCallback(() => {
+    requestVersion.current++;
+    setMentionLoading(false);
     setMentionLevel('connection');
     setMentionConnectionId(null);
     setMentionConnection(null);
@@ -273,12 +286,15 @@ export function useMention(options: UseMentionOptions): UseMentionReturn {
   }, [connections]);
 
   const closeMention = useCallback(() => {
+    requestVersion.current++;
+    setMentionLoading(false);
     setMentionOpen(false);
   }, []);
 
   const selectConnection = useCallback(
     (conn: DbConnection) => {
-      setChatContext({ connectionId: conn.id });
+      setMentionItems([]);
+      setMentionLoading(true);
       setMentionConnectionId(conn.id);
       setMentionConnection(conn);
       const typeOption = supportedDbTypes.find((opt) => opt.code === conn.dbType);
@@ -286,19 +302,23 @@ export function useMention(options: UseMentionOptions): UseMentionReturn {
       if (connSchemaOnly) {
         setMentionLevel('schema');
         loadSchemas(conn.id, '');
-      } else {
+      } else if (typeOption?.supportDatabase !== false) {
         setMentionLevel('database');
         loadDatabases(conn.id);
+      } else {
+        setMentionLevel('object');
+        loadObjects(conn.id, '');
       }
       setMentionHighlightedIndex(0);
     },
-    [setChatContext, loadDatabases, loadSchemas, supportedDbTypes]
+    [loadDatabases, loadSchemas, loadObjects, supportedDbTypes]
   );
 
   const selectDatabase = useCallback(
     (name: string) => {
       if (mentionConnectionId == null) return;
-      setChatContext((prev) => ({ ...prev, catalogName: name }));
+      setMentionItems([]);
+      setMentionLoading(true);
       setMentionCatalogName(name);
       if (supportSchema) {
         setMentionLevel('schema');
@@ -309,20 +329,21 @@ export function useMention(options: UseMentionOptions): UseMentionReturn {
       }
       setMentionHighlightedIndex(0);
     },
-    [mentionConnectionId, supportSchema, setChatContext, loadSchemas, loadObjects]
+    [mentionConnectionId, supportSchema, loadSchemas, loadObjects]
   );
 
   const selectSchema = useCallback(
     (name: string) => {
       if (mentionConnectionId == null) return;
       if (mentionCatalogName == null && !schemaOnly) return;
-      setChatContext((prev) => ({ ...prev, schemaName: name }));
+      setMentionItems([]);
+      setMentionLoading(true);
       setMentionSchemaName(name);
       setMentionLevel('object');
       loadObjects(mentionConnectionId, mentionCatalogName ?? '', name);
       setMentionHighlightedIndex(0);
     },
-    [mentionConnectionId, mentionCatalogName, schemaOnly, setChatContext, loadObjects]
+    [mentionConnectionId, mentionCatalogName, schemaOnly, loadObjects]
   );
 
   const confirmMentionItem = useCallback((item: MentionItem | undefined) => {
@@ -336,21 +357,18 @@ export function useMention(options: UseMentionOptions): UseMentionReturn {
     if (mentionLevel === 'connection') {
       const conn = connections.find((c) => c.id === Number(item.payload?.connectionId));
       if (conn) {
-        setChatContext({ connectionId: conn.id });
         shortName = conn.name;
         fullPath = `@${conn.name}`;
       }
     } else if (mentionLevel === 'database' && mentionConnection) {
-      setChatContext((prev) => ({ ...prev, catalogName: item.label }));
       shortName = item.label;
       fullPath = `@${mentionConnection.name}/${item.label}`;
     } else if (mentionLevel === 'schema' && mentionConnection && (mentionCatalogName || schemaOnly)) {
-      setChatContext((prev) => ({ ...prev, schemaName: item.label }));
       shortName = item.label;
       fullPath = mentionCatalogName
         ? `@${mentionConnection.name}/${mentionCatalogName}/${item.label}`
         : `@${mentionConnection.name}/${item.label}`;
-    } else if (mentionLevel === 'object' && mentionConnection && (mentionCatalogName || schemaOnly)) {
+    } else if (mentionLevel === 'object' && mentionConnection) {
       const schemaPart = mentionSchemaName ? `/${mentionSchemaName}` : '';
       shortName = item.label;
       fullPath = mentionCatalogName
@@ -358,22 +376,18 @@ export function useMention(options: UseMentionOptions): UseMentionReturn {
         : `@${mentionConnection.name}${schemaPart}/${item.label}`;
     }
 
+    const connection = mentionLevel === 'connection'
+      ? connections.find(c => c.id === Number(item.payload?.connectionId)) : mentionConnection;
+    const objectType = mentionLevel === 'object' ? item.payload?.objectType
+      : mentionLevel === 'connection' ? 'CONNECTION' : mentionLevel === 'database' ? 'DATABASE' : 'SCHEMA';
     closeMention();
-    if (shortName && fullPath && onConfirmDisplay) {
-      onConfirmDisplay({
-        short: shortName,
-        full: fullPath,
-        mention: item.payload?.objectType && item.payload?.objectName
-          ? {
-              objectType: item.payload.objectType,
-              connectionId: item.payload.connectionId,
-              connectionName: item.payload.connectionName ?? mentionConnection?.name ?? '',
-              catalogName: item.payload.catalogName,
-              schemaName: item.payload.schemaName,
-              objectName: item.payload.objectName,
-            }
-          : undefined,
-      });
+    if (shortName && fullPath && connection && objectType && onConfirmDisplay) {
+      onConfirmDisplay({ short: shortName, full: fullPath, mention: {
+        objectType, connectionId: connection.id, connectionName: connection.name,
+        catalogName: mentionLevel === 'database' ? item.label : mentionLevel === 'connection' ? undefined : mentionCatalogName ?? undefined,
+        schemaName: mentionLevel === 'schema' ? item.label : mentionLevel === 'object' ? mentionSchemaName ?? undefined : undefined,
+        objectName: mentionLevel === 'object' ? item.label : undefined,
+      } });
     }
   }, [
     mentionLevel,
@@ -382,12 +396,11 @@ export function useMention(options: UseMentionOptions): UseMentionReturn {
     mentionSchemaName,
     schemaOnly,
     connections,
-    setChatContext,
     closeMention,
     onConfirmDisplay,
   ]);
 
-  /** Enter: confirm selection, update context, close popup, write path to input (short or full). */
+  /** Enter confirms a message reference; it never changes the conversation default. */
   const handleMentionConfirm = useCallback(() => {
     if (mentionItems.length === 0) {
       closeMention();
@@ -398,12 +411,14 @@ export function useMention(options: UseMentionOptions): UseMentionReturn {
 
   /** ArrowLeft: go back one level. */
   const handleMentionBack = useCallback(() => {
+    requestVersion.current++;
+    setMentionItems([]);
+    setMentionLoading(false);
     if (mentionLevel === 'connection') {
       closeMention();
       return;
     }
     if (mentionLevel === 'database') {
-      setChatContext({});
       setMentionConnectionId(null);
       setMentionConnection(null);
       setMentionCatalogName(null);
@@ -422,7 +437,6 @@ export function useMention(options: UseMentionOptions): UseMentionReturn {
     }
     if (mentionLevel === 'schema') {
       if (schemaOnly) {
-        setChatContext({});
         setMentionConnectionId(null);
         setMentionConnection(null);
         setMentionCatalogName(null);
@@ -439,7 +453,6 @@ export function useMention(options: UseMentionOptions): UseMentionReturn {
         setMentionError(null);
         return;
       }
-      setChatContext((prev) => ({ connectionId: prev.connectionId }));
       setMentionCatalogName(null);
       setMentionSchemaName(null);
       setMentionLevel('database');
@@ -449,12 +462,10 @@ export function useMention(options: UseMentionOptions): UseMentionReturn {
     }
     if (mentionLevel === 'object') {
       if (supportSchema && (mentionCatalogName || schemaOnly)) {
-        setChatContext((prev) => ({ connectionId: prev.connectionId, catalogName: mentionCatalogName ?? undefined }));
         setMentionSchemaName(null);
         setMentionLevel('schema');
         if (mentionConnectionId != null) loadSchemas(mentionConnectionId, mentionCatalogName ?? '');
       } else {
-        setChatContext((prev) => ({ connectionId: prev.connectionId }));
         setMentionCatalogName(null);
         setMentionLevel('database');
         if (mentionConnectionId != null) loadDatabases(mentionConnectionId);
@@ -469,7 +480,6 @@ export function useMention(options: UseMentionOptions): UseMentionReturn {
     schemaOnly,
     connections,
     closeMention,
-    setChatContext,
     loadDatabases,
     loadSchemas,
   ]);
@@ -516,12 +526,7 @@ export function useMention(options: UseMentionOptions): UseMentionReturn {
       // Enter: confirm selection, write to input and close (do not drill down)
       if (e.key === 'Enter') {
         e.preventDefault();
-        if (mentionLevel === 'object') {
-          handleMentionConfirm();
-        } else if (mentionItems.length > 0) {
-          const item = mentionItems[mentionHighlightedIndex];
-          if (item) handleMentionSelect(item);
-        }
+        handleMentionConfirm();
         return true;
       }
       // ArrowRight: drill down; no-op at object level, popup stays open
@@ -560,6 +565,7 @@ export function useMention(options: UseMentionOptions): UseMentionReturn {
     closeMention,
     setMentionHighlightedIndex,
     handleMentionSelect,
+    confirmMentionItem,
     handleMentionKeyDown,
   };
 }

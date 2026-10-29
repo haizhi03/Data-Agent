@@ -13,7 +13,7 @@ export interface ChatUserMention {
   connectionName: string;
   catalogName?: string;
   schemaName?: string;
-  objectName: string;
+  objectName?: string;
 }
 
 export interface ChatRequest {
@@ -28,6 +28,7 @@ export interface ChatRequest {
   catalogName?: string;
   schemaName?: string;
   userMentions?: ChatUserMention[];
+  defaultTarget?: ChatContext;
 }
 
 export interface SubmitMessageOptions {
@@ -93,6 +94,7 @@ export interface ChatMessage {
   role: MessageRole;
   content: string;
   userMentions?: ChatUserMention[];
+  defaultTarget?: ChatContext;
   blocks?: ChatResponseBlock[];
   doneMetadata?: DoneMetadata;
   messageStatus?: 'NORMAL' | 'DELETED' | 'COMPRESSED' | 'COMPRESSION_SUMMARY';

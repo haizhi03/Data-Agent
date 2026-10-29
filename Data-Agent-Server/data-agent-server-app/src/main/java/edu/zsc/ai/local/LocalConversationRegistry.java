@@ -29,6 +29,13 @@ final class LocalConversationRegistry {
         if (session == null) throw new LocalRequestException(410, "LOCAL_SESSION_EXPIRED", "临时会话已失效，请新建对话");
         session.touched = clock.instant(); return session;
     }
+    record TargetSnapshot(DbContext target, Long version) { }
+    synchronized TargetSnapshot target(long id) {
+        var session=require(id); return new TargetSnapshot(session.target, session.connectionVersion);
+    }
+    synchronized void updateTarget(long id, DbContext target, Long version) {
+        var session=require(id); session.target=target; session.connectionVersion=version;
+    }
     synchronized void close(long id) {
         Session session = require(id);
         session.closed = true; session.messages = List.of(); invalidateWrites(session,"CANCELLED");
@@ -92,7 +99,11 @@ final class LocalConversationRegistry {
     }
     synchronized boolean waiting(long id) { var session=sessions.get(id); if (session==null) return false; expireWrites(session); return session.writes.values().stream().anyMatch(w -> w.status.equals("PENDING")); }
     @org.springframework.context.event.EventListener synchronized void connectionChanged(edu.zsc.ai.domain.event.ConnectionConfigurationChangedEvent event) {
-        sessions.values().stream().filter(s -> Objects.equals(s.target.connectionId(),event.connectionId())).forEach(s -> invalidateWrites(s,"INVALIDATED"));
+        sessions.values().forEach(session -> {
+            session.writes.values().stream().filter(w -> Objects.equals(w.proposal.connectionId(), event.connectionId()) && w.status.equals("PENDING"))
+                    .forEach(w -> w.status="INVALIDATED");
+            if (session.writeActive!=null && Objects.equals(session.writeActive.proposal.connectionId(),event.connectionId())) session.writeActive.cancel();
+        });
     }
     private void expireWrites(Session session) {
         session.writes.values().stream().filter(w -> w.status.equals("PENDING") && !clock.instant().isBefore(w.proposal.expiresAt())).forEach(w -> w.status="EXPIRED");
@@ -112,8 +123,8 @@ final class LocalConversationRegistry {
     }
     static final class Session {
         final long id;
-        final DbContext target;
-        final Long connectionVersion;
+        volatile DbContext target;
+        volatile Long connectionVersion;
         volatile List<ChatMessage> messages = List.of();
         volatile ModelRunSnapshot active;
         volatile boolean closed;

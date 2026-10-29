@@ -24,7 +24,9 @@ class ChatSessionModelSnapshotTest {
         var provider=mock(ReActAgentProvider.class);
         when(provider.getAgent(anyString(),any(),anyString())).thenReturn(new PreparedReActAgent(mock(ReActAgent.class),"prompt",PromptEnum.ZH));
         var databases=mock(DbConnectionService.class);when(databases.getAllConnections()).thenReturn(List.of());
-        var sessions=new ChatSessionFactory(provider,mock(AiConversationService.class),databases,mock(AiModelCatalog.class),runtime);
+        var sessions=new ChatSessionFactory(provider,mock(AiConversationService.class),databases,mock(AiModelCatalog.class),runtime,
+                new ChatReferenceService(mock(edu.zsc.ai.domain.service.db.ConnectionAccessService.class), databases),
+                new edu.zsc.ai.domain.service.agent.runtimecontext.strategy.ExplicitReferencesStrategy());
         RequestContext.set(RequestContextInfo.builder().userId(1L).conversationId(9L).build());
         try {
             var request=new ChatRequest();request.setConversationId(9L);request.setMessage("analyze");request.setModelConfigId("scoped-main");
@@ -52,7 +54,9 @@ class ChatSessionModelSnapshotTest {
         });
         var databases = mock(DbConnectionService.class);
         when(databases.getAllConnections()).thenReturn(List.of());
-        var sessions = new ChatSessionFactory(provider, mock(AiConversationService.class), databases, mock(AiModelCatalog.class), runtime);
+        var sessions = new ChatSessionFactory(provider, mock(AiConversationService.class), databases, mock(AiModelCatalog.class), runtime,
+                new ChatReferenceService(mock(edu.zsc.ai.domain.service.db.ConnectionAccessService.class), databases),
+                new edu.zsc.ai.domain.service.agent.runtimecontext.strategy.ExplicitReferencesStrategy());
         RequestContext.set(RequestContextInfo.builder().userId(1L).conversationId(9L).build());
         try {
             var request = new ChatRequest(); request.setConversationId(9L); request.setMessage("analyze");

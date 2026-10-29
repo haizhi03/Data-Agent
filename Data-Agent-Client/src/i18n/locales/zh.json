@@ -230,7 +230,7 @@
     "mention_database": "数据库",
     "mention_schema": "Schema",
     "mention_object": "对象",
-    "mention_nav_hint": "← 上一级  → 下一级",
+    "mention_nav_hint": "Enter 引用 · → 展开 · ← 返回 · Esc 取消",
     "mention_no_databases": "暂无数据库",
     "mention_no_schemas": "暂无 Schema",
     "mention_no_objects": "暂无对象",
@@ -422,7 +422,18 @@
       "compact": "压缩当前会话历史",
       "plan": "查看当前会话计划",
       "permission": "管理权限"
-    }
+    },
+    "default_target": "默认目标",
+    "target_unspecified": "未指定",
+    "target_loading": "正在读取…",
+    "target_load_failed": "读取失败，请重新打开会话",
+    "target_change": "设置默认目标",
+    "target_new_chat": "以此目标新建会话",
+    "target_apply": "应用到当前会话",
+    "target_cancel": "取消",
+    "target_save_failed": "目标读取或保存失败，请重试。",
+    "reference_this": "引用",
+    "explicit_references": "本轮引用"
   },
   "explorer": {
     "title": "数据库资源管理器",
@@ -1395,7 +1406,8 @@
       "AGENT_BUDGET_EXCEEDED": "本次运行达到限制，请缩小问题范围。",
       "LOCAL_WRITE_RESPONSE_UNCONFIRMED": "写入响应未确认，请刷新状态；不要重复执行。",
       "WRITE_APPROVAL_REQUIRED": "请先确认或拒绝待处理写入。",
-      "LOCAL_TARGET_LOCKED": "当前对话的数据库已固定，请新建对话后切换。"
+      "LOCAL_TARGET_LOCKED": "当前对话的数据库已固定，请新建对话后切换。",
+      "LOCAL_TARGET_UPDATE_FAILED": "默认目标保存失败，请重试。"
     },
     "write_title": "写入确认",
     "expires": "确认有效期至",

@@ -37,6 +37,7 @@ export function ChatInputPopups({
         error={mention.mentionError}
         highlightedIndex={mention.mentionHighlightedIndex}
         onSelect={mention.handleMentionSelect}
+        onConfirm={mention.confirmMentionItem}
         onHighlight={mention.setMentionHighlightedIndex}
         highlightClassName={AGENT_COLORS[agent].popupHighlight}
       />

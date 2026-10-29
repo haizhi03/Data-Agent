@@ -5,12 +5,14 @@ import { AIAssistantHeader } from './AIAssistantHeader';
 import { AIAssistantContent } from './AIAssistantContent';
 import { AIAssistantProvider, type AIAssistantContextValue } from './AIAssistantContext';
 import { ChatInput } from './ChatInput';
+import { DefaultTargetControl } from './DefaultTargetControl';
+import { mentionsInText, snapshotChatRequest } from '../../lib/chatTarget';
 import { MessageRole, type ChatContext, type ChatUserMention, type ChatResponseBlock } from '../../types/chat';
 import { localAssistantService as api, type LocalWriteView } from '../../services/localAssistant.service';
 import { createModelManagementService } from '../../services/modelManagement.service';
 import type { ManagedModel, ModelConnection } from '../../types/modelManagement';
 
-interface Message { role: 'user' | 'assistant'; text: string; blocks?: ChatResponseBlock[] }
+interface Message { role: 'user' | 'assistant'; text: string; blocks?: ChatResponseBlock[]; userMentions?: ChatUserMention[] }
 
 /** Mounted only in local mode; no history loader, preferences persistence, account hook or legacy permission grants. */
 export function LocalAssistant({ onClose }: { onClose: () => void }) {
@@ -24,6 +26,7 @@ export function LocalAssistant({ onClose }: { onClose: () => void }) {
   const [backendRunning, setBackendRunning] = useState(false);
   const [writes, setWrites] = useState<LocalWriteView[]>([]);
   const [statistics, setStatistics] = useState<{ modelCalls: number; toolCalls: number; inputTokens: number; outputTokens: number; usageComplete: boolean }>();
+  useEffect(() => { setUserMentions(previous => mentionsInText(input, previous)); }, [input]);
   const writeRequest = useRef(0);
   const session = useRef<number | null>(null); const abort = useRef<AbortController>(); const generation = useRef(0); const mounted = useRef(true);
   useEffect(() => {
@@ -70,25 +73,28 @@ export function LocalAssistant({ onClose }: { onClose: () => void }) {
       if (current()) { setRunning(false); await refreshWrites().catch(() => {}); }
     }
   };
-  const reset = async () => {
+  const reset = async (target: ChatContext = chatContext) => {
+    updateChatContext({ ...target });
     generation.current++; writeRequest.current++; abort.current?.abort();
     const previous = session.current; session.current = null;
     setMessages([]); setInput(''); setUserMentions([]); setWrites([]); setStatistics(undefined); setError(''); setStatus(''); setRunning(false); setBackendRunning(false);
     if (previous !== null) await api.close(previous).catch(() => {});
   };
   const submit = async (override?: string) => { if (running || unresolved || !model || !(override ?? input).trim()) return;
-    const text = (override ?? input).trim(); setInput(''); setRunning(true); setBackendRunning(false); setError(''); setStatus('RUNNING');
+    const text = (override ?? input).trim();
+    const snapshot = snapshotChatRequest({ userMentions: mentionsInText(text,userMentions) }, chatContext, text);
+    setUserMentions([]); setInput(''); setRunning(true); setBackendRunning(false); setError(''); setStatus('RUNNING');
     const version = generation.current;
     const current = () => mounted.current && version === generation.current;
     try {
       if (session.current === null) {
-        const created = await api.create({ ...(chatContext.connectionId ? { connectionId: chatContext.connectionId, catalog: chatContext.catalogName, schema: chatContext.schemaName } : {}) });
+        const created = await api.create(snapshot.defaultTarget ?? {});
         if (!current()) { await api.close(created.conversationId); return; }
         session.current = created.conversationId;
       }
-      setMessages(previous => [...previous, { role: 'user', text }, { role: 'assistant', text: '', blocks: [] }]);
+      setMessages(previous => [...previous, { role: 'user', text, userMentions: snapshot.userMentions }, { role: 'assistant', text: '', blocks: [] }]);
       const controller = new AbortController(); abort.current = controller;
-      for await (const block of api.chat(session.current, text, model, AbortSignal.any([controller.signal, AbortSignal.timeout(175000)]))) {
+      for await (const block of api.chat(session.current, text, model, AbortSignal.any([controller.signal, AbortSignal.timeout(175000)]), snapshot)) {
         if (!current()) break;
         if (block.done) {
           const metadata = JSON.parse(block.data ?? '{}') as { status?: string; errorCode?: string; statistics?: typeof statistics };
@@ -114,11 +120,15 @@ export function LocalAssistant({ onClose }: { onClose: () => void }) {
     catch { if (current()) { setError('LOCAL_COMPACTION_FAILED'); setStatus('FAILED'); } }
     finally { if (current()) setRunning(false); }
   };
+  const changeTarget = async (target: ChatContext) => {
+    const id=session.current, version=generation.current;
+    if(running && id===null) throw new Error('LOCAL_SESSION_BUSY');
+    const saved=id===null?{...target}:await api.updateDefaultTarget(id,{...target});
+    if(mounted.current && version===generation.current && session.current===id) updateChatContext(saved);
+  };
   const setChatContext: Dispatch<SetStateAction<ChatContext>> = value => {
-    const next = typeof value === 'function' ? value(chatContext) : value;
-    const same = next.connectionId === chatContext.connectionId && (next.catalogName ?? '') === (chatContext.catalogName ?? '') && (next.schemaName ?? '') === (chatContext.schemaName ?? '');
-    if ((session.current !== null || running) && !same) { setError('LOCAL_TARGET_LOCKED'); return; }
-    updateChatContext(next);
+    const target=typeof value==='function'?value(chatContext):value;
+    void changeTarget(target).catch(() => setError('LOCAL_TARGET_UPDATE_FAILED'));
   };
   const stop = () => {
     if (session.current === null || (!backendRunning && !unresolved)) return;
@@ -132,7 +142,7 @@ export function LocalAssistant({ onClose }: { onClose: () => void }) {
     provider: modelConnections.find(c => c.id === m.connectionId)?.provider, supportThinking: false,
     memoryThreshold: m.memoryThreshold, maxContextTokens: m.maxContextTokens })), [models, modelConnections]);
   const displayMessages = useMemo(() => messages.map((m, i) => ({ id: String(i), role: m.role === 'user' ? MessageRole.USER : MessageRole.ASSISTANT,
-    content: m.text, blocks: m.blocks, timestamp: new Date(0) })), [messages]);
+    content: m.text, blocks: m.blocks, userMentions: m.userMentions, timestamp: new Date(0) })), [messages]);
   const context: AIAssistantContextValue = {
     input, setInput, onSend: () => void submit(), onStop: stop,
     submitMessage: async text => { await submit(text); }, isLoading: running || unresolved,
@@ -168,6 +178,7 @@ export function LocalAssistant({ onClose }: { onClose: () => void }) {
         </>} />
       {error && <p role="alert" className="px-3 py-2 text-xs theme-text-error">{tr(`errors.${error}`) === `local_assistant.errors.${error}` ? tr('failed') : tr(`errors.${error}`)}</p>}
       {status && <p role="status" className="px-3 pt-1 text-[10px] theme-text-secondary" title={statistics ? `${tr('calls')}: ${statistics.modelCalls} · ${tr('tools')}: ${statistics.toolCalls} · ${statistics.usageComplete ? statistics.inputTokens + statistics.outputTokens : tr('usage_partial')}` : undefined}>{tr(`status.${status}`)}</p>}
+      <DefaultTargetControl target={chatContext} ready loadError={false} onChange={changeTarget} onNew={target => void reset(target)} />
       <ChatInput />
     </div>
   </AIAssistantProvider>;

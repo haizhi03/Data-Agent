@@ -1,5 +1,8 @@
 package edu.zsc.ai.api.model.request;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonSetter;
+
 import jakarta.validation.constraints.NotBlank;
 import java.util.List;
 import lombok.Data;
@@ -52,6 +55,20 @@ public class ChatRequest extends BaseRequest {
      */
     private List<ChatUserMention> userMentions;
 
+    /** Canonical schema field; schema remains a backwards-compatible input alias. */
+    private String schemaName;
+
+    /** Explicit per-turn snapshot. {} means unspecified; omission uses the saved conversation target. */
+    private ChatDefaultTarget defaultTarget;
+
+    @Override
+    @JsonIgnore
+    public String getSchema() { return schemaName; }
+
+    @Override
+    @JsonSetter("schema")
+    public void setSchema(String schema) { if (schemaName == null) schemaName = schema; }
+
     /**
      * Optional client workspace fallback when custom HTTP headers are missing on the chat stream request
      * (e.g. some fetch/EventSource paths). Values are validated with {@code loadActiveMembership}; if the
@@ -62,12 +79,14 @@ public class ChatRequest extends BaseRequest {
     private Long clientOrgId;
 
     @Override
+    @JsonIgnore
     public String getCatalog() {
         return catalogName;
     }
 
     @Override
+    @JsonSetter("catalog")
     public void setCatalog(String catalog) {
-        this.catalogName = catalog;
+        if (catalogName == null) this.catalogName = catalog;
     }
 }

@@ -45,6 +45,17 @@ public class ConversationController {
     private final ChatMemoryCompressor chatMemoryCompressor;
     private final AiModelCatalog aiModelCatalog;
     private final ModelRuntime modelRuntime;
+    private final edu.zsc.ai.domain.service.agent.ChatReferenceService chatReferenceService;
+
+    @PutMapping("/{id}/default-target")
+    public ApiResponse<ConversationResponse> updateDefaultTarget(@PathVariable @NotNull Long id,
+            @RequestBody edu.zsc.ai.api.model.request.ChatDefaultTarget target) {
+        var userId = cn.dev33.satoken.stp.StpUtil.getLoginIdAsLong();
+        aiConversationService.checkAccess(userId, id);
+        return ApiResponse.success(ConversationConverter.toResponse(aiConversationService.updateDefaultTarget(
+                userId, id, chatReferenceService.normalizeTarget(target))));
+    }
+
 
     @GetMapping
     public ApiResponse<PageResponse<ConversationResponse>> list(

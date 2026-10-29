@@ -79,10 +79,22 @@ class LocalAssistantHttpTest {
                                 handler.onPartialResponse("tool result: "+result.text()); handler.onCompleteResponse(response(AiMessage.from("tool complete"),false)); return;
                             }
                             String text=((UserMessage)last).singleText();
+                            var turnContext=edu.zsc.ai.domain.service.agent.ChatTurnContext.decode(text);
+                            if(turnContext!=null) text=turnContext.message();
                             if (text.equals("wait")) {
                                 var run=AgentRequestContext.get().getModelRunSnapshot();
                                 run.track(() -> handler.onError(new ModelIntegrationException("AGENT_RUN_CANCELLED",org.springframework.http.HttpStatus.CONFLICT)));
                                 waiting.get().countDown(); return;
+                            }
+                            if(text.startsWith("reference-tools ") && turnContext!=null) {
+                                var calls=turnContext.userMentions().stream().map(m -> {
+                                    var args=new LinkedHashMap<String,Object>();args.put("connectionId",m.getConnectionId());
+                                    if(m.getCatalogName()!=null) args.put("catalogName",m.getCatalogName());
+                                    if(m.getSchemaName()!=null) args.put("schemaName",m.getSchemaName());
+                                    return ToolExecutionRequest.builder().id(UUID.randomUUID().toString()).name("list_tables")
+                                            .arguments(edu.zsc.ai.util.JsonUtil.object2json(args)).build();
+                                }).toList();
+                                handler.onCompleteResponse(response(AiMessage.from(calls),true));return;
                             }
                             String name=text.equals("tool")?"list_tables":text.equals("unknown")?"delete_everything":null;
                             String arguments="{}";
@@ -143,6 +155,43 @@ class LocalAssistantHttpTest {
     }
     static HttpResponse<String> turn(long id,String text) throws Exception { return call("POST","/api/local/chat/stream",Map.of("conversationId",id,"message",text,"modelConfigId",modelId),true); }
 
+    static long otherConnection() throws Exception {
+        var created=call("POST","/api/connections/create",Map.of("name","Other "+UUID.randomUUID(),"dbType","dm","host","example.invalid","port",5236,
+                "username","fixture","driverJarPath",root.resolve("fixture-driver.jar").toString()),true);
+        assertThat(created.statusCode()).isEqualTo(200);return JSON.readTree(created.body()).path("data").path("id").asLong();
+    }
+    @Test void completeReferencesReachTheLocalModelAndExplicitToolTargetsWithoutChangingDefaults() throws Exception {
+        long id=session(true),other=otherConnection();clearInvocations(TABLES);
+        var refs=List.of(Map.of("token","@orders","connectionId",connectionId,"connectionName","spoof","catalogName","fixture_db","objectType","TABLE","objectName","orders"),
+                Map.of("token","@other/ARCHIVE/orders","connectionId",other,"connectionName","spoof","schemaName","ARCHIVE","objectType","TABLE","objectName","orders"));
+        var response=call("POST","/api/local/chat/stream",Map.of("conversationId",id,"message","reference-tools @orders @other/ARCHIVE/orders",
+                "modelConfigId",modelId,"userMentions",refs),true);
+        // The deterministic model decodes the actual UserMessage before returning the real tool calls.
+        assertThat(response.body()).contains("SUCCEEDED","TOOL_RESULT");
+        var user=lastRequest.get().messages().stream().filter(UserMessage.class::isInstance).map(UserMessage.class::cast).filter(m -> m.singleText().contains("reference-tools")).findFirst().orElseThrow();
+        var turn=edu.zsc.ai.domain.service.agent.ChatTurnContext.decode(user.singleText());
+        assertThat(turn.userMentions()).hasSize(2);assertThat(turn.defaultTarget().getConnectionId()).isEqualTo(connectionId);
+        assertThat(turn.userMentions()).extracting(edu.zsc.ai.api.model.request.ChatUserMention::getConnectionName).doesNotContain("spoof");
+        verify(TABLES).getTables(new edu.zsc.ai.domain.model.context.DbContext(connectionId,"fixture_db",null));
+        verify(TABLES).getTables(new edu.zsc.ai.domain.model.context.DbContext(other,null,"ARCHIVE"));
+        assertThat(call("GET","/api/local/conversations/"+id,null,true).body()).contains("fixture_db").doesNotContain("ARCHIVE");
+    }
+    @Test void localDefaultUpdatesAreIsolatedAndPendingApprovalKeepsItsOriginalTarget() throws Exception {
+        long id=session(true),otherSession=session(true);turn(id,"propose");String proposal=proposalId(id);
+        var updated=call("PUT","/api/local/conversations/"+id+"/default-target",Map.of("connectionId",connectionId,"catalogName","changed_db"),true);
+        assertThat(updated.statusCode()).isEqualTo(200);assertThat(updated.body()).contains("changed_db");
+        assertThat(call("GET","/api/local/conversations/"+otherSession,null,true).body()).contains("fixture_db").doesNotContain("changed_db");
+        assertThat(call("POST","/api/permissions/write-executions/approve",approveBody(id,proposal,"APPROVE"),true).body()).contains("COMMITTED");
+        verify(WRITES).execute(argThat(operation -> operation.proposal.conversationId()==id && operation.proposal.catalogName().equals("fixture_db")));
+        assertThat(call("PUT","/api/local/conversations/"+id+"/default-target",Map.of(),false).statusCode()).isEqualTo(409);
+    }
+    @Test void localCreateAcceptsLegacySchemaNamesAndDoesNotInventACatalog() throws Exception {
+        long other=otherConnection();
+        var created=call("POST","/api/local/conversations",Map.of("connectionId",other,"catalog","pseudo","schema","ARCHIVE"),true);
+        long id=JSON.readTree(created.body()).path("data").path("conversationId").asLong();
+        var target=JSON.readTree(call("GET","/api/local/conversations/"+id,null,true).body()).path("data").path("defaultTarget");
+        assertThat(target.path("schemaName").asText()).isEqualTo("ARCHIVE");assertThat(target.path("catalogName").isNull()).isTrue();
+    }
     @Test void configuredAssistantIsReadyWithoutAccountOrApplicationDataSource() throws Exception {
         var response=call("GET","/api/runtime/capabilities",null,true); assertThat(response.body()).contains("READY").doesNotContain(token,"FIXTURE_SECRET_NEVER_PRINT",root.toString());
         assertThat(JSON.readTree(response.body()).path("data").path("features").path("aiAssistant").path("state").asText()).isEqualTo("READY");

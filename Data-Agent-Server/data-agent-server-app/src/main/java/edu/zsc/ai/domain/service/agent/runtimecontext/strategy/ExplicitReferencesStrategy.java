@@ -25,23 +25,26 @@ public class ExplicitReferencesStrategy extends AbstractRuntimeContextHandler {
 
     @Override
     protected String buildContent(RuntimeContextAssemblyContext context) {
-        List<ChatUserMention> mentions = context.getUserMentions().stream()
+        return renderReferences(context.getUserMentions(), context.getLanguage());
+    }
+
+    public String renderReferences(List<ChatUserMention> references, String language) {
+        List<ChatUserMention> mentions = references.stream()
                 .filter(Objects::nonNull)
                 .filter(mention -> StringUtils.isNotBlank(mention.getObjectType()))
                 .filter(mention -> StringUtils.isNotBlank(mention.getConnectionName()))
-                .filter(mention -> StringUtils.isNotBlank(mention.getObjectName()))
                 .toList();
 
         if (mentions.isEmpty()) {
             return PromptFormatSupport.renderBlock(
-                    context.getLanguage(),
+                    language,
                     "本轮用户显式引用：",
                     "本轮用户显式引用：",
                     List.of(PromptConstant.NONE));
         }
 
         return PromptFormatSupport.renderBlock(
-                context.getLanguage(),
+                language,
                 "本轮用户显式引用：",
                 "本轮用户显式引用：",
                 mentions.stream()

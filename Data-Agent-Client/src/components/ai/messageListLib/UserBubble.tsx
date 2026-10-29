@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Copy, Check } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { COPY_FEEDBACK_SHORT_MS } from '../../../constants/timing';
-import { expandMentionTokensForCopy, parseMentionSegments } from '../mentionTypes';
+import { buildMentionFullPath, expandMentionTokensForCopy, parseMentionSegments } from '../mentionTypes';
 import type { Message } from './types';
 import { I18N_KEYS } from '../../../constants/i18nKeys';
 import { useMarkdownComponents, markdownRemarkPlugins } from '../blocks/markdownComponents';
@@ -68,6 +68,12 @@ export function UserBubble({ message }: UserBubbleProps) {
             {renderContentWithMentions(message.content)}
           </p>
         )}
+        {!!message.userMentions?.length && <div className="mt-2 flex flex-wrap gap-1" aria-label={t('ai.explicit_references')}>
+          {message.userMentions.map(mention => <span key={mention.token} className="rounded border px-1 text-[10px] theme-text-secondary"
+            title={`${buildMentionFullPath(mention)} · ${mention.objectType} · connectionId=${mention.connectionId}`}>
+            {buildMentionFullPath(mention)} · {mention.objectType}
+          </span>)}
+        </div>}
         <button
           type="button"
           onClick={handleCopy}

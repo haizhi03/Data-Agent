@@ -20,19 +20,32 @@ final class LocalAssistantController {
             LocalConversationRegistry sessions, LocalAssistantService assistant, LocalWriteService writes) {
         this.identity = identity; this.connections = connections; this.sessions = sessions; this.assistant = assistant; this.writes=writes;
     }
-    record Create(Long connectionId, @Size(max=200) String catalog, @Size(max=200) String schema) { }
-    record Turn(@NotNull Long conversationId, @NotBlank @Size(max=16000) String message, @Size(max=256) String modelConfigId) { }
+    record Create(Long connectionId,
+            @com.fasterxml.jackson.annotation.JsonAlias("catalog") @Size(max=200) String catalogName,
+            @com.fasterxml.jackson.annotation.JsonAlias("schema") @Size(max=200) String schemaName) { }
+    record Turn(@NotNull Long conversationId, @NotBlank @Size(max=16000) String message, @Size(max=256) String modelConfigId,
+            edu.zsc.ai.api.model.request.ChatDefaultTarget defaultTarget,
+            java.util.List<edu.zsc.ai.api.model.request.ChatUserMention> userMentions) {
+        Turn(Long id, String message, String model) { this(id,message,model,null,null); }
+    }
     record SessionView(long conversationId, String runtimeInstanceId) { }
     @PostMapping("/api/local/conversations") ApiResponse<?> create(@Valid @RequestBody Create request, HttpServletRequest http) {
         runtime(http);
-        Long version = request.connectionId() == null ? null : connections.get(request.connectionId()).version();
-        if (request.connectionId() == null && (nonempty(request.catalog()) || nonempty(request.schema()))) throw LocalRequestException.invalid();
-        var session = sessions.create(new DbContext(request.connectionId(), blank(request.catalog()), blank(request.schema())), version);
+        var target=assistant.normalizeTarget(new edu.zsc.ai.api.model.request.ChatDefaultTarget(request.connectionId(),blank(request.catalogName()),blank(request.schemaName())));
+        Long version=target.getConnectionId()==null?null:connections.get(target.getConnectionId()).version();
+        var session=sessions.create(new DbContext(target.getConnectionId(),target.getCatalogName(),target.getSchemaName()),version);
         return ApiResponse.success(new SessionView(session.id, identity.runtimeInstanceId().toString()));
     }
     @PostMapping(value="/api/local/chat/stream", produces="text/event-stream") Flux<ChatResponseBlock> stream(
             @Valid @RequestBody Turn request, HttpServletRequest http) {
         runtime(http); return assistant.chat(request);
+    }
+    @GetMapping("/api/local/conversations/{id}") ApiResponse<?> get(@PathVariable long id, HttpServletRequest http) {
+        runtime(http); return ApiResponse.success(java.util.Map.of("conversationId", id, "defaultTarget", assistant.defaultTarget(id)));
+    }
+    @PutMapping("/api/local/conversations/{id}/default-target") ApiResponse<?> target(@PathVariable long id,
+            @RequestBody edu.zsc.ai.api.model.request.ChatDefaultTarget target, HttpServletRequest http) {
+        runtime(http); return ApiResponse.success(assistant.updateTarget(id,target));
     }
     @PostMapping("/api/local/conversations/{id}/compact") ApiResponse<?> compact(@PathVariable long id, HttpServletRequest http) {
         runtime(http); return ApiResponse.success(assistant.compact(id));

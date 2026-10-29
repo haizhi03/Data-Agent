@@ -73,7 +73,7 @@ class AgentToolConfigTest {
         getConnectionsTool = new GetConnectionsTool(null);
         getDatabasesTool = new GetDatabasesTool(null);
         getSchemasTool = new GetSchemasTool(null);
-        searchObjectsTool = new SearchObjectsTool(null);
+        searchObjectsTool = new SearchObjectsTool(null, null, null);
         getObjectDetailTool = new GetObjectDetailTool(null);
         executeSqlTool = new ExecuteSqlTool(null, null, null, null);
         askUserQuestionTool = new AskUserQuestionTool();

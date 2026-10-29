@@ -1,7 +1,7 @@
 import { useCallback, useRef } from 'react';
 import { useMention } from '../../../hooks/useMention';
 import { splitByMention, MENTION_PART_REGEX } from '../mentionTypes';
-import type { ChatContext, ChatUserMention } from '../../../types/chat';
+import type { ChatUserMention } from '../../../types/chat';
 
 interface UseMentionLogicReturn {
   mention: ReturnType<typeof useMention>;
@@ -11,7 +11,6 @@ interface UseMentionLogicReturn {
 
 interface UseMentionLogicOptions {
   input: string;
-  setChatContext: React.Dispatch<React.SetStateAction<ChatContext>>;
   setInput: (value: string) => void;
   onMentionResolved?: (mention: ChatUserMention) => void;
 }
@@ -19,7 +18,6 @@ interface UseMentionLogicOptions {
 /** Manages mention state and logic with duplicate detection */
 export function useMentionLogic({
   input,
-  setChatContext,
   setInput,
   onMentionResolved,
 }: UseMentionLogicOptions): UseMentionLogicReturn {
@@ -38,14 +36,18 @@ export function useMentionLogic({
   }, []);
 
   const mention = useMention({
-    setChatContext,
     onConfirmDisplay: ({ short: shortName, full: fullPath, mention: mentionPayload }) => {
       const prev = inputRef.current;
       const idx = prev.lastIndexOf('@');
       const beforeCurrentAt = idx >= 0 ? prev.slice(0, idx) : '';
       const existingShortNames = parseExistingShortNames(beforeCurrentAt);
       const hasDuplicate = existingShortNames.has(shortName);
-      const displayText = hasDuplicate ? fullPath : `@${shortName}`;
+      let displayText = hasDuplicate ? fullPath : `@${shortName}`;
+      if (beforeCurrentAt.includes(displayText)) {
+        displayText = `${fullPath}[${mentionPayload?.objectType ?? 'REF'}:${mentionPayload?.connectionId ?? ''}]`;
+        let suffix = 2;
+        while (beforeCurrentAt.includes(displayText)) displayText = `${fullPath}[${mentionPayload?.objectType}:${mentionPayload?.connectionId}:${suffix++}]`;
+      }
 
       if (mentionPayload && onMentionResolved) {
         onMentionResolved({

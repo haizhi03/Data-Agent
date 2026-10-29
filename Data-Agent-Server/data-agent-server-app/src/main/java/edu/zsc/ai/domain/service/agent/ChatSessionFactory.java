@@ -1,11 +1,14 @@
 package edu.zsc.ai.domain.service.agent;
 
+import edu.zsc.ai.domain.service.agent.runtimecontext.strategy.ExplicitReferencesStrategy;
+
 import dev.langchain4j.invocation.InvocationParameters;
 import edu.zsc.ai.agent.PreparedReActAgent;
 import edu.zsc.ai.agent.ReActAgent;
 import edu.zsc.ai.agent.ReActAgentProvider;
 import edu.zsc.ai.agent.memory.MemoryIdUtil;
 import edu.zsc.ai.api.model.request.ChatRequest;
+import edu.zsc.ai.api.model.request.ChatDefaultTarget;
 import edu.zsc.ai.common.constant.ChatErrorConstants;
 import edu.zsc.ai.common.constant.InvocationContextConstant;
 import edu.zsc.ai.common.enums.ai.AgentModeEnum;
@@ -49,6 +52,8 @@ public class ChatSessionFactory {
     private final DbConnectionService dbConnectionService;
     private final AiModelCatalog aiModelCatalog;
     private final ModelRuntime modelRuntime;
+    private final ChatReferenceService chatReferenceService;
+    private final ExplicitReferencesStrategy explicitReferences;
 
     /**
      * Build a ChatSession from an incoming ChatRequest.
@@ -72,8 +77,26 @@ public class ChatSessionFactory {
                     .language(request.getLanguage())
                     .build());
 
+            boolean newConversation = request.getConversationId() == null;
             Long conversationId = ensureConversation(request);
             RequestContext.updateConversationId(conversationId);
+            aiConversationService.checkAccess(RequestContext.getUserId(), conversationId);
+            AiConversation conversation = aiConversationService.getById(conversationId);
+            ChatDefaultTarget target = request.getDefaultTarget();
+            if (target == null && (request.getConnectionId() != null || request.getCatalog() != null || request.getSchema() != null)) {
+                target = new ChatDefaultTarget(request.getConnectionId(), request.getCatalog(), request.getSchema());
+            }
+            if (target == null) target = conversation == null ? new ChatDefaultTarget() : new ChatDefaultTarget(
+                    conversation.getDefaultConnectionId(), conversation.getDefaultCatalogName(), conversation.getDefaultSchemaName());
+            target = chatReferenceService.normalizeTarget(target);
+            // Only initial creation persists a request target. Later turns are immutable snapshots;
+            // explicit changes use the conversation endpoint, so queued requests cannot revert the saved target.
+            RequestContext.set(RequestContext.snapshot().toBuilder().connectionId(target.getConnectionId())
+                    .catalog(target.getCatalogName()).schema(target.getSchemaName()).build());
+            var mentions = chatReferenceService.validateMentions(request.getMessage(), request.getUserMentions());
+            if (newConversation) aiConversationService.updateDefaultTarget(RequestContext.getUserId(), conversationId, target);
+            String enrichedMessage = ChatTurnContext.encode(request.getMessage(), target, mentions,
+                    explicitReferences.renderReferences(mentions, request.getLanguage()));
             PreparedReActAgent prepared = reActAgentProvider.getAgent(modelName, request.getLanguage(), agentMode.getCode());
             ReActAgent agent = prepared.agent();
 
@@ -94,7 +117,7 @@ public class ChatSessionFactory {
             AgentRequestContextInfo agentRequestContextSnapshot = AgentRequestContext.snapshot();
 
             return new ChatSession(modelName, agentMode, agent, memoryId,
-                    request.getMessage(), parameters, conversationId, requestContextSnapshot, agentRequestContextSnapshot);
+                    enrichedMessage, parameters, conversationId, requestContextSnapshot, agentRequestContextSnapshot);
         } finally {
             restoreContexts(previousRequestContext, previousAgentRequestContext);
         }
@@ -139,7 +162,10 @@ public class ChatSessionFactory {
                 planInvocation.put(InvocationContextConstant.READABLE_CONNECTION_IDS, planReadableCsv);
             }
             InvocationParameters planParams = InvocationParameters.from(planInvocation);
-            String continuation = "Continue analyzing the user's request and create a structured execution plan.";
+            String instruction = "Continue analyzing the user's request and create a structured execution plan.";
+            var turn = ChatTurnContext.decode(original.enrichedMessage());
+            String continuation = turn == null ? instruction : ChatTurnContext.encode(
+                    turn.message() + "\n" + instruction, turn.defaultTarget(), turn.userMentions(), turn.explicitReferences());
 
             return new ChatSession(original.modelName(), AgentModeEnum.PLAN, planAgent,
                     original.memoryId(), continuation, planParams,

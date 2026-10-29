@@ -46,6 +46,9 @@ public interface AiConversationService {
      */
     AiConversation updateTitle(Long conversationId, String title);
 
+    AiConversation updateDefaultTarget(Long userId, Long conversationId,
+            edu.zsc.ai.api.model.request.ChatDefaultTarget target);
+
     /**
      * Deletes the conversation for the current user, including all messages under it.
      */

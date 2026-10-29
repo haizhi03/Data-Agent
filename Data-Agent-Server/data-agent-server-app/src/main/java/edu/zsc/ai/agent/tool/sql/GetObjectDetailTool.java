@@ -83,7 +83,8 @@ public class GetObjectDetailTool {
             if (StringUtils.isBlank(effectiveDatabaseName)) {
                 effectiveDatabaseName = RequestContext.getCatalog();
             }
-            if (StringUtils.isBlank(effectiveSchemaName)) {
+            if (StringUtils.isBlank(effectiveSchemaName)
+                    && Objects.equals(effectiveDatabaseName, RequestContext.getCatalog())) {
                 effectiveSchemaName = RequestContext.getSchema();
             }
         }

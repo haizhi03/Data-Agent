@@ -1,5 +1,7 @@
 package edu.zsc.ai.common.converter.ai;
 
+import edu.zsc.ai.api.model.request.ChatDefaultTarget;
+
 import edu.zsc.ai.domain.model.dto.response.ai.ConversationResponse;
 import edu.zsc.ai.domain.model.entity.ai.AiConversation;
 import org.springframework.beans.BeanUtils;
@@ -18,6 +20,8 @@ public final class ConversationConverter {
         }
         ConversationResponse response = new ConversationResponse();
         BeanUtils.copyProperties(entity, response);
+        response.setDefaultTarget(new ChatDefaultTarget(
+                entity.getDefaultConnectionId(), entity.getDefaultCatalogName(), entity.getDefaultSchemaName()));
         return response;
     }
 }

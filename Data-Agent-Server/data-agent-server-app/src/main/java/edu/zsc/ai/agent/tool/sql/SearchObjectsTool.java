@@ -16,6 +16,10 @@ import edu.zsc.ai.util.ConnectionIdUtil;
 import edu.zsc.ai.agent.tool.sql.model.ObjectSearchQuery;
 import edu.zsc.ai.agent.tool.sql.model.ObjectSearchResponse;
 import edu.zsc.ai.domain.service.db.DiscoveryService;
+import edu.zsc.ai.domain.service.db.DbConnectionService;
+import edu.zsc.ai.domain.service.db.ConnectionAccessService;
+import edu.zsc.ai.plugin.SqlPlugin;
+import edu.zsc.ai.plugin.manager.DefaultPluginManager;
 import edu.zsc.ai.plugin.constant.DatabaseObjectTypeEnum;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -32,11 +36,13 @@ import java.util.Objects;
 @RequiredArgsConstructor
 public class SearchObjectsTool {
     private final DiscoveryService discoveryService;
+    private final DbConnectionService connections;
+    private final ConnectionAccessService connectionAccess;
 
     @Tool({
             "价值：按 SQL 通配模式查找候选表、视图和其他数据库对象。",
             "使用时机：对象范围尚未精确，但连接、数据库或 schema 范围已经足够窄，可以做轻量发现。",
-            "前置条件：objectNamePattern 必填。databaseNamePattern 需要同时提供 connectionId。schemaNamePattern 需要同时提供 connectionId 和 databaseNamePattern。",
+            "前置条件：objectNamePattern 必填。databaseNamePattern 需要同时提供 connectionId。schemaNamePattern 需要 connectionId；仅具有独立数据库层级的数据库还需要 databaseNamePattern。",
             "结果：最多返回 100 条匹配；未指定 objectType 时检索 TABLE 和 VIEW。",
             "边界：宽泛或有歧义的匹配只能视为候选，不是已验证 schema。"
     })
@@ -63,7 +69,8 @@ public class SearchObjectsTool {
             if (StringUtils.isBlank(databaseNamePattern)) {
                 databaseNamePattern = RequestContext.getCatalog();
             }
-            if (StringUtils.isBlank(schemaNamePattern)) {
+            if (StringUtils.isBlank(schemaNamePattern)
+                    && Objects.equals(databaseNamePattern, RequestContext.getCatalog())) {
                 schemaNamePattern = RequestContext.getSchema();
             }
         }
@@ -79,7 +86,8 @@ public class SearchObjectsTool {
         log.info("[Tool] searchObjects, pattern={}, type={}, connectionId={}, databasePattern={}, schemaPattern={}",
                 objectNamePattern, objectType, connectionId, databaseNamePattern, schemaNamePattern);
 
-        if (StringUtils.isNotBlank(schemaNamePattern) && StringUtils.isBlank(databaseNamePattern)) {
+        if (StringUtils.isNotBlank(schemaNamePattern) && StringUtils.isBlank(databaseNamePattern)
+                && requiresDatabase(connectionId)) {
             throw AgentToolExecuteException.invalidInput(
                     ToolNameEnum.SEARCH_OBJECTS,
                     "schemaNamePattern 需要同时指定 databaseNamePattern。重试 searchObjects 前先补充 databaseNamePattern。"
@@ -119,6 +127,15 @@ public class SearchObjectsTool {
         log.info("[Tool done] searchObjects, resultCount={}, truncated={}",
                 response.totalCount(), response.truncated());
         return AgentToolResult.success(response, buildSearchSuccessMessage(response, objectNamePattern, connectionId, databaseNamePattern, schemaNamePattern));
+    }
+
+    private boolean requiresDatabase(Long connectionId) {
+        if (connectionId == null) return true;
+        connectionAccess.assertReadable(connectionId);
+        var connection = connections.getById(connectionId);
+        if (connection == null) return true;
+        var plugin = DefaultPluginManager.getInstance().getPluginByDbTypeAndVersion(connection.getDbType(), null);
+        return !(plugin instanceof SqlPlugin sql) || sql.supportDatabase();
     }
 
     public AgentToolResult searchObjects(ObjectSearchQuery query, InvocationParameters parameters) {

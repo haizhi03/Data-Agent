@@ -81,6 +81,7 @@ export interface MentionPopupProps {
   error: string | null;
   highlightedIndex: number;
   onSelect: (item: MentionItem) => void;
+  onConfirm: (item: MentionItem) => void;
   onHighlight: (index: number) => void;
   /** Highlight item background and text class to match Agent mode (e.g. 'bg-violet-500 text-white'). */
   highlightClassName?: string;
@@ -97,6 +98,7 @@ export function MentionPopup({
   error,
   highlightedIndex,
   onSelect,
+  onConfirm,
   onHighlight,
   highlightClassName = DEFAULT_HIGHLIGHT,
 }: MentionPopupProps) {
@@ -162,8 +164,8 @@ export function MentionPopup({
           const isSelected = index === highlightedIndex;
           const detail = item.detail || objectTypeLabel(item.payload?.objectType);
           return (
+          <div key={item.id} className="flex items-center">
           <button
-            key={item.id}
             type="button"
             role="option"
             data-mention-index={index}
@@ -190,6 +192,9 @@ export function MentionPopup({
               </span>
             )}
           </button>
+          {level !== 'object' && <button type="button" className="shrink-0 px-2 py-1 text-xs theme-text-secondary hover:underline"
+            onClick={() => onConfirm(item)}>{t('ai.reference_this')}</button>}
+          </div>
         )})
       )}
     </div>

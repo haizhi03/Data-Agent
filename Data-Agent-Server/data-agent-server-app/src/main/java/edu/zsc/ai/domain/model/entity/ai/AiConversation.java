@@ -21,6 +21,10 @@ public class AiConversation {
 
     private Integer tokenCount;
 
+    private Long defaultConnectionId;
+    private String defaultCatalogName;
+    private String defaultSchemaName;
+
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;

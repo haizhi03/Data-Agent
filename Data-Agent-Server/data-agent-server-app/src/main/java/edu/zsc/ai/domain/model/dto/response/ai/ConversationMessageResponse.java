@@ -1,5 +1,8 @@
 package edu.zsc.ai.domain.model.dto.response.ai;
 
+import edu.zsc.ai.api.model.request.ChatDefaultTarget;
+import edu.zsc.ai.api.model.request.ChatUserMention;
+
 import com.fasterxml.jackson.annotation.JsonFormat;
 import edu.zsc.ai.domain.model.dto.response.agent.ChatResponseBlock;
 import lombok.AllArgsConstructor;
@@ -22,6 +25,8 @@ public class ConversationMessageResponse {
     private String id;
     private String role;
     private String content;
+    private List<ChatUserMention> userMentions;
+    private ChatDefaultTarget defaultTarget;
     private List<ChatResponseBlock> blocks;
     private String messageStatus;
 

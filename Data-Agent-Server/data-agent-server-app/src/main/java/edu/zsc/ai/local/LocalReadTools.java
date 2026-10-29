@@ -2,18 +2,21 @@ package edu.zsc.ai.local;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.agent.tool.Tool;
+import dev.langchain4j.agent.tool.P;
 import edu.zsc.ai.config.ai.model.ModelRunSnapshot;
 import edu.zsc.ai.context.*;
+import edu.zsc.ai.api.model.request.ChatUserMention;
+import edu.zsc.ai.domain.model.context.DbContext;
 import edu.zsc.ai.domain.model.dto.request.db.AgentExecuteSqlRequest;
 import edu.zsc.ai.domain.service.db.*;
 import edu.zsc.ai.domain.service.db.impl.SqlExecutionServiceImpl;
 import java.util.*;
-import java.util.function.Supplier;
+import java.util.function.Function;
 import net.sf.jsqlparser.parser.CCJSqlParserUtil;
 import net.sf.jsqlparser.schema.Table;
 import net.sf.jsqlparser.util.TablesNamesFinder;
 
-/** An explicit local tool allowlist. Targets and versions come from the server session, never model arguments. */
+/** Defaults are fallbacks; every explicit tool target is validated against local connection access. */
 final class LocalReadTools {
     private final LocalConversationRegistry.Session session;
     private final ModelRunSnapshot run;
@@ -25,6 +28,8 @@ final class LocalReadTools {
     private final LocalWriteService writes;
     private final RequestContextInfo request;
     private final AgentRequestContextInfo agent;
+    private final DbContext defaultTarget;
+    private final Map<Long,Long> versions=new java.util.concurrent.ConcurrentHashMap<>();
     private final java.util.concurrent.atomic.AtomicInteger toolCount=new java.util.concurrent.atomic.AtomicInteger();
     LocalReadTools(LocalConversationRegistry.Session session, ModelRunSnapshot run, LocalConnectionService connections,
             TableService tables, ColumnService columns, SqlExecutionServiceImpl sql, ObjectMapper json,
@@ -34,57 +39,87 @@ final class LocalReadTools {
     LocalReadTools(LocalConversationRegistry.Session session, ModelRunSnapshot run, LocalConnectionService connections,
             TableService tables, ColumnService columns, SqlExecutionServiceImpl sql, ObjectMapper json,
             RequestContextInfo request, AgentRequestContextInfo agent, LocalWriteService writes) {
-        this.writes=writes;
-        this.session=session;this.run=run;this.connections=connections;this.tables=tables;this.columns=columns;
-        this.sql=sql;this.json=json;this.request=request;this.agent=agent;
+        this(session,run,connections,tables,columns,sql,json,request,agent,writes,session.target,session.connectionVersion,List.of());
     }
-    @Tool("List tables in the user's fixed database target. Returns a bounded list and a truncation flag.")
-    public String list_tables() {
-        return scoped(() -> { var result=tables.getTables(session.target); return Map.of("tables",result.stream().limit(200).toList(),"truncated",result.size()>200); });
+    LocalReadTools(LocalConversationRegistry.Session session, ModelRunSnapshot run, LocalConnectionService connections,
+            TableService tables, ColumnService columns, SqlExecutionServiceImpl sql, ObjectMapper json,
+            RequestContextInfo request, AgentRequestContextInfo agent, LocalWriteService writes,
+            DbContext target, Long version, List<ChatUserMention> mentions) {
+        this.writes=writes;this.session=session;this.run=run;this.connections=connections;this.tables=tables;this.columns=columns;
+        this.sql=sql;this.json=json;this.request=request;this.agent=agent;this.defaultTarget=target;
+        if(target.connectionId()!=null && version!=null) versions.put(target.connectionId(),version);
+        for(var mention:mentions) versions.computeIfAbsent(mention.getConnectionId(),id -> connections.get(id).version());
     }
-    @Tool("Read columns for an unqualified table name in the fixed database target.")
-    public String describe_table(String tableName) {
-        return scoped(() -> {
+    @Tool("List bounded tables. Omitted target fields use the conversation default. Explicit connection/catalog/schema may reference another accessible target.")
+    public String list_tables(@P(value="Connection ID",required=false) Long connectionId,
+            @P(value="Catalog, when applicable",required=false) String catalogName,
+            @P(value="Schema, when applicable",required=false) String schemaName) {
+        return scoped(connectionId,catalogName,schemaName,target -> { var result=tables.getTables(target); return Map.of("tables",result.stream().limit(200).toList(),"truncated",result.size()>200); });
+    }
+    public String list_tables() { return list_tables(null,null,null); }
+
+    @Tool("Read columns for an unqualified table name. Use the full identity of an explicit reference; only unspecified target fields use defaults.")
+    public String describe_table(String tableName,@P(value="Connection ID",required=false) Long connectionId,
+            @P(value="Catalog, when applicable",required=false) String catalogName,
+            @P(value="Schema, when applicable",required=false) String schemaName) {
+        return scoped(connectionId,catalogName,schemaName,target -> {
             if (tableName == null || !tableName.matches("[\\p{L}\\p{N}_$#]{1,128}")) throw LocalRequestException.invalid();
-            var result=columns.listColumns(session.target,tableName);
+            var result=columns.listColumns(target,tableName);
             return Map.of("columns",result.stream().limit(100).toList(),"truncated",result.size()>100);
         });
     }
-    @Tool("Execute one supported read-only SELECT or WITH query in the fixed target. Writes, locks, sequences and unknown functions are forbidden. Result is bounded.")
-    public String query_database(String query) {
-        return scoped(() -> {
-            validateTarget(query,session.target.catalog(),session.target.schema());
+    public String describe_table(String tableName) { return describe_table(tableName,null,null,null); }
+
+    @Tool("Execute one supported read-only SELECT/WITH. Choose an accessible connection; qualified names may span namespaces. Writes, locks, sequences and unknown functions remain forbidden.")
+    public String query_database(String query,@P(value="Connection ID",required=false) Long connectionId,
+            @P(value="Default catalog for unqualified SQL names",required=false) String catalogName,
+            @P(value="Default schema for unqualified SQL names",required=false) String schemaName) {
+        return scoped(connectionId,catalogName,schemaName,target -> {
+            LocalReadOnlySql.validate(query);
+            try { if(CCJSqlParserUtil.parseStatements(query).getStatements().size()!=1) throw LocalReadOnlySql.unsupported(); }
+            catch(LocalRequestException e) { throw e; } catch(Exception e) { throw LocalReadOnlySql.unsupported(); }
             String executionId=UUID.randomUUID().toString();
-            try (var ignored=run.track(() -> sql.cancelExecution(session.target,executionId))) {
+            try(var ignored=run.track(() -> sql.cancelExecution(target,executionId))) {
                 run.ensureActive();
-                return sql.executeSql(AgentExecuteSqlRequest.builder().conversationId(session.id)
-                        .connectionId(session.target.connectionId()).catalog(session.target.catalog()).schema(session.target.schema())
-                        .sql(query).timeoutMs(15000).maxRows(200).executionId(executionId).build());
+                return sql.executeSql(AgentExecuteSqlRequest.builder().conversationId(session.id).connectionId(target.connectionId())
+                        .catalog(target.catalog()).schema(target.schema()).sql(query).timeoutMs(15000).maxRows(200).executionId(executionId).build());
             }
         });
     }
-    @Tool("Propose one INSERT, UPDATE or DELETE for explicit user approval. This never executes SQL. No functions, subqueries, DDL or batch statements. Wait for the user to approve in the application; never claim it executed.")
-    public String propose_write(String statement) {
-        return scoped(() -> {
-            if (writes==null) throw LocalRequestException.forbidden();
-            return writes.propose(session,run,statement);
+    public String query_database(String query) { return query_database(query,null,null,null); }
+
+    @Tool("Propose one restricted INSERT/UPDATE/DELETE for explicit application approval. This never executes SQL. Target and SQL are bound immutably to the proposal. No DDL, functions, subqueries or batch statements.")
+    public String propose_write(String statement,@P(value="Connection ID",required=false) Long connectionId,
+            @P(value="Catalog, when applicable",required=false) String catalogName,
+            @P(value="Schema, when applicable",required=false) String schemaName) {
+        return scoped(connectionId,catalogName,schemaName,target -> {
+            if(writes==null) throw LocalRequestException.forbidden();
+            return writes.propose(session,run,statement,target,versions.get(target.connectionId()));
         });
     }
-    private String scoped(Supplier<?> action) {
-        try (var ignored=new ModelContextScope(request,agent)) {
+    public String propose_write(String statement) { return propose_write(statement,null,null,null); }
+
+    private String scoped(Long connectionId,String catalogName,String schemaName,Function<DbContext,?> action) {
+        Long id=connectionId==null?defaultTarget.connectionId():connectionId;
+        boolean same=Objects.equals(id,defaultTarget.connectionId());
+        String catalog=catalogName==null && same?defaultTarget.catalog():catalogName;
+        String schema=schemaName==null && same && Objects.equals(catalog,defaultTarget.catalog())?defaultTarget.schema():schemaName;
+        try(var ignored=new ModelContextScope(request.toBuilder().connectionId(id).catalog(catalog).schema(schema).build(),agent)) {
             run.ensureActive();
-            if (toolCount.incrementAndGet()>32) throw new edu.zsc.ai.config.ai.model.ModelIntegrationException("AGENT_BUDGET_EXCEEDED",org.springframework.http.HttpStatus.TOO_MANY_REQUESTS);
-            if (session.closed || session.target.connectionId()==null) throw LocalRequestException.forbidden();
-            if (connections.get(session.target.connectionId()).version()!=session.connectionVersion) {
-                throw new LocalRequestException(409,"CONNECTION_REVISION_CONFLICT","连接已修改，请新建对话");
-            }
-            Object result=connections.withExpectedVersion(session.target.connectionId(),session.connectionVersion,action);
-            run.ensureActive();
-            String text=json.writeValueAsString(result);
+            if(toolCount.incrementAndGet()>32) throw new edu.zsc.ai.config.ai.model.ModelIntegrationException("AGENT_BUDGET_EXCEEDED",org.springframework.http.HttpStatus.TOO_MANY_REQUESTS);
+            if(session.closed || id==null) throw LocalRequestException.forbidden();
+            connections.assertReadable(id);
+            var normalized=new edu.zsc.ai.domain.service.agent.ChatReferenceService(connections,connections).normalizeTarget(
+                    new edu.zsc.ai.api.model.request.ChatDefaultTarget(id,catalog,schema));
+            var resolved=new DbContext(normalized.getConnectionId(),normalized.getCatalogName(),normalized.getSchemaName());
+            long expected=versions.computeIfAbsent(id,key -> connections.get(key).version());
+            if(connections.get(id).version()!=expected) throw new LocalRequestException(409,"CONNECTION_REVISION_CONFLICT","连接已修改，请重新设置默认目标");
+            Object result=connections.withExpectedVersion(id,expected,() -> action.apply(resolved));
+            run.ensureActive();String text=json.writeValueAsString(result);
             return text.length()<=12000?text:json.writeValueAsString(Map.of("truncated",true,"preview",text.substring(0,11000)));
-        } catch (LocalRequestException e) { return safeError(e.response().reasonCode()); }
-        catch (edu.zsc.ai.config.ai.model.ModelIntegrationException e) { throw e; }
-        catch (Exception e) { return safeError("LOCAL_TOOL_FAILED"); }
+        } catch(LocalRequestException e) { return safeError(e.response().reasonCode()); }
+        catch(edu.zsc.ai.config.ai.model.ModelIntegrationException e) { throw e; }
+        catch(Exception e) { return safeError("LOCAL_TOOL_FAILED"); }
     }
     private static String safeError(String reason) { return "{\"error\":\""+reason+"\"}"; }
     static void validateTarget(String query, String catalog, String schema) {

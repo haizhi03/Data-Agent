@@ -1,6 +1,6 @@
 import { localFetch } from '../lib/localRuntime';
 import { parseSSEResponse } from '../lib/sse';
-import type { ChatResponseBlock } from '../types/chat';
+import type { ChatContext, ChatRequest, ChatResponseBlock } from '../types/chat';
 
 export interface LocalWriteView {
   proposal: { proposalId: string; conversationId: number; connectionName: string; connectionVersion: number;
@@ -17,18 +17,20 @@ async function jsonRequest<T>(path: string, method: string, body?: unknown): Pro
   return envelope.data;
 }
 export const localAssistantService = {
-  create: (target: { connectionId?: number; catalog?: string; schema?: string }) =>
+  create: (target: ChatContext) =>
     jsonRequest<{ conversationId: number; runtimeInstanceId: string }>('/local/conversations', 'POST', target),
+  get: (id: number) => jsonRequest<{ conversationId: number; defaultTarget: ChatContext }>(`/local/conversations/${id}`, 'GET'),
+  updateDefaultTarget: (id: number, target: ChatContext) => jsonRequest<ChatContext>(`/local/conversations/${id}/default-target`, 'PUT', target),
   close: (id: number) => jsonRequest<void>(`/local/conversations/${id}`, 'DELETE'),
   cancel: (id: number) => jsonRequest<{ status: string }>(`/local/conversations/${id}/cancel`, 'POST'),
   compact: (id: number) => jsonRequest<{ compacted: boolean }>(`/local/conversations/${id}/compact`, 'POST'),
   proposals: (id: number) => jsonRequest<LocalWriteView[]>(`/local/conversations/${id}/write-proposals`, 'GET'),
   decide: (id: number, proposalId: string, decision: 'APPROVE' | 'REJECT') =>
     jsonRequest<LocalWriteView>('/permissions/write-executions/approve', 'POST', { conversationId: id, proposalId, decision }),
-  async *chat(conversationId: number, message: string, modelConfigId: string, signal: AbortSignal): AsyncGenerator<ChatResponseBlock> {
+  async *chat(conversationId: number, message: string, modelConfigId: string, signal: AbortSignal, snapshot?: Pick<ChatRequest, 'defaultTarget' | 'userMentions'>): AsyncGenerator<ChatResponseBlock> {
     const response = await localFetch('/local/chat/stream', { method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
-      body: JSON.stringify({ conversationId, message, modelConfigId }), signal });
+      body: JSON.stringify({ conversationId, message, modelConfigId, ...snapshot }), signal });
     if (!response.ok) {
       const envelope = await response.json();
       throw new Error(envelope.reasonCode ?? 'LOCAL_ASSISTANT_FAILED');

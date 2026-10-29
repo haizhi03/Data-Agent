@@ -14,6 +14,7 @@ import { useSlashCommandLogic } from './hooks/useSlashCommandLogic';
 import { useMentionLogic } from './hooks/useMentionLogic';
 import { useKeyboardHandler } from './hooks/useKeyboardHandler';
 import { useInputChangeHandler } from './hooks/useInputChangeHandler';
+import { buildMentionFullPath } from './mentionTypes';
 import { I18N_KEYS } from '../../constants/i18nKeys';
 
 function formatDetailedTokenCount(value: number | null): string {
@@ -37,15 +38,13 @@ export function ChatInput() {
     conversationTokenCount,
     modelState,
     agentState,
-    chatContextState,
     mentionState,
     onCommand,
     messages,
   } = useAIAssistantContext();
   const { model, setModel, modelOptions, thinkingMode, setThinkingMode } = modelState;
   const { agent, setAgent } = agentState;
-  const { setChatContext } = chatContextState;
-  const { setUserMentions } = mentionState;
+  const { userMentions, setUserMentions } = mentionState;
   const modelNames = useMemo(() => modelOptions.map((m) => m.modelName), [modelOptions]);
 
   // Track todos for display above input
@@ -64,7 +63,6 @@ export function ChatInput() {
 
   const mentionLogic = useMentionLogic({
     input,
-    setChatContext,
     setInput,
     onMentionResolved: (mention) => {
       setUserMentions((prev) => {
@@ -190,6 +188,12 @@ export function ChatInput() {
             onSlashHighlight={slashCmd.setSlashHighlightedIndex}
           />
 
+          {!!userMentions.length && <div className="flex flex-wrap gap-1 text-[10px] theme-text-secondary" aria-label={t('ai.explicit_references')}>
+            {userMentions.map(mention => <span key={mention.token} className="max-w-full break-all rounded border theme-border px-1"
+              title={`${buildMentionFullPath(mention)} · ${mention.objectType} · connectionId=${mention.connectionId}`}>
+              {buildMentionFullPath(mention)} · {mention.objectType}
+            </span>)}
+          </div>}
           <ChatInputArea
             input={input}
             agent={agent}

@@ -15,6 +15,12 @@ import org.springframework.core.env.ConfigurableEnvironment;
         AnthropicMessagesClientFactory.class, DashScopeClientFactory.class, ModelManagementController.class,
         LocalWriteService.class, LocalWriteExecutor.class, LocalConversationRegistry.class, LocalAssistantService.class, LocalAssistantController.class})
 class LocalAssistantConfiguration {
+    @Bean edu.zsc.ai.domain.service.agent.ChatReferenceService localChatReferences(LocalConnectionService connections) {
+        return new edu.zsc.ai.domain.service.agent.ChatReferenceService(connections, connections);
+    }
+    @Bean edu.zsc.ai.domain.service.agent.runtimecontext.strategy.ExplicitReferencesStrategy localExplicitReferences() {
+        return new edu.zsc.ai.domain.service.agent.runtimecontext.strategy.ExplicitReferencesStrategy();
+    }
     @Bean FileCredentialStore localFileCredentials(FileModelStore store, ModelCredentialCipher cipher) {
         return new FileCredentialStore(store,cipher);
     }

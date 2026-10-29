@@ -230,7 +230,7 @@
     "mention_database": "Database",
     "mention_schema": "Schema",
     "mention_object": "Object",
-    "mention_nav_hint": "← Back  → Next",
+    "mention_nav_hint": "Enter reference · → browse · ← back · Esc cancel",
     "mention_no_databases": "No databases",
     "mention_no_schemas": "No schemas",
     "mention_no_objects": "No objects",
@@ -422,7 +422,18 @@
       "compact": "Compact conversation history",
       "plan": "Show plans in conversation",
       "permission": "Manage permissions"
-    }
+    },
+    "default_target": "Default target",
+    "target_unspecified": "Unspecified",
+    "target_loading": "Loading…",
+    "target_load_failed": "Could not load; reopen this conversation",
+    "target_change": "Set default target",
+    "target_new_chat": "New chat with this target",
+    "target_apply": "Apply to this conversation",
+    "target_cancel": "Cancel",
+    "target_save_failed": "Could not load or save the target. Please retry.",
+    "reference_this": "Reference",
+    "explicit_references": "References for this message"
   },
   "explorer": {
     "title": "Database Explorer",
@@ -1394,7 +1405,8 @@
       "AGENT_BUDGET_EXCEEDED": "Run limit reached. Narrow the request.",
       "LOCAL_WRITE_RESPONSE_UNCONFIRMED": "Write response unconfirmed. Refresh status; do not replay the operation.",
       "WRITE_APPROVAL_REQUIRED": "Approve or reject the pending write first.",
-      "LOCAL_TARGET_LOCKED": "This chat has a fixed database. Start a new chat to change it."
+      "LOCAL_TARGET_LOCKED": "This chat has a fixed database. Start a new chat to change it.",
+      "LOCAL_TARGET_UPDATE_FAILED": "Could not save the default target. Please retry."
     },
     "write_title": "Confirm database write",
     "expires": "Approval expires at",
