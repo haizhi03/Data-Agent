@@ -1,6 +1,6 @@
 import { forwardRef, useImperativeHandle, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Tree as ArboristTree, NodeApi, TreeApi } from 'react-arborist';
+import { Tree as ArboristTree, NodeApi, TreeApi, type MoveHandler } from 'react-arborist';
 import { ExplorerIdPrefix, ExplorerTreeConfig, ExplorerNodeType, FolderName } from '../../constants/explorer';
 import { I18N_KEYS } from '../../constants/i18nKeys';
 import { ExplorerTreeNode } from './ExplorerTreeNode';
@@ -31,6 +31,15 @@ interface ExplorerTreeProps {
   onExportTablesWizard: (node: ExplorerNode) => void;
   onImportTablesWizard: (node: ExplorerNode) => void;
   onOpenErDiagram: (node: ExplorerNode) => void;
+  onCreateGroup: (node: ExplorerNode) => void;
+  onCreateRuleGroup: (node: ExplorerNode) => void;
+  onRenameGroup: (node: ExplorerNode) => void;
+  onDeleteGroup: (node: ExplorerNode) => void;
+  onClearGroup: (node: ExplorerNode) => void;
+  onEditGroupRule: (node: ExplorerNode) => void;
+  onMoveTableToGroup: (node: ExplorerNode, groupId: string) => void;
+  onRemoveTableFromGroup: (node: ExplorerNode, groupId: string) => void;
+  onMoveTables: (target: ExplorerNode, tables: ExplorerNode[]) => void;
 }
 
 export interface ExplorerLocateTarget {
@@ -108,9 +117,27 @@ export const ExplorerTree = forwardRef<ExplorerTreeHandle, ExplorerTreeProps>(fu
   onExportTablesWizard,
   onImportTablesWizard,
   onOpenErDiagram,
+  onCreateGroup,
+  onCreateRuleGroup,
+  onRenameGroup,
+  onDeleteGroup,
+  onClearGroup,
+  onEditGroupRule,
+  onMoveTableToGroup,
+  onRemoveTableFromGroup,
+  onMoveTables,
 }: ExplorerTreeProps, ref) {
   const { t } = useTranslation();
   const treeRef = useRef<TreeApi<ExplorerNode> | undefined>(undefined);
+
+  const handleMove: MoveHandler<ExplorerNode> = ({ dragNodes, parentNode }) => {
+    if (!parentNode) return;
+    const tables = dragNodes
+      .filter((n) => n.data.type === ExplorerNodeType.TABLE)
+      .map((n) => n.data);
+    if (tables.length === 0) return;
+    onMoveTables(parentNode.data, tables);
+  };
 
   useImperativeHandle(ref, () => ({
     collapseDatabases() {
@@ -167,8 +194,27 @@ export const ExplorerTree = forwardRef<ExplorerTreeHandle, ExplorerTreeProps>(fu
       current = await revealNode(folder, onHydrateFromCache, onLoadData);
 
       const objectType = target.objectType === 'view' ? ExplorerNodeType.VIEW : ExplorerNodeType.TABLE;
-      const match = findChild(current, objectType, target.objectName);
+      let match = findChild(current, objectType, target.objectName);
+      let groupNode: NodeApi<ExplorerNode> | undefined;
+      if (!match) {
+        // The object may be nested inside a table group.
+        for (const child of (current.children ?? [])) {
+          if (child.data.type === ExplorerNodeType.GROUP) {
+            const found = findChild(child, objectType, target.objectName);
+            if (found) {
+              match = found;
+              groupNode = child;
+              break;
+            }
+          }
+        }
+      }
       if (!match) return false;
+      if (groupNode) {
+        current = await revealNode(groupNode, onHydrateFromCache, onLoadData);
+        match = findChild(current, objectType, target.objectName);
+        if (!match) return false;
+      }
       const opened = await revealNode(match, onHydrateFromCache, onLoadData);
       opened.select();
       await tree.scrollTo(opened.id, 'center');
@@ -202,6 +248,14 @@ export const ExplorerTree = forwardRef<ExplorerTreeHandle, ExplorerTreeProps>(fu
         onExportTablesWizard={onExportTablesWizard}
         onImportTablesWizard={onImportTablesWizard}
         onOpenErDiagram={onOpenErDiagram}
+        onCreateGroup={onCreateGroup}
+        onCreateRuleGroup={onCreateRuleGroup}
+        onRenameGroup={onRenameGroup}
+        onDeleteGroup={onDeleteGroup}
+        onClearGroup={onClearGroup}
+        onEditGroupRule={onEditGroupRule}
+        onMoveTableToGroup={onMoveTableToGroup}
+        onRemoveTableFromGroup={onRemoveTableFromGroup}
       />
     );
   };
@@ -222,6 +276,14 @@ export const ExplorerTree = forwardRef<ExplorerTreeHandle, ExplorerTreeProps>(fu
             rowHeight={ExplorerTreeConfig.ROW_HEIGHT}
             searchTerm={searchTerm}
             searchMatch={(node, term) => node.data.name.toLowerCase().includes(term.toLowerCase())}
+            onMove={handleMove}
+            disableDrag={(data) => data.type !== ExplorerNodeType.TABLE || data.groupKind === 'rule'}
+            disableDrop={({ parentNode }) => {
+              const d = parentNode.data;
+              if (d.type === ExplorerNodeType.GROUP) return d.groupKind !== 'manual';
+              if (d.type === ExplorerNodeType.FOLDER) return d.folderName !== FolderName.TABLES;
+              return true;
+            }}
           >
             {renderNode}
           </ArboristTree>

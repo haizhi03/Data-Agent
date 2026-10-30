@@ -27,7 +27,16 @@ export function useDeleteActions({
   const handleFolderDelete = useCallback(async (folderNode: ExplorerNode) => {
     if (!folderNode.connectionId || !folderNode.children) return;
 
-    for (const child of folderNode.children.filter((c: any) => c.type !== 'empty')) {
+    // Tables nested inside a group are not direct children of the folder; flatten
+    // them so "delete all in folder" covers grouped tables too.
+    const collectDeletable = (nodes: ExplorerNode[]): ExplorerNode[] =>
+      nodes.flatMap((node) => {
+        if (node.type === ExplorerNodeType.EMPTY) return [];
+        if (node.type === ExplorerNodeType.GROUP) return collectDeletable(node.children ?? []);
+        return [node];
+      });
+
+    for (const child of collectDeletable(folderNode.children)) {
       const deleteService = getDeleteService(child.type as ExplorerNodeType);
       if (deleteService) {
         try {

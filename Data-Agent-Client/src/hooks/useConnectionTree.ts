@@ -27,11 +27,43 @@ import {
   getCachedExplorerTriggers,
   getCachedExplorerViews,
 } from '../lib/explorerMetadataCache';
+import { buildTablesFolderChildren } from '../lib/tableGrouping';
 
 export type { ExplorerNode };
 export { ExplorerNodeType, FolderName };
 
 export type ExplorerNodeHydrationState = 'none' | 'full' | 'partial';
+
+function findNode(
+  list: ExplorerNode[],
+  predicate: (node: ExplorerNode) => boolean
+): ExplorerNode | null {
+  for (const n of list) {
+    if (predicate(n)) return n;
+    if (n.children?.length) {
+      const found = findNode(n.children, predicate);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+function findTablesFolderNode(
+  list: ExplorerNode[],
+  connectionId: string,
+  catalog: string,
+  schema: string
+): ExplorerNode | null {
+  return findNode(
+    list,
+    (n) =>
+      n.type === ExplorerNodeType.FOLDER &&
+      n.folderName === FolderName.TABLES &&
+      n.connectionId === connectionId &&
+      (n.catalog ?? '') === catalog &&
+      (n.schema ?? '') === schema
+  );
+}
 
 export function useConnectionTree() {
   const { t } = useTranslation();
@@ -257,15 +289,13 @@ export function useConnectionTree() {
       if (node.data.folderName === FolderName.TABLES) {
         const tables = getCachedExplorerTables(queryClient, connId, node.data.catalog, node.data.schema);
         if (!tables) return 'none';
-        const children = tables.map((name) => ({
-          id: `${node.id}${ExplorerIdPrefix.TABLE}${name}`,
-          name,
-          type: ExplorerNodeType.TABLE,
+        const children = buildTablesFolderChildren({
           connectionId: connId,
           catalog: node.data.catalog,
           schema: node.data.schema,
-          children: [],
-        }));
+          folderId: node.id,
+          tableNames: tables,
+        });
         updateNodeChildren(node.id, toChildrenOrEmpty(children, node.id, t));
         return 'full';
       }
@@ -431,19 +461,8 @@ export function useConnectionTree() {
     }
   };
 
-  function findNodeById(list: ExplorerNode[], targetId: string): ExplorerNode | null {
-    for (const n of list) {
-      if (n.id === targetId) return n;
-      if (n.children?.length) {
-        const found = findNodeById(n.children, targetId);
-        if (found) return found;
-      }
-    }
-    return null;
-  }
-
   const refreshNodeById = async (nodeId: string) => {
-    const node = findNodeById(treeDataState, nodeId);
+    const node = findNode(treeDataState, (n) => n.id === nodeId);
     if (!node) return;
     const connId = node.connectionId ?? (node.dbConnection ? String(node.dbConnection.id) : undefined);
     if (!connId) return;
@@ -522,6 +541,27 @@ export function useConnectionTree() {
     }
   };
 
+  // Re-derive the "Tables" folder children after a group definition or membership
+  // changes. Uses the already-cached table list, so no network round-trip.
+  const rebuildTablesFolder = (connectionId: string, catalog?: string, schema?: string) => {
+    const connId = String(connectionId);
+    const folder = findTablesFolderNode(treeDataState, connId, catalog ?? '', schema ?? '');
+    if (!folder) return;
+    const tables = getCachedExplorerTables(queryClient, connId, catalog, schema);
+    if (!tables) {
+      void refreshNodeById(folder.id);
+      return;
+    }
+    const children = buildTablesFolderChildren({
+      connectionId: connId,
+      catalog,
+      schema,
+      folderId: folder.id,
+      tableNames: tables,
+    });
+    updateNodeChildren(folder.id, toChildrenOrEmpty(children, folder.id, t));
+  };
+
   const handleDisconnect = (node: NodeApi<ExplorerNode>) => {
     if (!node.data.connectionId) return;
     const connId = Number(node.data.connectionId);
@@ -547,6 +587,7 @@ export function useConnectionTree() {
     hydrateNodeFromCache,
     loadNodeData,
     refreshNodeById,
+    rebuildTablesFolder,
     handleDisconnect,
     isConnectionsLoading,
     refetchConnections,

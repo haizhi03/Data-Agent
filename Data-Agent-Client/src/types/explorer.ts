@@ -12,6 +12,10 @@ export interface ExplorerNode {
   schema?: string;
   /** Only set when type === 'folder' */
   folderName?: FolderName;
+  /** On a group node: stable id of the table group in the group store. Also set on a table node to mark its resolved group. */
+  groupId?: string;
+  /** On a group node: 'manual' or 'rule'. Also set on a table node to mark the kind of group it resolved into. */
+  groupKind?: 'manual' | 'rule';
   /** Parent table/view name when type is column/index or folder columns/indexes */
   tableName?: string;
   /** Routine signature for function/procedure nodes; or column type display for column nodes, e.g. "int unsigned (auto increment)" */

@@ -45,6 +45,14 @@ export interface ExplorerTreeNodeProps {
   onExportTablesWizard: (node: ExplorerNode) => void;
   onImportTablesWizard: (node: ExplorerNode) => void;
   onOpenErDiagram: (node: ExplorerNode) => void;
+  onCreateGroup: (node: ExplorerNode) => void;
+  onCreateRuleGroup: (node: ExplorerNode) => void;
+  onRenameGroup: (node: ExplorerNode) => void;
+  onDeleteGroup: (node: ExplorerNode) => void;
+  onClearGroup: (node: ExplorerNode) => void;
+  onEditGroupRule: (node: ExplorerNode) => void;
+  onMoveTableToGroup: (node: ExplorerNode, groupId: string) => void;
+  onRemoveTableFromGroup: (node: ExplorerNode, groupId: string) => void;
 }
 
 export function ExplorerTreeNode({
@@ -71,6 +79,14 @@ export function ExplorerTreeNode({
   onExportTablesWizard,
   onImportTablesWizard,
   onOpenErDiagram,
+  onCreateGroup,
+  onCreateRuleGroup,
+  onRenameGroup,
+  onDeleteGroup,
+  onClearGroup,
+  onEditGroupRule,
+  onMoveTableToGroup,
+  onRemoveTableFromGroup,
 }: ExplorerTreeNodeProps) {
   const { t } = useTranslation();
   const isConnected = !!node.data.connectionId;
@@ -88,13 +104,14 @@ export function ExplorerTreeNode({
   const isRoutine =
     node.data.type === ExplorerNodeType.FUNCTION || node.data.type === ExplorerNodeType.PROCEDURE;
   const isFolder = node.data.type === ExplorerNodeType.FOLDER;
+  const isGroup = node.data.type === ExplorerNodeType.GROUP;
   const isDb = node.data.type === ExplorerNodeType.DB;
   // Only folders containing deletable objects (Tables, Views, Routines, Triggers, Sequences) show delete button
   // Structural folders (Columns, Keys, Indexes) do not show delete button
   const isDeletableFolder = isFolder && node.data.folderName &&
     ['tables', 'views', 'routines', 'triggers', 'sequences'].includes(node.data.folderName);
   const folderCount =
-    isFolder &&
+    (isFolder || isGroup) &&
     node.data.children &&
     node.data.children.length > 0
       ? node.data.children.filter((c) => c.type !== ExplorerNodeType.EMPTY).length
@@ -188,7 +205,7 @@ export function ExplorerTreeNode({
           )}
         >
           {node.data.name}
-          {isFolder && folderCount != null && (
+          {(isFolder || isGroup) && folderCount != null && (
             <span className="theme-text-secondary opacity-50 ml-0.5">{folderCount}</span>
           )}
         </span>
@@ -254,6 +271,14 @@ export function ExplorerTreeNode({
           onExportData={onExportData}
           onExportTablesWizard={onExportTablesWizard}
           onImportTablesWizard={onImportTablesWizard}
+          onCreateGroup={onCreateGroup}
+          onCreateRuleGroup={onCreateRuleGroup}
+          onRenameGroup={onRenameGroup}
+          onDeleteGroup={onDeleteGroup}
+          onClearGroup={onClearGroup}
+          onEditGroupRule={onEditGroupRule}
+          onMoveTableToGroup={onMoveTableToGroup}
+          onRemoveTableFromGroup={onRemoveTableFromGroup}
         />
       </ContextMenu>
     );

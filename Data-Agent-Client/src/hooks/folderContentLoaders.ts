@@ -13,6 +13,7 @@ import { ExplorerNodeType, ExplorerIdPrefix, TRIGGER_ON_TABLE_FORMAT, INDEX_UNIQ
 import type { ExplorerNode } from '../types/explorer';
 import type { ParameterInfo } from '../services/function.service';
 import { fetchExplorerTables, fetchExplorerViews } from '../lib/explorerMetadataCache';
+import { buildTablesFolderChildren } from '../lib/tableGrouping';
 
 export function formatRoutineSignature(
   parameters: ParameterInfo[] | undefined | null,
@@ -42,15 +43,7 @@ async function loadTables(ctx: FolderLoadContext): Promise<ExplorerNode[]> {
   const tables = ctx.queryClient
     ? await fetchExplorerTables(ctx.queryClient, connId, catalog, schema, { force: ctx.force })
     : await tableService.listTables(connId, catalog, schema);
-  return tables.map((name) => ({
-    id: `${fid}${ExplorerIdPrefix.TABLE}${name}`,
-    name,
-    type: ExplorerNodeType.TABLE,
-    connectionId: connId,
-    catalog,
-    schema,
-    children: [],
-  }));
+  return buildTablesFolderChildren({ connectionId: connId, catalog, schema, folderId: fid, tableNames: tables });
 }
 
 async function loadViews(ctx: FolderLoadContext): Promise<ExplorerNode[]> {

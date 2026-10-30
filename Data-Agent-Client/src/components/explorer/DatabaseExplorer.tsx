@@ -28,6 +28,9 @@ import { ImportDataDialog } from './ImportDataDialog';
 import type { ImportDataParams } from './ImportDataDialog';
 import { SchemaDdlGeneratorDialog } from './SchemaDdlGeneratorDialog';
 import { RunSqlScriptDialog } from './RunSqlScriptDialog';
+import { GroupNameDialog } from './GroupNameDialog';
+import { RuleGroupDialog } from './RuleGroupDialog';
+import { useTableGroupStore, tableGroupScopeKey, type TableGroupRule } from '../../store/tableGroupStore';
 
 export function DatabaseExplorer() {
   const { t } = useTranslation();
@@ -42,6 +45,7 @@ export function DatabaseExplorer() {
     hydrateNodeFromCache,
     loadNodeData,
     refreshNodeById,
+    rebuildTablesFolder,
     handleDisconnect,
     isConnectionsLoading,
     refetchConnections,
@@ -264,6 +268,130 @@ export function DatabaseExplorer() {
     setRunSqlScriptOpen(true);
   };
 
+  // ---- Table groups ----
+  const [groupNameDialogOpen, setGroupNameDialogOpen] = useState(false);
+  const [groupNameMode, setGroupNameMode] = useState<'create' | 'rename'>('create');
+  const [groupTargetNode, setGroupTargetNode] = useState<ExplorerNode | null>(null);
+  const [ruleGroupDialogOpen, setRuleGroupDialogOpen] = useState(false);
+  const [ruleGroupMode, setRuleGroupMode] = useState<'create' | 'edit'>('create');
+  const [ruleGroupNode, setRuleGroupNode] = useState<ExplorerNode | null>(null);
+
+  const scopeOf = (node: ExplorerNode) =>
+    tableGroupScopeKey(node.connectionId ?? '', node.catalog, node.schema);
+
+  const rebuildScope = (node: ExplorerNode) =>
+    rebuildTablesFolder(node.connectionId ?? '', node.catalog, node.schema);
+
+  const hasDuplicateGroupName = (scope: string, name: string, excludeGroupId?: string) =>
+    (useTableGroupStore.getState().groupsByScope[scope] ?? []).some(
+      (g) => g.name === name && g.id !== excludeGroupId
+    );
+
+  const handleCreateGroup = (node: ExplorerNode) => {
+    setGroupTargetNode(node);
+    setGroupNameMode('create');
+    setGroupNameDialogOpen(true);
+  };
+
+  const handleRenameGroup = (node: ExplorerNode) => {
+    setGroupTargetNode(node);
+    setGroupNameMode('rename');
+    setGroupNameDialogOpen(true);
+  };
+
+  const handleCreateRuleGroup = (node: ExplorerNode) => {
+    setRuleGroupNode(node);
+    setRuleGroupMode('create');
+    setRuleGroupDialogOpen(true);
+  };
+
+  const handleEditGroupRule = (node: ExplorerNode) => {
+    setRuleGroupNode(node);
+    setRuleGroupMode('edit');
+    setRuleGroupDialogOpen(true);
+  };
+
+  const confirmGroupName = (name: string) => {
+    const node = groupTargetNode;
+    if (!node) return;
+    const scope = scopeOf(node);
+    if (hasDuplicateGroupName(scope, name, groupNameMode === 'rename' ? node.groupId : undefined)) {
+      toast.error(t(I18N_KEYS.EXPLORER.GROUP_DUPLICATE_NAME));
+      return;
+    }
+    const store = useTableGroupStore.getState();
+    if (groupNameMode === 'create') {
+      store.createGroup(scope, name, { type: 'exact', tableNames: [] });
+      toast.success(t(I18N_KEYS.EXPLORER.GROUP_CREATED));
+    } else if (node.groupId) {
+      store.renameGroup(scope, node.groupId, name);
+      toast.success(t(I18N_KEYS.EXPLORER.GROUP_RENAMED));
+    }
+    rebuildScope(node);
+    setGroupNameDialogOpen(false);
+  };
+
+  const confirmRuleGroup = (name: string, rule: TableGroupRule) => {
+    const node = ruleGroupNode;
+    if (!node) return;
+    const scope = scopeOf(node);
+    if (hasDuplicateGroupName(scope, name, ruleGroupMode === 'edit' ? node.groupId : undefined)) {
+      toast.error(t(I18N_KEYS.EXPLORER.GROUP_DUPLICATE_NAME));
+      return;
+    }
+    const store = useTableGroupStore.getState();
+    if (ruleGroupMode === 'create') {
+      store.createGroup(scope, name, rule);
+      toast.success(t(I18N_KEYS.EXPLORER.GROUP_CREATED));
+    } else if (node.groupId) {
+      store.renameGroup(scope, node.groupId, name);
+      store.updateGroupRule(scope, node.groupId, rule);
+    }
+    rebuildScope(node);
+    setRuleGroupDialogOpen(false);
+  };
+
+  const handleDeleteGroup = (node: ExplorerNode) => {
+    if (!node.groupId) return;
+    useTableGroupStore.getState().deleteGroup(scopeOf(node), node.groupId);
+    toast.success(t(I18N_KEYS.EXPLORER.GROUP_DELETED));
+    rebuildScope(node);
+  };
+
+  const handleClearGroup = (node: ExplorerNode) => {
+    if (!node.groupId) return;
+    useTableGroupStore.getState().updateGroupRule(scopeOf(node), node.groupId, {
+      type: 'exact',
+      tableNames: [],
+    });
+    rebuildScope(node);
+  };
+
+  const handleMoveTableToGroup = (node: ExplorerNode, groupId: string) => {
+    useTableGroupStore.getState().addTableToGroup(scopeOf(node), groupId, node.name);
+    rebuildScope(node);
+  };
+
+  const handleRemoveTableFromGroup = (node: ExplorerNode, groupId: string) => {
+    useTableGroupStore.getState().removeTableFromGroup(scopeOf(node), groupId, node.name);
+    rebuildScope(node);
+  };
+
+  const handleMoveTables = (target: ExplorerNode, tables: ExplorerNode[]) => {
+    const store = useTableGroupStore.getState();
+    const scope = scopeOf(target);
+    if (target.type === ExplorerNodeType.GROUP && target.groupId && target.groupKind === 'manual') {
+      for (const table of tables) store.addTableToGroup(scope, target.groupId, table.name);
+    } else if (target.type === ExplorerNodeType.FOLDER && target.folderName === FolderName.TABLES) {
+      for (const table of tables) {
+        if (table.groupId && table.groupKind === 'manual') {
+          store.removeTableFromGroup(scope, table.groupId, table.name);
+        }
+      }
+    }
+    rebuildScope(target);
+  };
+
   useEffect(() => {
     if (!accessToken) return;
     fetchSupportedDbTypes();
@@ -361,6 +489,15 @@ export function DatabaseExplorer() {
           onExportTablesWizard={handleExportTablesWizard}
           onImportTablesWizard={handleImportTablesWizard}
           onOpenErDiagram={handleOpenErDiagram}
+          onCreateGroup={handleCreateGroup}
+          onCreateRuleGroup={handleCreateRuleGroup}
+          onRenameGroup={handleRenameGroup}
+          onDeleteGroup={handleDeleteGroup}
+          onClearGroup={handleClearGroup}
+          onEditGroupRule={handleEditGroupRule}
+          onMoveTableToGroup={handleMoveTableToGroup}
+          onRemoveTableFromGroup={handleRemoveTableFromGroup}
+          onMoveTables={handleMoveTables}
         />
       </div>
 
@@ -445,6 +582,35 @@ export function DatabaseExplorer() {
         onOpenChange={setRunSqlScriptOpen}
         target={sqlScriptTarget}
       />
+
+      <GroupNameDialog
+        open={groupNameDialogOpen}
+        onOpenChange={(open) => {
+          setGroupNameDialogOpen(open);
+          if (!open) setGroupTargetNode(null);
+        }}
+        title={groupNameMode === 'create' ? t(I18N_KEYS.EXPLORER.NEW_GROUP) : t(I18N_KEYS.EXPLORER.RENAME_GROUP)}
+        initialName={groupNameMode === 'rename' ? (groupTargetNode?.name ?? '') : ''}
+        onConfirm={confirmGroupName}
+      />
+
+      {ruleGroupNode && (
+        <RuleGroupDialog
+          open={ruleGroupDialogOpen}
+          onOpenChange={(open) => {
+            setRuleGroupDialogOpen(open);
+            if (!open) setRuleGroupNode(null);
+          }}
+          title={ruleGroupMode === 'create' ? t(I18N_KEYS.EXPLORER.NEW_RULE_GROUP) : t(I18N_KEYS.EXPLORER.EDIT_GROUP_RULE)}
+          initialName={ruleGroupMode === 'edit' ? (ruleGroupNode.name ?? '') : ''}
+          initialRule={
+            ruleGroupMode === 'edit' && ruleGroupNode.groupId
+              ? (useTableGroupStore.getState().groupsByScope[scopeOf(ruleGroupNode)]?.find((g) => g.id === ruleGroupNode.groupId)?.rule ?? { type: 'exact', tableNames: [] })
+              : { type: 'exact', tableNames: [] }
+          }
+          onConfirm={confirmRuleGroup}
+        />
+      )}
     </div>
   );
 }
