@@ -683,6 +683,7 @@
     "group_rule_value": "Rule value",
     "group_rule_value_placeholder": "e.g. order_",
     "group_rule_case_sensitive": "Case sensitive",
+    "group_rule_invalid_regex": "Invalid regular expression",
     "load_failed": "Failed to load",
     "copy_ddl": "Copy DDL",
     "ddl_copied": "DDL copied to clipboard",
@@ -761,6 +762,7 @@
     "delete_all_in_folder_confirm": "Are you sure you want to delete all {{count}} objects in \"{{name}}\" folder? This action cannot be undone.",
     "delete_folder_success": "Successfully deleted all objects in folder",
     "delete_folder_failed": "Failed to delete objects in folder",
+    "delete_folder_partial_failed": "Failed to delete {{count}} object(s). The rest were kept; please refresh and retry.",
     "delete_database": "Delete database",
     "delete_database_confirm": "Are you sure you want to delete database \"{{name}}\"? This action cannot be undone.",
     "delete_database_failed": "Failed to delete database"

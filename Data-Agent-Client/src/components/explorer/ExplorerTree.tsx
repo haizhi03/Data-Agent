@@ -62,6 +62,13 @@ function isDatabaseNode(node: NodeApi<ExplorerNode>) {
   );
 }
 
+/** Tables can only be moved within their own connection + catalog + schema. */
+function sameTableScope(a: ExplorerNode, b: ExplorerNode) {
+  return (a.connectionId ?? '') === (b.connectionId ?? '')
+    && (a.catalog ?? '') === (b.catalog ?? '')
+    && (a.schema ?? '') === (b.schema ?? '');
+}
+
 async function ensureChildren(node: NodeApi<ExplorerNode>, onHydrateFromCache: ExplorerTreeProps['onHydrateFromCache'], onLoadData: ExplorerTreeProps['onLoadData']) {
   if (node.data.children && node.data.children.length > 0) return;
   const hydration = onHydrateFromCache(node);
@@ -132,8 +139,10 @@ export const ExplorerTree = forwardRef<ExplorerTreeHandle, ExplorerTreeProps>(fu
 
   const handleMove: MoveHandler<ExplorerNode> = ({ dragNodes, parentNode }) => {
     if (!parentNode) return;
+    // Rule-group members cannot start a drag on their own, but they can ride
+    // along in a multi-selection; keep the two paths consistent by ignoring them.
     const tables = dragNodes
-      .filter((n) => n.data.type === ExplorerNodeType.TABLE)
+      .filter((n) => n.data.type === ExplorerNodeType.TABLE && n.data.groupKind !== 'rule')
       .map((n) => n.data);
     if (tables.length === 0) return;
     onMoveTables(parentNode.data, tables);
@@ -278,11 +287,17 @@ export const ExplorerTree = forwardRef<ExplorerTreeHandle, ExplorerTreeProps>(fu
             searchMatch={(node, term) => node.data.name.toLowerCase().includes(term.toLowerCase())}
             onMove={handleMove}
             disableDrag={(data) => data.type !== ExplorerNodeType.TABLE || data.groupKind === 'rule'}
-            disableDrop={({ parentNode }) => {
+            disableDrop={({ parentNode, dragNodes }) => {
               const d = parentNode.data;
-              if (d.type === ExplorerNodeType.GROUP) return d.groupKind !== 'manual';
-              if (d.type === ExplorerNodeType.FOLDER) return d.folderName !== FolderName.TABLES;
-              return true;
+              const isGroupTarget = d.type === ExplorerNodeType.GROUP && d.groupKind === 'manual';
+              const isTablesFolder = d.type === ExplorerNodeType.FOLDER && d.folderName === FolderName.TABLES;
+              if (!isGroupTarget && !isTablesFolder) return true;
+              // Refuse cross-database drops, otherwise a same-named table could be
+              // added to / removed from a group of another connection or schema.
+              // Only tables are actually moved; other selected rows ride along.
+              return dragNodes
+                .filter((n) => n.data.type === ExplorerNodeType.TABLE)
+                .some((n) => !sameTableScope(n.data, d));
             }}
           >
             {renderNode}

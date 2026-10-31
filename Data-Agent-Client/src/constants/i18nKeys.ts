@@ -492,6 +492,8 @@ export const I18N_KEYS = {
     GROUP_RULE_VALUE: 'explorer.group_rule_value',
     GROUP_RULE_VALUE_PLACEHOLDER: 'explorer.group_rule_value_placeholder',
     GROUP_RULE_CASE_SENSITIVE: 'explorer.group_rule_case_sensitive',
+    GROUP_RULE_INVALID_REGEX: 'explorer.group_rule_invalid_regex',
+    DELETE_FOLDER_PARTIAL_FAILED: 'explorer.delete_folder_partial_failed',
   },
 
   // AI keys

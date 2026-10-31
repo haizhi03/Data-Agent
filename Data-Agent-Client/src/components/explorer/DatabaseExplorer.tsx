@@ -32,6 +32,9 @@ import { GroupNameDialog } from './GroupNameDialog';
 import { RuleGroupDialog } from './RuleGroupDialog';
 import { useTableGroupStore, tableGroupScopeKey, type TableGroupRule } from '../../store/tableGroupStore';
 
+/** Stable fallback so the rule dialog is not reset on every parent re-render. */
+const EMPTY_GROUP_RULE: TableGroupRule = { type: 'exact', tableNames: [] };
+
 export function DatabaseExplorer() {
   const { t } = useTranslation();
   const toast = useToast();
@@ -147,6 +150,7 @@ export function DatabaseExplorer() {
     setRenameState,
     renameState,
     setTreeDataState,
+    rebuildTablesFolder,
   });
 
   const ddlConfig = getDdlConfig();
@@ -380,10 +384,14 @@ export function DatabaseExplorer() {
   const handleMoveTables = (target: ExplorerNode, tables: ExplorerNode[]) => {
     const store = useTableGroupStore.getState();
     const scope = scopeOf(target);
+    // Only move tables that live in the target's own scope; a same-named table in
+    // another database must never be added to / removed from this scope's group.
+    const moved = tables.filter((table) => scopeOf(table) === scope);
+    if (moved.length === 0) return;
     if (target.type === ExplorerNodeType.GROUP && target.groupId && target.groupKind === 'manual') {
-      for (const table of tables) store.addTableToGroup(scope, target.groupId, table.name);
+      for (const table of moved) store.addTableToGroup(scope, target.groupId, table.name);
     } else if (target.type === ExplorerNodeType.FOLDER && target.folderName === FolderName.TABLES) {
-      for (const table of tables) {
+      for (const table of moved) {
         if (table.groupId && table.groupKind === 'manual') {
           store.removeTableFromGroup(scope, table.groupId, table.name);
         }
@@ -605,8 +613,8 @@ export function DatabaseExplorer() {
           initialName={ruleGroupMode === 'edit' ? (ruleGroupNode.name ?? '') : ''}
           initialRule={
             ruleGroupMode === 'edit' && ruleGroupNode.groupId
-              ? (useTableGroupStore.getState().groupsByScope[scopeOf(ruleGroupNode)]?.find((g) => g.id === ruleGroupNode.groupId)?.rule ?? { type: 'exact', tableNames: [] })
-              : { type: 'exact', tableNames: [] }
+              ? (useTableGroupStore.getState().groupsByScope[scopeOf(ruleGroupNode)]?.find((g) => g.id === ruleGroupNode.groupId)?.rule ?? EMPTY_GROUP_RULE)
+              : EMPTY_GROUP_RULE
           }
           onConfirm={confirmRuleGroup}
         />

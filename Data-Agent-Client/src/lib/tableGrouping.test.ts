@@ -88,7 +88,7 @@ describe('buildTablesFolderChildren', () => {
     expect(nodes.map((n) => n.name)).toEqual(['Logs', 'Orders', 'other']);
   });
 
-  it('gives the first matching group priority (single parent)', () => {
+  it('gives manual groups priority over rule groups (single parent)', () => {
     useTableGroupStore.setState({
       groupsByScope: {
         '1|db|public': [
@@ -102,8 +102,27 @@ describe('buildTablesFolderChildren', () => {
     const first = nodes.find((n) => n.id === 'f-group-first')!;
     const second = nodes.find((n) => n.id === 'f-group-second')!;
 
-    // The prefix group comes first, so order_1 goes there and second stays empty.
-    expect(first.children?.map((c) => c.name)).toEqual(['order_1', 'order_2']);
+    // Even though the rule group comes first, the explicit assignment wins;
+    // order_2 has no manual assignment and stays in the prefix group.
+    expect(second.children?.map((c) => c.name)).toEqual(['order_1']);
+    expect(first.children?.map((c) => c.name)).toEqual(['order_2']);
+  });
+
+  it('gives the first matching rule group priority (single parent)', () => {
+    useTableGroupStore.setState({
+      groupsByScope: {
+        '1|db|public': [
+          { id: 'first', name: 'First', rule: { type: 'prefix', value: 'order_' } },
+          { id: 'second', name: 'Second', rule: { type: 'contains', value: 'order' } },
+        ],
+      },
+    });
+
+    const nodes = buildTablesFolderChildren(folderOpts(['order_1']));
+    const first = nodes.find((n) => n.id === 'f-group-first')!;
+    const second = nodes.find((n) => n.id === 'f-group-second')!;
+
+    expect(first.children?.map((c) => c.name)).toEqual(['order_1']);
     expect(second.children).toEqual([]);
   });
 

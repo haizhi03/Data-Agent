@@ -180,6 +180,12 @@ public abstract class DefaultMysqlPlugin extends AbstractDatabasePlugin
     }
 
     @Override
+    public void renameTable(Connection connection, String catalog, String schema,
+                            String tableName, String newTableName) {
+        tableManager.renameTable(connection, catalog, schema, tableName, newTableName);
+    }
+
+    @Override
     public SqlCommandResult insertRow(Connection connection, String catalog, String schema, String tableName,
                                       List<TableRowValue> values) {
         return tableManager.insertRow(connection, catalog, schema, tableName, values);

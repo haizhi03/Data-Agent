@@ -88,15 +88,17 @@ export function buildTablesFolderChildren(opts: {
   const scope = tableGroupScopeKey(connectionId, catalog, schema);
   const groups = useTableGroupStore.getState().groupsByScope[scope] ?? [];
 
-  // Resolve single-parent membership: first matching group (in order) wins.
+  // Resolve single-parent membership. Explicit (manual) assignments win over
+  // rules, because they reflect direct user intent; within the same kind the
+  // first matching group in store order wins.
+  const manualGroups = groups.filter(isManualGroup);
+  const ruleGroups = groups.filter((group) => !isManualGroup(group));
   const tableToGroup = new Map<string, TableGroup>();
   for (const name of tableNames) {
-    for (const group of groups) {
-      if (matchRule(group.rule, name)) {
-        tableToGroup.set(name, group);
-        break;
-      }
-    }
+    const group =
+      manualGroups.find((g) => matchRule(g.rule, name)) ??
+      ruleGroups.find((g) => matchRule(g.rule, name));
+    if (group) tableToGroup.set(name, group);
   }
 
   const groupNodes: ExplorerNode[] = groups.map((group) => {

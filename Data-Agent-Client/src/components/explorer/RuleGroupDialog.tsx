@@ -24,6 +24,16 @@ const RULE_TYPE_I18N: Record<RuleType, string> = {
   regex: I18N_KEYS.EXPLORER.GROUP_RULE_REGEX,
 };
 
+/** A malformed regex would silently match nothing, so reject it up front. */
+function isValidRegex(pattern: string): boolean {
+  try {
+    new RegExp(pattern);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 interface RuleGroupDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -62,7 +72,9 @@ export function RuleGroupDialog({
   }, [open, initialName, initialRule]);
 
   const trimmedName = name.trim();
-  const canConfirm = trimmedName !== '' && ruleValue.trim() !== '';
+  const regexInvalid =
+    ruleType === 'regex' && ruleValue.trim() !== '' && !isValidRegex(ruleValue);
+  const canConfirm = trimmedName !== '' && ruleValue.trim() !== '' && !regexInvalid;
 
   const handleConfirm = () => {
     if (!canConfirm) return;
@@ -111,6 +123,12 @@ export function RuleGroupDialog({
             />
           </label>
         </div>
+
+        {regexInvalid && (
+          <p className="text-xs text-destructive">
+            {t(I18N_KEYS.EXPLORER.GROUP_RULE_INVALID_REGEX)}
+          </p>
+        )}
 
         <label className="flex items-center gap-2 text-sm text-muted-foreground">
           <input

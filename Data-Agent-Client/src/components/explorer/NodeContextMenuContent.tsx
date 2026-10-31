@@ -12,6 +12,7 @@ import { ExplorerNodeType } from '../../constants/explorer';
 import type { ExplorerNode } from '../../types/explorer';
 import { I18N_KEYS } from '../../constants/i18nKeys';
 import { useTableGroupStore, isManualGroup, groupContainsTable, tableGroupScopeKey } from '../../store/tableGroupStore';
+import { collectDeletableChildren } from '../../utils/treeOperations';
 
 interface NodeContextMenuContentProps {
   node: ExplorerNode;
@@ -393,7 +394,7 @@ export function NodeContextMenuContent({
         </ContextMenuItem>
       )}
 
-      {isDeletableFolder && node.children && node.children.filter((c) => c.type !== 'empty').length > 0 && (
+      {isDeletableFolder && collectDeletableChildren(node.children ?? []).length > 0 && (
         <ContextMenuItem
           onSelect={() => onDelete(node, ExplorerNodeType.FOLDER)}
           className="text-destructive focus:text-destructive"

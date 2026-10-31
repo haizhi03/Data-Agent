@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { connectionService } from '../services/connection.service';
 import { useAuthStore } from '../store/authStore';
 import { useWorkspaceStore } from '../store/workspaceStore';
+import { useTableGroupStore } from '../store/tableGroupStore';
 import { useToast } from './useToast';
 import { ExplorerNodeType, FolderName, ExplorerIdPrefix, QUERY_KEY_CONNECTIONS } from '../constants/explorer';
 import type { ExplorerNode } from '../types/explorer';
@@ -114,6 +115,7 @@ export function useConnectionTree() {
     mutationFn: (id: number) => connectionService.deleteConnection(id),
     onSuccess: (_, id) => {
       clearExplorerMetadataForConnection(queryClient, String(id));
+      useTableGroupStore.getState().removeGroupsForConnection(String(id));
       queryClient.invalidateQueries({ queryKey: QUERY_KEY_CONNECTIONS });
     },
   });

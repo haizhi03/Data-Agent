@@ -37,6 +37,35 @@ export function tableGroupScopeKey(connectionId: string, catalog?: string, schem
   return [connectionId, catalog ?? '', schema ?? ''].join('|');
 }
 
+/** Copy of the scope map without the scopes matching the predicate, or null if none match. */
+function withoutScopes(
+  groupsByScope: Record<string, TableGroup[]>,
+  matches: (scope: string) => boolean
+): Record<string, TableGroup[]> | null {
+  const keys = Object.keys(groupsByScope).filter(matches);
+  if (keys.length === 0) return null;
+  const next = { ...groupsByScope };
+  for (const key of keys) delete next[key];
+  return next;
+}
+
+/**
+ * Rewrite the table names of every manual group holding `tableName`, or return
+ * null when no group does. Manual groups store names, so deletes and renames
+ * must be carried over or the group goes stale on the next refresh.
+ */
+function updateManualTableNames(
+  groups: TableGroup[],
+  tableName: string,
+  transform: (tableNames: string[]) => string[]
+): TableGroup[] | null {
+  if (!groups.some((group) => groupContainsTable(group, tableName))) return null;
+  return groups.map((group) => {
+    if (group.rule.type !== 'exact' || !group.rule.tableNames.includes(tableName)) return group;
+    return { ...group, rule: { ...group.rule, tableNames: transform(group.rule.tableNames) } };
+  });
+}
+
 interface TableGroupState {
   groupsByScope: Record<string, TableGroup[]>;
   createGroup: (scope: string, name: string, rule: TableGroupRule) => string;
@@ -45,6 +74,10 @@ interface TableGroupState {
   updateGroupRule: (scope: string, groupId: string, rule: TableGroupRule) => void;
   addTableToGroup: (scope: string, groupId: string, tableName: string) => void;
   removeTableFromGroup: (scope: string, groupId: string, tableName: string) => void;
+  removeTableFromGroups: (scope: string, tableName: string) => void;
+  removeGroupsForCatalog: (connectionId: string, catalog: string) => void;
+  removeGroupsForConnection: (connectionId: string) => void;
+  renameTableInGroups: (scope: string, oldName: string, newName: string) => void;
 }
 
 export const useTableGroupStore = create<TableGroupState>()(
@@ -124,6 +157,49 @@ export const useTableGroupStore = create<TableGroupState>()(
             };
           });
           return { groupsByScope: { ...state.groupsByScope, [scope]: next } };
+        }),
+
+      removeTableFromGroups: (scope, tableName) =>
+        set((state) => {
+          const next = updateManualTableNames(
+            state.groupsByScope[scope] ?? [],
+            tableName,
+            (tableNames) => tableNames.filter((name) => name !== tableName),
+          );
+          return next ? { groupsByScope: { ...state.groupsByScope, [scope]: next } } : state;
+        }),
+
+      // Scope keys are `${connectionId}|${catalog}|${schema}`. Dropping a
+      // database or connection must drop its definitions too, otherwise a
+      // re-created database with the same name revives stale groups.
+      removeGroupsForCatalog: (connectionId, catalog) =>
+        set((state) => {
+          const next = withoutScopes(
+            state.groupsByScope,
+            (scope) => scope.startsWith(`${connectionId}|${catalog}|`),
+          );
+          return next ? { groupsByScope: next } : state;
+        }),
+
+      removeGroupsForConnection: (connectionId) =>
+        set((state) => {
+          const next = withoutScopes(
+            state.groupsByScope,
+            (scope) => scope.startsWith(`${connectionId}|`),
+          );
+          return next ? { groupsByScope: next } : state;
+        }),
+
+      renameTableInGroups: (scope, oldName, newName) =>
+        set((state) => {
+          const next = updateManualTableNames(
+            state.groupsByScope[scope] ?? [],
+            oldName,
+            (tableNames) => [
+              ...new Set(tableNames.map((name) => (name === oldName ? newName : name))),
+            ],
+          );
+          return next ? { groupsByScope: { ...state.groupsByScope, [scope]: next } } : state;
         }),
     }),
     {

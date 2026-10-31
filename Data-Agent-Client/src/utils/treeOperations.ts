@@ -1,4 +1,19 @@
+import { ExplorerNodeType } from '../constants/explorer';
 import type { ExplorerNode } from '../types/explorer';
+
+/**
+ * Flatten a folder's children for batch deletion: unwrap group nodes (tables in
+ * a group are not direct children) and skip empty placeholders.
+ */
+export function collectDeletableChildren(nodes: ExplorerNode[]): ExplorerNode[] {
+  return nodes.flatMap((node) => {
+    if (node.type === ExplorerNodeType.EMPTY) return [];
+    if (node.type === ExplorerNodeType.GROUP) {
+      return collectDeletableChildren(node.children ?? []);
+    }
+    return [node];
+  });
+}
 
 /**
  * Recursively removes a node from the tree by ID.
