@@ -20,7 +20,10 @@ public class ErDiagramResponse {
 
     private List<ErTable> tables;
     private List<ErRelation> relations;
+    /** Local tables drawn here are fewer than {@link #tableCount}. */
     private boolean truncated;
+    /** Tables in the opened schema, including ones left out of this diagram. */
+    private int tableCount;
     /** External tables were capped. Relations past the cap are omitted. */
     private boolean externalTruncated;
 

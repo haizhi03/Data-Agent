@@ -59,6 +59,8 @@ export interface ErDiagram {
   tables: ErTable[];
   relations: ErRelation[];
   truncated: boolean;
+  /** Tables in this schema. The picker appears when this is above the default cap. */
+  tableCount?: number;
   /** Other schemas contributed more tables than the diagram keeps. */
   externalTruncated?: boolean;
 }
@@ -69,6 +71,28 @@ export const tableService = {
     if (catalog) params.catalog = catalog;
     if (schema) params.schema = schema;
     const response = await http.get<ErDiagram>(ApiPaths.TABLES_ER_DIAGRAM, { params, timeout: 60000 });
+    return response.data;
+  },
+
+  /** Reloads one diagram for the checked tables. `all` omits the name list. */
+  loadErDiagram: async (
+    connectionId: number,
+    options: { catalog?: string | null; schema?: string | null; all?: boolean; tables?: string[] },
+  ): Promise<ErDiagram> => {
+    const body: {
+      connectionId: number;
+      catalog?: string;
+      schema?: string;
+      all: boolean;
+      tables?: string[];
+    } = {
+      connectionId,
+      all: options.all === true,
+    };
+    if (options.catalog) body.catalog = options.catalog;
+    if (options.schema) body.schema = options.schema;
+    if (!body.all && options.tables) body.tables = options.tables;
+    const response = await http.post<ErDiagram>(ApiPaths.TABLES_ER_DIAGRAM, body, { timeout: 180000 });
     return response.data;
   },
 

@@ -5,6 +5,7 @@ import edu.zsc.ai.domain.model.context.DbContext;
 import edu.zsc.ai.domain.model.dto.request.db.BatchTableRowsRequest;
 import edu.zsc.ai.domain.model.dto.request.db.DeleteTableRowRequest;
 import edu.zsc.ai.domain.model.dto.request.db.DeleteTableRequest;
+import edu.zsc.ai.domain.model.dto.request.db.ErDiagramRequest;
 import edu.zsc.ai.domain.model.dto.request.db.InsertTableRowRequest;
 import edu.zsc.ai.domain.model.dto.request.db.RenameTableRequest;
 import edu.zsc.ai.domain.model.dto.request.db.TableRowValueRequest;
@@ -59,6 +60,15 @@ public class TableController {
             @RequestParam(required = false) String schema) {
         log.info("Loading ER diagram: connectionId={}, catalog={}, schema={}", connectionId, catalog, schema);
         return ApiResponse.success(erDiagramService.load(new DbContext(connectionId, catalog, schema)));
+    }
+
+    @PostMapping("/er-diagram")
+    public ApiResponse<ErDiagramResponse> erDiagram(@Valid @RequestBody ErDiagramRequest request) {
+        int requested = request.getTables() == null ? 0 : request.getTables().size();
+        log.info("Loading selected ER diagram: connectionId={}, catalog={}, schema={}, all={}, requested={}",
+                request.getConnectionId(), request.getCatalog(), request.getSchema(), request.isAll(), requested);
+        DbContext db = new DbContext(request.getConnectionId(), request.getCatalog(), request.getSchema());
+        return ApiResponse.success(erDiagramService.load(db, request.isAll(), request.getTables()));
     }
 
     @GetMapping

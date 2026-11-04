@@ -40,6 +40,11 @@ public class ErDiagramServiceImpl implements ErDiagramService {
 
     @Override
     public ErDiagramResponse load(DbContext db) {
+        return load(db, false, null);
+    }
+
+    @Override
+    public ErDiagramResponse load(DbContext db, boolean allTables, List<String> requestedTables) {
         connectionService.openConnection(db);
 
         ActiveConnectionRegistry.ActiveConnection active = ActiveConnectionRegistry.getOwnedConnection(db);
@@ -47,11 +52,10 @@ public class ErDiagramServiceImpl implements ErDiagramService {
         ColumnManager columns = DefaultPluginManager.getInstance().getColumnManagerByPluginId(active.pluginId());
         try (ActiveConnectionRegistry.BorrowedConnection borrowed = active.borrowConnection()) {
             Connection connection = borrowed.connection();
-            List<String> tableNames = tables.getTableNames(connection, db.catalog(), db.schema());
-            boolean truncated = tableNames.size() > TABLE_LIMIT;
-            if (truncated) {
-                tableNames = tableNames.subList(0, TABLE_LIMIT);
-            }
+            SelectedTables selected = selectTables(
+                    tables.getTableNames(connection, db.catalog(), db.schema()), allTables, requestedTables);
+            List<String> tableNames = selected.names();
+            int tableCount = selected.tableCount();
 
             String scopeCatalog = blankToNull(db.catalog());
             String scopeSchema = blankToNull(db.schema());
@@ -89,13 +93,15 @@ public class ErDiagramServiceImpl implements ErDiagramService {
             appendPrimaryKeys(uniqueKeys, erTables);
             appendIndexKeys(uniqueKeys, connection, active.pluginId(), scope, canonicalNames, keys);
             ErDiagramGraph.AssembleResult graph = ErDiagramGraph.assemble(scope, canonicalNames, keys, uniqueKeys);
+            int localCount = erTables.size();
             for (ErDiagramGraph.Endpoint endpoint : graph.externalTables()) {
                 erTables.add(loadExternalTable(columns, connection, endpoint, graph.relations()));
             }
             return ErDiagramResponse.builder()
                     .tables(erTables)
                     .relations(toRelations(graph.relations()))
-                    .truncated(truncated)
+                    .truncated(isTruncated(localCount, tableCount))
+                    .tableCount(tableCount)
                     .externalTruncated(graph.externalTruncated())
                     .build();
         } catch (SQLException e) {
@@ -338,4 +344,64 @@ public class ErDiagramServiceImpl implements ErDiagramService {
     private static String blankToNull(String value) {
         return StringUtils.isBlank(value) ? null : value.trim();
     }
+
+    /**
+     * No requested names keeps the first {@link #TABLE_LIMIT} metadata entries.
+     * A name list, or {@code allTables}, replaces that slice. Alignment uses the
+     * metadata spelling, drops unknown names, and merges duplicates.
+     */
+    static SelectedTables selectTables(List<String> allNames, boolean allTables, List<String> requested) {
+        List<String> source = allNames == null ? List.of() : allNames;
+        int tableCount = 0;
+        for (String name : source) {
+            if (StringUtils.isNotBlank(name)) {
+                tableCount++;
+            }
+        }
+        if (allTables) {
+            return new SelectedTables(source, tableCount);
+        }
+        if (requested == null) {
+            List<String> head = source.size() > TABLE_LIMIT ? source.subList(0, TABLE_LIMIT) : source;
+            return new SelectedTables(head, tableCount);
+        }
+        return new SelectedTables(alignRequested(source, requested), tableCount);
+    }
+
+    static boolean isTruncated(int localTables, int tableCount) {
+        return localTables < tableCount;
+    }
+
+    private static List<String> alignRequested(List<String> allNames, List<String> requested) {
+        Map<String, String> canonical = new LinkedHashMap<>();
+        for (String name : allNames) {
+            if (StringUtils.isBlank(name)) {
+                continue;
+            }
+            canonical.putIfAbsent(name.trim().toLowerCase(Locale.ROOT), name);
+        }
+        Set<String> wanted = new HashSet<>();
+        for (String name : requested) {
+            if (StringUtils.isBlank(name)) {
+                continue;
+            }
+            String real = canonical.get(name.trim().toLowerCase(Locale.ROOT));
+            if (real != null) {
+                wanted.add(real);
+            }
+        }
+        List<String> chosen = new ArrayList<>();
+        for (String name : allNames) {
+            if (StringUtils.isBlank(name)) {
+                continue;
+            }
+            String real = canonical.get(name.trim().toLowerCase(Locale.ROOT));
+            if (real != null && wanted.remove(real)) {
+                chosen.add(real);
+            }
+        }
+        return chosen;
+    }
+
+    record SelectedTables(List<String> names, int tableCount) {}
 }
