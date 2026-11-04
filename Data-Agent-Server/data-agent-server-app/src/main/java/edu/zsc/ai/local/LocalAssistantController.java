@@ -16,9 +16,12 @@ final class LocalAssistantController {
     private final LocalConversationRegistry sessions;
     private final LocalAssistantService assistant;
     private final LocalWriteService writes;
+    private final org.springframework.beans.factory.ObjectProvider<LocalPiChatService> pi;
     LocalAssistantController(LocalRuntimeIdentity identity, LocalConnectionService connections,
-            LocalConversationRegistry sessions, LocalAssistantService assistant, LocalWriteService writes) {
+            LocalConversationRegistry sessions, LocalAssistantService assistant, LocalWriteService writes,
+            org.springframework.beans.factory.ObjectProvider<LocalPiChatService> pi) {
         this.identity = identity; this.connections = connections; this.sessions = sessions; this.assistant = assistant; this.writes=writes;
+        this.pi = pi;
     }
     record Create(Long connectionId,
             @com.fasterxml.jackson.annotation.JsonAlias("catalog") @Size(max=200) String catalogName,
@@ -39,6 +42,14 @@ final class LocalAssistantController {
     @PostMapping(value="/api/local/chat/stream", produces="text/event-stream") Flux<ChatResponseBlock> stream(
             @Valid @RequestBody Turn request, HttpServletRequest http) {
         runtime(http); return assistant.chat(request);
+    }
+    /** Experimental Pi engine entry; disabled unless app.local.pi.enabled=true. Same request and event format. */
+    @PostMapping(value="/api/local/pi/chat/stream", produces="text/event-stream") Flux<ChatResponseBlock> piStream(
+            @Valid @RequestBody Turn request, HttpServletRequest http) {
+        runtime(http);
+        var engine = pi.getIfAvailable();
+        if (engine == null) throw new LocalRequestException(409, "LOCAL_FEATURE_NOT_SUPPORTED", "Pi 实验入口未启用");
+        return engine.chat(request);
     }
     @GetMapping("/api/local/conversations/{id}") ApiResponse<?> get(@PathVariable long id, HttpServletRequest http) {
         runtime(http); return ApiResponse.success(java.util.Map.of("conversationId", id, "defaultTarget", assistant.defaultTarget(id)));

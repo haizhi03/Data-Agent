@@ -14,8 +14,10 @@ final class LocalRuntimeController {
     private final LocalRuntimeIdentity identity;
     private final LocalConnectionService connections;
     private final LocalAssistantService assistant;
-    LocalRuntimeController(LocalRuntimeIdentity identity, LocalConnectionService connections, LocalAssistantService assistant) {
-        this.identity = identity; this.connections = connections; this.assistant = assistant;
+    private final org.springframework.beans.factory.ObjectProvider<LocalPiChatService> pi;
+    LocalRuntimeController(LocalRuntimeIdentity identity, LocalConnectionService connections, LocalAssistantService assistant,
+            org.springframework.beans.factory.ObjectProvider<LocalPiChatService> pi) {
+        this.identity = identity; this.connections = connections; this.assistant = assistant; this.pi = pi;
     }
 
     @GetMapping("/api/runtime/capabilities")
@@ -24,8 +26,13 @@ final class LocalRuntimeController {
         Feature workbench;
         try { connections.list(); workbench = new Feature("READY", null); }
         catch (LocalRequestException e) { workbench = new Feature("UNAVAILABLE", "LOCAL_STORE_UNAVAILABLE"); }
-        return ApiResponse.success(new Capabilities(1, "LOCAL", identity.runtimeInstanceId(), false, false, false,
-                Map.of("databaseWorkbench", workbench, "aiAssistant", assistant.capability(), "knowledgeMemory", pending, "skills", pending)));
+        var engine = pi.getIfAvailable();
+        Feature piAssistant = engine == null ? new Feature("UNAVAILABLE", "PI_DISABLED") : engine.capability();
+        var features = new java.util.LinkedHashMap<String, Feature>();
+        features.put("databaseWorkbench", workbench); features.put("aiAssistant", assistant.capability());
+        features.put("piAssistant", piAssistant);
+        features.put("knowledgeMemory", pending); features.put("skills", pending);
+        return ApiResponse.success(new Capabilities(1, "LOCAL", identity.runtimeInstanceId(), false, false, false, features));
     }
 
     @RequestMapping("/api/**")

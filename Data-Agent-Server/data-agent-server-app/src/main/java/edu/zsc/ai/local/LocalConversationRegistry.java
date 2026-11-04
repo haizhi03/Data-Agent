@@ -14,6 +14,9 @@ final class LocalConversationRegistry {
     private final Map<Long, Session> sessions = new HashMap<>();
     private final AtomicLong ids = new AtomicLong(new java.security.SecureRandom().nextLong(1, 1L << 48));
     private final Clock clock;
+    /** Notified after a session is closed, evicted or shut down; listeners must not call back into the registry. */
+    private volatile java.util.function.LongConsumer sessionGoneListener = id -> { };
+    void setSessionGoneListener(java.util.function.LongConsumer listener) { sessionGoneListener = listener; }
     LocalConversationRegistry() { this(Clock.systemUTC()); }
     LocalConversationRegistry(Clock clock) { this.clock = clock; }
     synchronized Session create(DbContext target, Long connectionVersion) {
@@ -41,6 +44,7 @@ final class LocalConversationRegistry {
         session.closed = true; session.messages = List.of(); invalidateWrites(session,"CANCELLED");
         if (session.active != null) session.active.cancel();
         sessions.remove(id);
+        sessionGoneListener.accept(id);
     }
     synchronized void begin(Session session, ModelRunSnapshot run) {
         require(session.id);
@@ -115,10 +119,19 @@ final class LocalConversationRegistry {
     Instant now() { return clock.instant(); }
     private void evictIdle() {
         var deadline = clock.instant().minus(Duration.ofMinutes(30));
-        sessions.values().removeIf(s -> s.active == null && s.writeActive==null && s.touched.isBefore(deadline));
+        var iterator = sessions.entrySet().iterator();
+        while (iterator.hasNext()) {
+            var entry = iterator.next();
+            var session = entry.getValue();
+            if (session.active == null && session.writeActive == null && session.touched.isBefore(deadline)) {
+                iterator.remove();
+                sessionGoneListener.accept(entry.getKey());
+            }
+        }
     }
     @jakarta.annotation.PreDestroy synchronized void shutdown() {
         sessions.values().forEach(s -> { s.closed = true; s.messages = List.of(); invalidateWrites(s,"CANCELLED"); if (s.active != null) s.active.cancel(); });
+        sessions.keySet().forEach(id -> sessionGoneListener.accept(id));
         sessions.clear();
     }
     static final class Session {

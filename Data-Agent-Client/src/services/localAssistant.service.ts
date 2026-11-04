@@ -27,8 +27,10 @@ export const localAssistantService = {
   proposals: (id: number) => jsonRequest<LocalWriteView[]>(`/local/conversations/${id}/write-proposals`, 'GET'),
   decide: (id: number, proposalId: string, decision: 'APPROVE' | 'REJECT') =>
     jsonRequest<LocalWriteView>('/permissions/write-executions/approve', 'POST', { conversationId: id, proposalId, decision }),
-  async *chat(conversationId: number, message: string, modelConfigId: string, signal: AbortSignal, snapshot?: Pick<ChatRequest, 'defaultTarget' | 'userMentions'>): AsyncGenerator<ChatResponseBlock> {
-    const response = await localFetch('/local/chat/stream', { method: 'POST',
+  async *chat(conversationId: number, message: string, modelConfigId: string, signal: AbortSignal, snapshot?: Pick<ChatRequest, 'defaultTarget' | 'userMentions'>, engine?: 'java' | 'pi'): AsyncGenerator<ChatResponseBlock> {
+    // The experimental Pi engine has its own endpoint; a started run never silently falls back to the other engine.
+    const path = engine === 'pi' ? '/local/pi/chat/stream' : '/local/chat/stream';
+    const response = await localFetch(path, { method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
       body: JSON.stringify({ conversationId, message, modelConfigId, ...snapshot }), signal });
     if (!response.ok) {

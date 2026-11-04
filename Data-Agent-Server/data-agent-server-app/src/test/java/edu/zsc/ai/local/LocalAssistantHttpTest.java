@@ -192,6 +192,15 @@ class LocalAssistantHttpTest {
         var target=JSON.readTree(call("GET","/api/local/conversations/"+id,null,true).body()).path("data").path("defaultTarget");
         assertThat(target.path("schemaName").asText()).isEqualTo("ARCHIVE");assertThat(target.path("catalogName").isNull()).isTrue();
     }
+    @Test void piEntryIsDisabledByDefault() throws Exception {
+        long id=session(true);
+        var response=call("POST","/api/local/pi/chat/stream",Map.of("conversationId",id,"message","hi","modelConfigId",modelId),true);
+        assertThat(response.statusCode()).isEqualTo(409);
+        assertThat(response.body()).contains("LOCAL_FEATURE_NOT_SUPPORTED");
+        var capabilities=call("GET","/api/runtime/capabilities",null,true);
+        assertThat(JSON.readTree(capabilities.body()).path("data").path("features").path("piAssistant").path("state").asText()).isEqualTo("UNAVAILABLE");
+        assertThat(JSON.readTree(capabilities.body()).path("data").path("features").path("piAssistant").path("reasonCode").asText()).isEqualTo("PI_DISABLED");
+    }
     @Test void configuredAssistantIsReadyWithoutAccountOrApplicationDataSource() throws Exception {
         var response=call("GET","/api/runtime/capabilities",null,true); assertThat(response.body()).contains("READY").doesNotContain(token,"FIXTURE_SECRET_NEVER_PRINT",root.toString());
         assertThat(JSON.readTree(response.body()).path("data").path("features").path("aiAssistant").path("state").asText()).isEqualTo("READY");

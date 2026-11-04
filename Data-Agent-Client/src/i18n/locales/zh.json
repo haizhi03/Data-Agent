@@ -1407,7 +1407,15 @@
       "LOCAL_WRITE_RESPONSE_UNCONFIRMED": "写入响应未确认，请刷新状态；不要重复执行。",
       "WRITE_APPROVAL_REQUIRED": "请先确认或拒绝待处理写入。",
       "LOCAL_TARGET_LOCKED": "当前对话的数据库已固定，请新建对话后切换。",
-      "LOCAL_TARGET_UPDATE_FAILED": "默认目标保存失败，请重试。"
+      "LOCAL_TARGET_UPDATE_FAILED": "默认目标保存失败，请重试。",
+      "PI_WORKER_NOT_FOUND": "未找到 Pi Worker 脚本，请检查开发配置。",
+      "PI_WORKER_START_FAILED": "Pi Worker 启动失败，请检查 Node 22+ 环境。",
+      "PI_WORKER_EXIT": "Pi Worker 异常退出，本轮运行失败；可重试。",
+      "PI_PROTOCOL_ERROR": "Pi Worker 协议错误，本轮运行失败。",
+      "PI_UNSUPPORTED_API_STYLE": "Pi 实验入口暂不支持当前模型的接口类型。",
+      "PI_SESSION_BUSY": "当前会话仍有 Pi 运行在进行中。",
+      "PI_MODEL_ERROR": "模型调用失败，请检查模型配置或稍后重试。",
+      "PI_DISABLED": "Pi 实验入口未启用。"
     },
     "write_title": "写入确认",
     "expires": "确认有效期至",
@@ -1420,6 +1428,7 @@
     "write_unknown": "无法确认是否已提交。请人工核实数据库，勿直接重复执行。",
     "calls": "模型调用",
     "tools": "工具调用",
-    "usage_partial": "厂商未提供完整用量"
+    "usage_partial": "厂商未提供完整用量",
+    "engine_pi": "Pi 引擎（实验）"
   }
 }

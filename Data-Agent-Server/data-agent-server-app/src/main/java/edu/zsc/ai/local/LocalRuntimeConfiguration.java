@@ -39,13 +39,15 @@ import org.springframework.context.ApplicationEventPublisher;
         "cn.dev33.satoken.spring.sign.SaSignBeanRegister",
         "cn.dev33.satoken.spring.sign.SaSignBeanInject"
 })
-@EnableConfigurationProperties({LocalRuntimeProperties.class, ConnectionPoolProperties.class})
+@EnableConfigurationProperties({LocalRuntimeProperties.class, ConnectionPoolProperties.class, LocalPiProperties.class})
 @EnableAsync
 @org.springframework.context.annotation.Import({LocalWorkbenchConfiguration.class, LocalAssistantConfiguration.class})
 public class LocalRuntimeConfiguration {
     @Bean LocalRuntimeIdentity localRuntimeIdentity() { return new LocalRuntimeIdentity(); }
     @Bean LocalRuntimeController localRuntimeController(LocalRuntimeIdentity identity, LocalConnectionService connections,
-            LocalAssistantService assistant) { return new LocalRuntimeController(identity, connections, assistant); }
+            LocalAssistantService assistant, org.springframework.beans.factory.ObjectProvider<LocalPiChatService> pi) {
+        return new LocalRuntimeController(identity, connections, assistant, pi);
+    }
     @Bean LocalRequestAdvice localRequestAdvice(ObjectMapper mapper) { return new LocalRequestAdvice(mapper); }
     @Bean LocalConnectionRepository localConnectionRepository(LocalRuntimeProperties properties) {
         return new LocalConnectionRepository(properties.dataDirectory());

@@ -9,6 +9,7 @@ import { DefaultTargetControl } from './DefaultTargetControl';
 import { mentionsInText, snapshotChatRequest } from '../../lib/chatTarget';
 import { MessageRole, type ChatContext, type ChatUserMention, type ChatResponseBlock } from '../../types/chat';
 import { localAssistantService as api, type LocalWriteView } from '../../services/localAssistant.service';
+import { useRuntimeStore } from '../../store/runtimeStore';
 import { createModelManagementService } from '../../services/modelManagement.service';
 import type { ManagedModel, ModelConnection } from '../../types/modelManagement';
 
@@ -17,6 +18,8 @@ interface Message { role: 'user' | 'assistant'; text: string; blocks?: ChatRespo
 /** Mounted only in local mode; no history loader, preferences persistence, account hook or legacy permission grants. */
 export function LocalAssistant({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation(); const tr = (key: string) => t(`local_assistant.${key}`);
+  // The server advertises the experimental Pi engine only when it is enabled and ready; Java remains the default.
+  const engine: 'java' | 'pi' = useRuntimeStore(s => s.capabilities?.features.piAssistant?.state === 'READY') ? 'pi' : 'java';
   const [models, setModels] = useState<ManagedModel[]>([]); const [modelConnections, setModelConnections] = useState<ModelConnection[]>([]);
   const [model, setModel] = useState(''); const [chatContext, updateChatContext] = useState<ChatContext>({});
   const [userMentions, setUserMentions] = useState<ChatUserMention[]>([]);
@@ -94,7 +97,7 @@ export function LocalAssistant({ onClose }: { onClose: () => void }) {
       }
       setMessages(previous => [...previous, { role: 'user', text, userMentions: snapshot.userMentions }, { role: 'assistant', text: '', blocks: [] }]);
       const controller = new AbortController(); abort.current = controller;
-      for await (const block of api.chat(session.current, text, model, AbortSignal.any([controller.signal, AbortSignal.timeout(175000)]), snapshot)) {
+      for await (const block of api.chat(session.current, text, model, AbortSignal.any([controller.signal, AbortSignal.timeout(175000)]), snapshot, engine)) {
         if (!current()) break;
         if (block.done) {
           const metadata = JSON.parse(block.data ?? '{}') as { status?: string; errorCode?: string; statistics?: typeof statistics };
@@ -177,7 +180,7 @@ export function LocalAssistant({ onClose }: { onClose: () => void }) {
           </article>)}
         </>} />
       {error && <p role="alert" className="px-3 py-2 text-xs theme-text-error">{tr(`errors.${error}`) === `local_assistant.errors.${error}` ? tr('failed') : tr(`errors.${error}`)}</p>}
-      {status && <p role="status" className="px-3 pt-1 text-[10px] theme-text-secondary" title={statistics ? `${tr('calls')}: ${statistics.modelCalls} · ${tr('tools')}: ${statistics.toolCalls} · ${statistics.usageComplete ? statistics.inputTokens + statistics.outputTokens : tr('usage_partial')}` : undefined}>{tr(`status.${status}`)}</p>}
+      {status && <p role="status" data-engine={engine} className="px-3 pt-1 text-[10px] theme-text-secondary" title={statistics ? `${tr('calls')}: ${statistics.modelCalls} · ${tr('tools')}: ${statistics.toolCalls} · ${statistics.usageComplete ? statistics.inputTokens + statistics.outputTokens : tr('usage_partial')}` : undefined}>{tr(`status.${status}`)}{engine === 'pi' && ` · ${tr('engine_pi')}`}</p>}
       <DefaultTargetControl target={chatContext} ready loadError={false} onChange={changeTarget} onNew={target => void reset(target)} />
       <ChatInput />
     </div>

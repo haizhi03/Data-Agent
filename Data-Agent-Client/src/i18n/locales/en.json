@@ -1406,7 +1406,15 @@
       "LOCAL_WRITE_RESPONSE_UNCONFIRMED": "Write response unconfirmed. Refresh status; do not replay the operation.",
       "WRITE_APPROVAL_REQUIRED": "Approve or reject the pending write first.",
       "LOCAL_TARGET_LOCKED": "This chat has a fixed database. Start a new chat to change it.",
-      "LOCAL_TARGET_UPDATE_FAILED": "Could not save the default target. Please retry."
+      "LOCAL_TARGET_UPDATE_FAILED": "Could not save the default target. Please retry.",
+      "PI_WORKER_NOT_FOUND": "Pi worker script not found; check the development configuration.",
+      "PI_WORKER_START_FAILED": "Pi worker failed to start; Node 22+ is required.",
+      "PI_WORKER_EXIT": "The Pi worker exited unexpectedly; this run failed. You can retry.",
+      "PI_PROTOCOL_ERROR": "Pi worker protocol error; this run failed.",
+      "PI_UNSUPPORTED_API_STYLE": "The experimental Pi entry does not support this model API style yet.",
+      "PI_SESSION_BUSY": "A Pi run is still active in this conversation.",
+      "PI_MODEL_ERROR": "The model call failed; check the model configuration or retry later.",
+      "PI_DISABLED": "The experimental Pi entry is disabled."
     },
     "write_title": "Confirm database write",
     "expires": "Approval expires at",
@@ -1419,6 +1427,7 @@
     "write_unknown": "Commit outcome is unknown. Inspect the database before attempting any further write.",
     "calls": "Model calls",
     "tools": "Tool calls",
-    "usage_partial": "Complete usage unavailable"
+    "usage_partial": "Complete usage unavailable",
+    "engine_pi": "Pi engine (experimental)"
   }
 }

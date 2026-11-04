@@ -7,7 +7,7 @@ export interface RuntimeCapabilities {
   accountLoginEnabled: false;
   organizationEnabled: false;
   chatHistoryPersistenceEnabled: false;
-  features: Record<'databaseWorkbench' | 'aiAssistant' | 'knowledgeMemory' | 'skills', {
+  features: Record<'databaseWorkbench' | 'aiAssistant' | 'piAssistant' | 'knowledgeMemory' | 'skills', {
     state: 'READY' | 'NOT_IMPLEMENTED' | 'UNCONFIGURED' | 'UNAVAILABLE'; reasonCode: string | null;
   }>;
 }

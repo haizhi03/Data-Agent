@@ -112,7 +112,10 @@ class LocalRuntimeHttpTest {
         for (String field : java.util.List.of("accountLoginEnabled", "organizationEnabled", "chatHistoryPersistenceEnabled")) {
             assertThat(data.path(field).booleanValue()).isFalse();
         }
-        assertThat(data.path("features").size()).isEqualTo(4);
+        assertThat(data.path("features").size()).isEqualTo(5);
+        // The experimental Pi engine is present in the contract but disabled unless app.local.pi.enabled=true.
+        assertThat(data.path("features").path("piAssistant").path("state").asText()).isEqualTo("UNAVAILABLE");
+        assertThat(data.path("features").path("piAssistant").path("reasonCode").asText()).isEqualTo("PI_DISABLED");
         assertThat(data.path("features").path("databaseWorkbench").path("state").asText()).isEqualTo("READY");
         assertThat(data.path("features").path("databaseWorkbench").path("reasonCode").isNull()).isTrue();
         assertThat(data.path("features").path("aiAssistant").path("state").asText()).isEqualTo("UNCONFIGURED");

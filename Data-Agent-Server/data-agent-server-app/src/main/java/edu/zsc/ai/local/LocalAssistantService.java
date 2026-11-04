@@ -32,8 +32,7 @@ final class LocalAssistantService {
     private final CredentialService credentials;
     private final LocalConversationRegistry sessions;
     private final LocalConnectionService connections;
-    private final TableService tables;
-    private final ColumnService columns;
+    private final LocalMetadataTools metadataTools;
     private final SqlExecutionServiceImpl sql;
     private final ObjectMapper json;
     private final LocalWriteService writes;
@@ -110,7 +109,7 @@ final class LocalAssistantService {
                 run.ensureActive();
                 var builder=AiServices.builder(ReActAgent.class).streamingChatModel(models.streaming(ModelPurpose.MAIN_CHAT))
                         .systemMessage(SYSTEM).chatMemoryProvider(id -> memory).maxSequentialToolsInvocations(16);
-                if (db.connectionId()!=null || !mentions.isEmpty()) builder.tools(new LocalReadTools(session,run,connections,tables,columns,sql,json,request,agent,writes,db,version,mentions));
+                if (db.connectionId()!=null || !mentions.isEmpty()) builder.tools(new LocalReadTools(session,run,connections,metadataTools,sql,json,request,agent,writes,db,version,mentions));
                 String enriched=edu.zsc.ai.domain.service.agent.ChatTurnContext.encode(input.message(),target,mentions,
                         explicitReferences.renderReferences(mentions,"zh"));
                 var stream=builder.build().chat(Long.toString(session.id),enriched,InvocationParameters.from(Map.of()));

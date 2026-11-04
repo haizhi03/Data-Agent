@@ -21,8 +21,7 @@ final class LocalReadTools {
     private final LocalConversationRegistry.Session session;
     private final ModelRunSnapshot run;
     private final LocalConnectionService connections;
-    private final TableService tables;
-    private final ColumnService columns;
+    private final LocalMetadataTools metadata;
     private final SqlExecutionServiceImpl sql;
     private final ObjectMapper json;
     private final LocalWriteService writes;
@@ -32,20 +31,20 @@ final class LocalReadTools {
     private final Map<Long,Long> versions=new java.util.concurrent.ConcurrentHashMap<>();
     private final java.util.concurrent.atomic.AtomicInteger toolCount=new java.util.concurrent.atomic.AtomicInteger();
     LocalReadTools(LocalConversationRegistry.Session session, ModelRunSnapshot run, LocalConnectionService connections,
-            TableService tables, ColumnService columns, SqlExecutionServiceImpl sql, ObjectMapper json,
+            LocalMetadataTools metadata, SqlExecutionServiceImpl sql, ObjectMapper json,
             RequestContextInfo request, AgentRequestContextInfo agent) {
-        this(session,run,connections,tables,columns,sql,json,request,agent,null);
+        this(session,run,connections,metadata,sql,json,request,agent,null);
     }
     LocalReadTools(LocalConversationRegistry.Session session, ModelRunSnapshot run, LocalConnectionService connections,
-            TableService tables, ColumnService columns, SqlExecutionServiceImpl sql, ObjectMapper json,
+            LocalMetadataTools metadata, SqlExecutionServiceImpl sql, ObjectMapper json,
             RequestContextInfo request, AgentRequestContextInfo agent, LocalWriteService writes) {
-        this(session,run,connections,tables,columns,sql,json,request,agent,writes,session.target,session.connectionVersion,List.of());
+        this(session,run,connections,metadata,sql,json,request,agent,writes,session.target,session.connectionVersion,List.of());
     }
     LocalReadTools(LocalConversationRegistry.Session session, ModelRunSnapshot run, LocalConnectionService connections,
-            TableService tables, ColumnService columns, SqlExecutionServiceImpl sql, ObjectMapper json,
+            LocalMetadataTools metadata, SqlExecutionServiceImpl sql, ObjectMapper json,
             RequestContextInfo request, AgentRequestContextInfo agent, LocalWriteService writes,
             DbContext target, Long version, List<ChatUserMention> mentions) {
-        this.writes=writes;this.session=session;this.run=run;this.connections=connections;this.tables=tables;this.columns=columns;
+        this.writes=writes;this.session=session;this.run=run;this.connections=connections;this.metadata=metadata;
         this.sql=sql;this.json=json;this.request=request;this.agent=agent;this.defaultTarget=target;
         if(target.connectionId()!=null && version!=null) versions.put(target.connectionId(),version);
         for(var mention:mentions) versions.computeIfAbsent(mention.getConnectionId(),id -> connections.get(id).version());
@@ -54,7 +53,7 @@ final class LocalReadTools {
     public String list_tables(@P(value="Connection ID",required=false) Long connectionId,
             @P(value="Catalog, when applicable",required=false) String catalogName,
             @P(value="Schema, when applicable",required=false) String schemaName) {
-        return scoped(connectionId,catalogName,schemaName,target -> { var result=tables.getTables(target); return Map.of("tables",result.stream().limit(200).toList(),"truncated",result.size()>200); });
+        return scoped(connectionId,catalogName,schemaName,metadata::listTables);
     }
     public String list_tables() { return list_tables(null,null,null); }
 
@@ -62,11 +61,7 @@ final class LocalReadTools {
     public String describe_table(String tableName,@P(value="Connection ID",required=false) Long connectionId,
             @P(value="Catalog, when applicable",required=false) String catalogName,
             @P(value="Schema, when applicable",required=false) String schemaName) {
-        return scoped(connectionId,catalogName,schemaName,target -> {
-            if (tableName == null || !tableName.matches("[\\p{L}\\p{N}_$#]{1,128}")) throw LocalRequestException.invalid();
-            var result=columns.listColumns(target,tableName);
-            return Map.of("columns",result.stream().limit(100).toList(),"truncated",result.size()>100);
-        });
+        return scoped(connectionId,catalogName,schemaName,target -> metadata.describeTable(target,tableName));
     }
     public String describe_table(String tableName) { return describe_table(tableName,null,null,null); }
 
@@ -100,21 +95,15 @@ final class LocalReadTools {
     public String propose_write(String statement) { return propose_write(statement,null,null,null); }
 
     private String scoped(Long connectionId,String catalogName,String schemaName,Function<DbContext,?> action) {
-        Long id=connectionId==null?defaultTarget.connectionId():connectionId;
-        boolean same=Objects.equals(id,defaultTarget.connectionId());
-        String catalog=catalogName==null && same?defaultTarget.catalog():catalogName;
-        String schema=schemaName==null && same && Objects.equals(catalog,defaultTarget.catalog())?defaultTarget.schema():schemaName;
-        try(var ignored=new ModelContextScope(request.toBuilder().connectionId(id).catalog(catalog).schema(schema).build(),agent)) {
+        // Fill defaults first so the request context can be scoped before any access check runs.
+        var probe=LocalMetadataTools.fillDefaults(connectionId,catalogName,schemaName,defaultTarget);
+        try(var ignored=new ModelContextScope(request.toBuilder().connectionId(probe.connectionId())
+                .catalog(probe.catalog()).schema(probe.schema()).build(),agent)) {
             run.ensureActive();
             if(toolCount.incrementAndGet()>32) throw new edu.zsc.ai.config.ai.model.ModelIntegrationException("AGENT_BUDGET_EXCEEDED",org.springframework.http.HttpStatus.TOO_MANY_REQUESTS);
-            if(session.closed || id==null) throw LocalRequestException.forbidden();
-            connections.assertReadable(id);
-            var normalized=new edu.zsc.ai.domain.service.agent.ChatReferenceService(connections,connections).normalizeTarget(
-                    new edu.zsc.ai.api.model.request.ChatDefaultTarget(id,catalog,schema));
-            var resolved=new DbContext(normalized.getConnectionId(),normalized.getCatalogName(),normalized.getSchemaName());
-            long expected=versions.computeIfAbsent(id,key -> connections.get(key).version());
-            if(connections.get(id).version()!=expected) throw new LocalRequestException(409,"CONNECTION_REVISION_CONFLICT","连接已修改，请重新设置默认目标");
-            Object result=connections.withExpectedVersion(id,expected,() -> action.apply(resolved));
+            if(session.closed) throw LocalRequestException.forbidden();
+            var scope=metadata.resolveValidated(probe,versions);
+            Object result=metadata.withPinnedVersion(scope,() -> action.apply(scope.target()));
             run.ensureActive();String text=json.writeValueAsString(result);
             return text.length()<=12000?text:json.writeValueAsString(Map.of("truncated",true,"preview",text.substring(0,11000)));
         } catch(LocalRequestException e) { return safeError(e.response().reasonCode()); }
