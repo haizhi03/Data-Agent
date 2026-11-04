@@ -34,7 +34,7 @@
         </encoder>
     </appender>
 
-    <logger name="agent.runtime" level="DEBUG" additivity="false">
+    <logger name="agent.runtime" level="${AGENT_RUNTIME_LOG_LEVEL:-OFF}" additivity="false">
         <appender-ref ref="CONSOLE"/>
         <appender-ref ref="AGENT_RUNTIME_FILE"/>
     </logger>

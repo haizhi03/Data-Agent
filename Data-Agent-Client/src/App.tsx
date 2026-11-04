@@ -15,7 +15,6 @@ import { routerConfig } from "./router.tsx";
 import { ROUTES } from "./constants/routes";
 import { AuthModalType } from "./constants/modal";
 import { DataAttributes } from "./constants/dataAttributes";
-import { useOAuthCallbackFromUrl } from "./hooks/useOAuthCallbackFromUrl";
 import { WorkspaceLayout } from "./components/layouts/WorkspaceLayout";
 
 function AppRoutes({
@@ -77,9 +76,6 @@ function App() {
     // Layout state
     const [showAI, setShowAI] = useState(false);
     const [showExplorer, setShowExplorer] = useState(true);
-
-    // OAuth callback: read token from URL and sync to authStore
-    useOAuthCallbackFromUrl();
 
     // Wait until the persisted session is available. An earlier unauthenticated
     // request fails once and leaves the add-database menu stuck on "loading".

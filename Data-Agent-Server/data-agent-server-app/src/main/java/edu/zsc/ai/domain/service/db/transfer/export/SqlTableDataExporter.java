@@ -103,7 +103,9 @@ public class SqlTableDataExporter extends AbstractTableDataExporter<SqlTableData
 
     @Override
     protected void cleanup(SqlSession session) {
-        closeQuietly(session.writer());
+        // Do NOT close the writer — it wraps response.getOutputStream() and
+        // closing it would prematurely terminate the HTTP download stream.
+        // Spring owns the response stream lifecycle; we only flush in onFinish.
     }
 
     private Map<String, Integer> resolveJdbcTypes(SqlCommandResult result) {

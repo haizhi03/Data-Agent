@@ -13,18 +13,19 @@ import edu.zsc.ai.common.constant.AgentRuntimeLoggerNames;
 import edu.zsc.ai.common.enums.ai.AgentModeEnum;
 import edu.zsc.ai.common.enums.ai.AgentTypeEnum;
 import edu.zsc.ai.common.enums.ai.PromptEnum;
+import edu.zsc.ai.config.ai.model.ModelPurpose;
+import edu.zsc.ai.config.ai.model.ModelRuntime;
 import edu.zsc.ai.domain.service.agent.systemprompt.SystemPromptAssemblyContext;
 import edu.zsc.ai.domain.service.agent.systemprompt.SystemPromptManager;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Component;
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
 
 /**
  * Factory for building SubAgent instances (Explorer, Planner).
@@ -44,13 +45,14 @@ public class SubAgentFactory {
     private final ApplicationContext applicationContext;
     private final AgentSkillConfig agentSkillConfig;
     private final SystemPromptManager systemPromptManager;
+    private final ModelRuntime modelRuntime;
 
     /**
      * Build an Explorer SubAgent using AiServices.builder().
      * Each invocation creates a fresh agent with isolated temporary memory.
      */
     public ExplorerAgentService buildExplorerAgent(String modelName, Long conversationId) {
-        StreamingChatModel model = resolveModel(modelName);
+        StreamingChatModel model = modelRuntime.enabled() ? modelRuntime.streaming(ModelPurpose.EXPLORER) : resolveModel(modelName);
         List<Object> tools = agentToolConfig.resolveSubAgentTools(getAgentTools(), AgentTypeEnum.EXPLORER);
         AgentToolConfig.ToolBundle toolBundle = agentToolConfig.buildToolBundle(tools);
         ChatMemory memory = SubAgentMemoryFactory.createTemporary();
@@ -77,7 +79,7 @@ public class SubAgentFactory {
      * Each invocation creates a fresh agent with isolated temporary memory.
      */
     public PlannerAgentService buildPlannerAgent(String modelName, Long conversationId) {
-        StreamingChatModel model = resolveModel(modelName);
+        StreamingChatModel model = modelRuntime.enabled() ? modelRuntime.streaming(ModelPurpose.PLANNER) : resolveModel(modelName);
         List<Object> tools = agentToolConfig.resolveSubAgentTools(getAgentTools(), AgentTypeEnum.PLANNER);
         AgentToolConfig.ToolBundle toolBundle = agentToolConfig.buildToolBundle(tools);
         ChatMemory memory = SubAgentMemoryFactory.createTemporary();
@@ -100,7 +102,7 @@ public class SubAgentFactory {
     }
 
     public MemoryWriterAgentService buildMemoryWriterAgent(String modelName, Long conversationId) {
-        ChatModel model = resolveChatModel(modelName);
+        ChatModel model = modelRuntime.enabled() ? modelRuntime.chat(ModelPurpose.MEMORY_WRITER) : resolveChatModel(modelName);
         List<Object> tools = agentToolConfig.resolveSubAgentTools(getAgentTools(), AgentTypeEnum.MEMORY_WRITER);
         AgentToolConfig.ToolBundle toolBundle = agentToolConfig.buildToolBundle(tools);
         ChatMemory memory = SubAgentMemoryFactory.createTemporary();

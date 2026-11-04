@@ -1,4 +1,4 @@
-import { Download, FileText, Pencil, Plus, Table, Table2, Trash2, Upload, Waypoints } from 'lucide-react';
+import { Download, Eraser, FileCode2, FileText, FolderCog, FolderInput, FolderOpen, FolderPlus, ListFilter, Pencil, Play, Plus, Table, Table2, Trash2, Upload, Waypoints } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import {
   ContextMenuContent,
@@ -11,11 +11,15 @@ import {
 import { ExplorerNodeType } from '../../constants/explorer';
 import type { ExplorerNode } from '../../types/explorer';
 import { I18N_KEYS } from '../../constants/i18nKeys';
+import { useTableGroupStore, isManualGroup, groupContainsTable, tableGroupScopeKey } from '../../store/tableGroupStore';
+import { collectDeletableChildren } from '../../utils/treeOperations';
 
 interface NodeContextMenuContentProps {
   node: ExplorerNode;
   isConnected: boolean;
   onOpenQueryConsole: (node: ExplorerNode) => void;
+  onRunSqlScript: (node: ExplorerNode) => void;
+  onSqlGenerator: (node: ExplorerNode) => void;
   onCreateTable: (node: ExplorerNode) => void;
   onOpenErDiagram: (node: ExplorerNode) => void;
   onViewDdl: (node: ExplorerNode) => void;
@@ -26,12 +30,22 @@ interface NodeContextMenuContentProps {
   onExportData: (node: ExplorerNode) => void;
   onExportTablesWizard: (node: ExplorerNode) => void;
   onImportTablesWizard: (node: ExplorerNode) => void;
+  onCreateGroup: (node: ExplorerNode) => void;
+  onCreateRuleGroup: (node: ExplorerNode) => void;
+  onRenameGroup: (node: ExplorerNode) => void;
+  onDeleteGroup: (node: ExplorerNode) => void;
+  onClearGroup: (node: ExplorerNode) => void;
+  onEditGroupRule: (node: ExplorerNode) => void;
+  onMoveTableToGroup: (node: ExplorerNode, groupId: string) => void;
+  onRemoveTableFromGroup: (node: ExplorerNode, groupId: string) => void;
 }
 
 export function NodeContextMenuContent({
   node,
   isConnected,
   onOpenQueryConsole,
+  onRunSqlScript,
+  onSqlGenerator,
   onCreateTable,
   onOpenErDiagram,
   onViewDdl,
@@ -42,8 +56,17 @@ export function NodeContextMenuContent({
   onExportData,
   onExportTablesWizard,
   onImportTablesWizard,
+  onCreateGroup,
+  onCreateRuleGroup,
+  onRenameGroup,
+  onDeleteGroup,
+  onClearGroup,
+  onEditGroupRule,
+  onMoveTableToGroup,
+  onRemoveTableFromGroup,
 }: NodeContextMenuContentProps) {
   const { t } = useTranslation();
+  const groupsByScope = useTableGroupStore((s) => s.groupsByScope);
 
   // Determine node characteristics
   const isDdlNode =
@@ -64,6 +87,8 @@ export function NodeContextMenuContent({
 
   const isDb = node.type === ExplorerNodeType.DB;
 
+  const isSchema = node.type === ExplorerNodeType.SCHEMA;
+
   const isDeletableFolder =
     node.type === ExplorerNodeType.FOLDER &&
     node.folderName &&
@@ -72,7 +97,27 @@ export function NodeContextMenuContent({
   const isTablesFolder =
     node.type === ExplorerNodeType.FOLDER && node.folderName === 'tables';
 
+  const isViewsFolder =
+    node.type === ExplorerNodeType.FOLDER && node.folderName === 'views';
+
+  const isRoutinesFolder =
+    node.type === ExplorerNodeType.FOLDER && node.folderName === 'routines';
+
+  const isIndexesFolder =
+    node.type === ExplorerNodeType.FOLDER && node.folderName === 'indexes';
+
   const canCreateTable = isConnected && (isDb || isTablesFolder);
+
+  const isGroup = node.type === ExplorerNodeType.GROUP;
+
+  // Groups available for the current table/group's scope (same connection + catalog + schema).
+  const scope = tableGroupScopeKey(node.connectionId ?? '', node.catalog, node.schema);
+  const scopeGroups = groupsByScope[scope] ?? [];
+  const manualGroups = scopeGroups.filter(isManualGroup);
+  const containingManualGroup =
+    node.type === ExplorerNodeType.TABLE
+      ? manualGroups.find((g) => groupContainsTable(g, node.name))
+      : undefined;
 
   // Extract column name from key/index name (format: "name (col1, col2)" or just "name")
   const extractColumnName = (nodeName: string): string | undefined => {
@@ -135,6 +180,21 @@ export function NodeContextMenuContent({
         </ContextMenuItem>
       )}
 
+      {/* 1.6 Table groups - create manual or rule groups under the tables folder */}
+      {isConnected && isTablesFolder && (
+        <>
+          <ContextMenuSeparator />
+          <ContextMenuItem onSelect={() => onCreateGroup(node)}>
+            <FolderPlus className="w-3.5 h-3.5 mr-2" />
+            {t(I18N_KEYS.EXPLORER.NEW_GROUP)}
+          </ContextMenuItem>
+          <ContextMenuItem onSelect={() => onCreateRuleGroup(node)}>
+            <ListFilter className="w-3.5 h-3.5 mr-2" />
+            {t(I18N_KEYS.EXPLORER.NEW_RULE_GROUP)}
+          </ContextMenuItem>
+        </>
+      )}
+
       {/* 2. View DDL - for DDL objects */}
       {isDdlNode && (
         <>
@@ -166,6 +226,22 @@ export function NodeContextMenuContent({
       )}
       {isTableOrView || isColumnOrIndexOrKey ? (hasDataOperations = true) : null}
 
+      {/* 3.1 Run SQL Script - run a .sql script file against this database/schema/tables folder */}
+      {isConnected && (isDb || isSchema || isTablesFolder) && (
+        <ContextMenuItem onSelect={() => onRunSqlScript(node)}>
+          <Play className="w-3.5 h-3.5 mr-2" />
+          {t(I18N_KEYS.EXPLORER.RUN_SQL_SCRIPT)}
+        </ContextMenuItem>
+      )}
+
+      {/* 3.2 SQL Generator - generate DDL for databases, schemas, folders and non-primary-key indexes */}
+      {isConnected && (isDb || isSchema || isTablesFolder || isViewsFolder || isRoutinesFolder || (node.type === ExplorerNodeType.INDEX && !node.isPrimaryKey) || isIndexesFolder) && (
+        <ContextMenuItem onSelect={() => onSqlGenerator(node)}>
+          <FileCode2 className="w-3.5 h-3.5 mr-2" />
+          {t(I18N_KEYS.EXPLORER.SQL_GENERATOR)}
+        </ContextMenuItem>
+      )}
+
       {/* 3.5 Import/Export Data - for tables (UI placeholder, functionality to be implemented later) */}
       {node.type === ExplorerNodeType.TABLE && (
         <>
@@ -178,6 +254,52 @@ export function NodeContextMenuContent({
             {t(I18N_KEYS.EXPLORER.EXPORT_DATA)}
           </ContextMenuItem>
         </>
+      )}
+
+      {/* 3.6 Manage table groups (create / move into / remove from) */}
+      {node.type === ExplorerNodeType.TABLE && isConnected && (
+        <ContextMenuSub>
+          <ContextMenuSubTrigger>
+            <FolderCog className="w-3.5 h-3.5 mr-2" />
+            {t(I18N_KEYS.EXPLORER.MANAGE_GROUP)}
+          </ContextMenuSubTrigger>
+          <ContextMenuSubContent>
+            <ContextMenuItem onSelect={() => onCreateGroup(node)}>
+              <FolderPlus className="w-3.5 h-3.5 mr-2" />
+              {t(I18N_KEYS.EXPLORER.NEW_GROUP)}
+            </ContextMenuItem>
+            <ContextMenuItem onSelect={() => onCreateRuleGroup(node)}>
+              <ListFilter className="w-3.5 h-3.5 mr-2" />
+              {t(I18N_KEYS.EXPLORER.NEW_RULE_GROUP)}
+            </ContextMenuItem>
+            <ContextMenuSeparator />
+            <ContextMenuSub>
+              <ContextMenuSubTrigger>
+                <FolderInput className="w-3.5 h-3.5 mr-2" />
+                {t(I18N_KEYS.EXPLORER.MOVE_TO_GROUP)}
+              </ContextMenuSubTrigger>
+              <ContextMenuSubContent>
+                {manualGroups.length === 0 ? (
+                  <ContextMenuItem disabled>
+                    {t(I18N_KEYS.EXPLORER.NO_GROUPS)}
+                  </ContextMenuItem>
+                ) : (
+                  manualGroups.map((g) => (
+                    <ContextMenuItem key={g.id} onSelect={() => onMoveTableToGroup(node, g.id)}>
+                      {g.name}
+                    </ContextMenuItem>
+                  ))
+                )}
+              </ContextMenuSubContent>
+            </ContextMenuSub>
+            {containingManualGroup && (
+              <ContextMenuItem onSelect={() => onRemoveTableFromGroup(node, containingManualGroup.id)}>
+                <FolderOpen className="w-3.5 h-3.5 mr-2" />
+                {t(I18N_KEYS.EXPLORER.REMOVE_FROM_GROUP)}
+              </ContextMenuItem>
+            )}
+          </ContextMenuSubContent>
+        </ContextMenuSub>
       )}
 
       {/* 4. Rename - for tables */}
@@ -272,7 +394,7 @@ export function NodeContextMenuContent({
         </ContextMenuItem>
       )}
 
-      {isDeletableFolder && node.children && node.children.filter((c) => c.type !== 'empty').length > 0 && (
+      {isDeletableFolder && collectDeletableChildren(node.children ?? []).length > 0 && (
         <ContextMenuItem
           onSelect={() => onDelete(node, ExplorerNodeType.FOLDER)}
           className="text-destructive focus:text-destructive"
@@ -280,6 +402,35 @@ export function NodeContextMenuContent({
           <Trash2 className="w-3.5 h-3.5 mr-2" />
           {t(I18N_KEYS.EXPLORER.DELETE_ALL_IN_FOLDER)}
         </ContextMenuItem>
+      )}
+
+      {/* Group node actions (manual/rule) */}
+      {isGroup && (
+        <>
+          <ContextMenuItem onSelect={() => onRenameGroup(node)}>
+            <Pencil className="w-3.5 h-3.5 mr-2" />
+            {t(I18N_KEYS.EXPLORER.RENAME_GROUP)}
+          </ContextMenuItem>
+          {node.groupKind === 'manual' && (
+            <ContextMenuItem onSelect={() => onClearGroup(node)}>
+              <Eraser className="w-3.5 h-3.5 mr-2" />
+              {t(I18N_KEYS.EXPLORER.CLEAR_GROUP)}
+            </ContextMenuItem>
+          )}
+          {node.groupKind === 'rule' && (
+            <ContextMenuItem onSelect={() => onEditGroupRule(node)}>
+              <ListFilter className="w-3.5 h-3.5 mr-2" />
+              {t(I18N_KEYS.EXPLORER.EDIT_GROUP_RULE)}
+            </ContextMenuItem>
+          )}
+          <ContextMenuItem
+            onSelect={() => onDeleteGroup(node)}
+            className="text-destructive focus:text-destructive"
+          >
+            <Trash2 className="w-3.5 h-3.5 mr-2" />
+            {t(I18N_KEYS.EXPLORER.DELETE_GROUP)}
+          </ContextMenuItem>
+        </>
       )}
     </ContextMenuContent>
   );

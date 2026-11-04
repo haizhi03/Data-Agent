@@ -1,16 +1,9 @@
 package edu.zsc.ai.domain.service.ai.autowrite;
 
-import java.time.LocalDateTime;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.Set;
-
-import org.apache.commons.lang3.StringUtils;
-import org.springframework.stereotype.Component;
-
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.ChatMessageDeserializer;
+import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.invocation.InvocationParameters;
 import edu.zsc.ai.agent.subagent.memorywriter.MemoryWriterAgentService;
 import edu.zsc.ai.common.constant.InvocationContextConstant;
@@ -18,12 +11,21 @@ import edu.zsc.ai.common.enums.ai.AgentModeEnum;
 import edu.zsc.ai.common.enums.ai.AgentTypeEnum;
 import edu.zsc.ai.config.ai.AiModelCatalog;
 import edu.zsc.ai.config.ai.SubAgentFactory;
+import edu.zsc.ai.config.ai.model.ModelPurpose;
+import edu.zsc.ai.context.AgentRequestContext;
+import edu.zsc.ai.context.RequestContext;
 import edu.zsc.ai.domain.model.entity.ai.AiMemory;
 import edu.zsc.ai.domain.model.entity.ai.StoredChatMessage;
 import edu.zsc.ai.domain.service.ai.MemoryService;
 import edu.zsc.ai.domain.service.ai.model.MemoryWriteContext;
+import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
+import org.springframework.stereotype.Component;
 
 @Slf4j
 @Component
@@ -40,11 +42,15 @@ public class ConversationMemoryWriterImpl implements ConversationMemoryWriter {
     @Override
     public void writeMemory(MemoryWriteContext context, Long conversationId, Long userId) {
         LocalDateTime startedAt = LocalDateTime.now();
-        String modelName = aiModelCatalog.defaultModelName();
+        var agentContext = AgentRequestContext.snapshot();
+        String modelName = agentContext != null && agentContext.getModelRunSnapshot() != null
+                ? agentContext.getModelRunSnapshot().model(ModelPurpose.MEMORY_WRITER).modelConfigId()
+                : aiModelCatalog.defaultModelName();
         MemoryWriterAgentService agentService = subAgentFactory.buildMemoryWriterAgent(modelName, conversationId);
         String instruction = buildInstruction(context);
 
-        Map<String, Object> invocationContext = new LinkedHashMap<>();
+        Map<String, Object> invocationContext = new LinkedHashMap<>(RequestContext.toMap());
+        invocationContext.putAll(AgentRequestContext.toMap());
         invocationContext.put(InvocationContextConstant.USER_ID, userId);
         invocationContext.put(InvocationContextConstant.CONVERSATION_ID, conversationId);
         invocationContext.put(InvocationContextConstant.AGENT_TYPE, AgentTypeEnum.MEMORY_WRITER.getCode());
@@ -95,7 +101,7 @@ public class ConversationMemoryWriterImpl implements ConversationMemoryWriter {
     private String extractText(StoredChatMessage message) {
         try {
             ChatMessage deserialized = ChatMessageDeserializer.messageFromJson(message.getData());
-            if (deserialized instanceof dev.langchain4j.data.message.UserMessage userMessage) {
+            if (deserialized instanceof UserMessage userMessage) {
                 return userMessage.singleText();
             }
             if (deserialized instanceof AiMessage aiMessage) {

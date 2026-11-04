@@ -82,10 +82,6 @@ public class SaTokenConfigure implements WebMvcConfigurer {
                         "/api/auth/register",
                         "/api/auth/refresh",
                         "/api/auth/reset-password",
-                        "/api/oauth/google",
-                        "/api/oauth/callback/google",
-                        "/api/oauth/github",
-                        "/api/oauth/callback/github",
                         "/actuator/info",
                         "/actuator/health");
     }

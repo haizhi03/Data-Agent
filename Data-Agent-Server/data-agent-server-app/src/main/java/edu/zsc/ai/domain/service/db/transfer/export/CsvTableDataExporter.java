@@ -76,7 +76,9 @@ public class CsvTableDataExporter extends AbstractTableDataExporter<CsvTableData
 
     @Override
     protected void cleanup(CsvSession session) {
-        closeQuietly(session.writer());
+        // Do NOT close the writer — it wraps response.getOutputStream() and
+        // closing it would prematurely terminate the HTTP download stream.
+        // Spring owns the response stream lifecycle; we only flush in onFinish.
     }
 
     private void writeCsvHeader(BufferedWriter writer, List<String> headers,

@@ -3,6 +3,8 @@ package edu.zsc.ai.domain.service.db.impl;
 import edu.zsc.ai.domain.model.context.DbContext;
 import edu.zsc.ai.domain.model.dto.response.db.SqlCompletionItem;
 import edu.zsc.ai.domain.model.dto.response.db.SqlCompletionResponse;
+import edu.zsc.ai.domain.model.dto.response.db.SqlHoverResponse;
+import edu.zsc.ai.domain.model.dto.response.db.SqlSignatureHelpResponse;
 import edu.zsc.ai.domain.service.db.*;
 import edu.zsc.ai.plugin.Plugin;
 import edu.zsc.ai.plugin.capability.SqlCompleter;
@@ -110,6 +112,66 @@ public class SqlCompletionServiceImpl implements SqlCompletionService {
             }
         }
         return finish(items, context, MAX_ITEMS);
+    }
+
+    @Override
+    public SqlHoverResponse hover(DbContext db, String sql, int cursorOffset) {
+        SqlCompleter completer = dialect(db.connectionId());
+        if (completer == null) return SqlHoverResponse.empty();
+        sql = sql == null ? "" : sql;
+        SqlTextScanner.Chain chain = SqlTextScanner.chainAt(sql, cursorOffset);
+        if (chain == null) return SqlHoverResponse.empty();
+        CompletionContext context = completer.analyzeCompletionContext(sql, cursorOffset);
+        try {
+            connectionService.openConnection(db);
+            var active = ActiveConnectionRegistry.getOwnedConnection(db);
+            SqlCompleter connected = DefaultPluginManager.getInstance().getSqlCompleterByPluginId(active.pluginId());
+            if (connected != null) {
+                completer = connected;
+                context = completer.analyzeCompletionContext(sql, cursorOffset);
+            }
+            try (var borrowed = active.borrowConnection()) {
+                DbContext source = new DbContext(db.connectionId(), db.catalog(),
+                        completer.completionSchema(borrowed.connection(), db.schema()));
+                var resolver = new SqlCompletionMetadataResolver(active.pluginId(), active.dataSource(),
+                        borrowed.connection(), completer, cache);
+                var functions = functionCatalog(db, active.pluginId(), active.dataSource(), borrowed.connection(), completer).functions();
+                var config = dbConnectionService.getById(db.connectionId());
+                String dataSource = config == null ? null : config.getName();
+                return new SqlHoverResolver(source, dataSource, context, resolver, functions).resolve(chain);
+            }
+        } catch (RuntimeException e) {
+            // Parser-level hovers (variables, aliases, CTEs, built-in signatures) still work offline.
+            log.debug("SQL hover metadata unavailable: {}", e.getMessage());
+            return new SqlHoverResolver(db, null, context, null, completer.functionTemplates()).resolve(chain);
+        }
+    }
+
+    @Override
+    public SqlSignatureHelpResponse signature(DbContext db, String sql, int cursorOffset) {
+        SqlCompleter completer = dialect(db.connectionId());
+        if (completer == null) return SqlSignatureHelpResponse.empty();
+        sql = sql == null ? "" : sql;
+        SqlTextScanner.CallSite call = SqlTextScanner.callAt(sql, cursorOffset);
+        if (call == null || call.name().isEmpty()) return SqlSignatureHelpResponse.empty();
+        try {
+            connectionService.openConnection(db);
+            var active = ActiveConnectionRegistry.getOwnedConnection(db);
+            SqlCompleter connected = DefaultPluginManager.getInstance().getSqlCompleterByPluginId(active.pluginId());
+            if (connected != null) completer = connected;
+            try (var borrowed = active.borrowConnection()) {
+                DbContext source = new DbContext(db.connectionId(), db.catalog(),
+                        completer.completionSchema(borrowed.connection(), db.schema()));
+                var resolver = new SqlCompletionMetadataResolver(active.pluginId(), active.dataSource(),
+                        borrowed.connection(), completer, cache);
+                var functions = functionCatalog(db, active.pluginId(), active.dataSource(), borrowed.connection(), completer).functions();
+                return new SqlSignatureResolver(source, resolver, functions).resolve(call);
+            }
+        } catch (RuntimeException e) {
+            // Built-in signatures stay available without the database.
+            log.debug("SQL signature metadata unavailable: {}", e.getMessage());
+            return new SqlSignatureResolver(db, null, completer.functionTemplates()).resolve(call);
+        }
     }
 
     private static void addStatic(SqlCompleter dialect, CompletionContext context, String sql,

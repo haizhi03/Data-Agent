@@ -1,4 +1,5 @@
 import type { QueryClient } from '@tanstack/react-query';
+import { FolderName } from '../constants/explorer';
 import { databaseService } from '../services/database.service';
 import { functionService, type FunctionMetadata } from '../services/function.service';
 import { procedureService, type ProcedureMetadata } from '../services/procedure.service';
@@ -9,6 +10,9 @@ import { viewService } from '../services/view.service';
 
 const EXPLORER_METADATA_QUERY_ROOT = 'explorer-metadata';
 const EXPLORER_METADATA_STALE_TIME_MS = 60 * 1000;
+
+/** Object-list query kinds; each key is [root, kind, connectionId, catalog, schema]. */
+const EXPLORER_OBJECT_KINDS = ['tables', 'views', 'functions', 'procedures', 'triggers'] as const;
 
 type CachedListOptions = {
   force?: boolean;
@@ -211,12 +215,160 @@ export function fetchExplorerTriggers(
   );
 }
 
+/** Drop a deleted object from a cached list so tree rebuilds don't resurrect it. */
+function removeNameFromCachedList(
+  queryClient: QueryClient,
+  queryKey: readonly string[],
+  name: string
+) {
+  const cached = queryClient.getQueryData<string[]>(queryKey);
+  if (cached) queryClient.setQueryData<string[]>(queryKey, cached.filter((n) => n !== name));
+}
+
+function removeNameFromCachedMetadata<T extends { name: string }>(
+  queryClient: QueryClient,
+  queryKey: readonly string[],
+  name: string
+) {
+  const cached = queryClient.getQueryData<T[]>(queryKey);
+  if (cached) queryClient.setQueryData<T[]>(queryKey, cached.filter((item) => item.name !== name));
+}
+
+/** Keep a cached table list in sync with a rename so tree rebuilds don't revive the old name. */
+export function renameCachedExplorerTable(
+  queryClient: QueryClient,
+  connectionId: string,
+  catalog: string | undefined,
+  schema: string | undefined,
+  oldName: string,
+  newName: string
+) {
+  const queryKey = getExplorerTablesQueryKey(connectionId, catalog, schema);
+  const cached = queryClient.getQueryData<string[]>(queryKey);
+  if (!cached || !cached.includes(oldName)) return;
+  const next = [...new Set(cached.map((name) => (name === oldName ? newName : name)))];
+  queryClient.setQueryData<string[]>(queryKey, next);
+}
+
+export function removeCachedExplorerTable(
+  queryClient: QueryClient,
+  connectionId: string,
+  catalog: string | undefined,
+  schema: string | undefined,
+  name: string
+) {
+  removeNameFromCachedList(queryClient, getExplorerTablesQueryKey(connectionId, catalog, schema), name);
+}
+
+export function removeCachedExplorerView(
+  queryClient: QueryClient,
+  connectionId: string,
+  catalog: string | undefined,
+  schema: string | undefined,
+  name: string
+) {
+  removeNameFromCachedList(queryClient, getExplorerViewsQueryKey(connectionId, catalog, schema), name);
+}
+
+export function removeCachedExplorerFunction(
+  queryClient: QueryClient,
+  connectionId: string,
+  catalog: string | undefined,
+  schema: string | undefined,
+  name: string
+) {
+  removeNameFromCachedMetadata<FunctionMetadata>(
+    queryClient,
+    getExplorerFunctionsQueryKey(connectionId, catalog, schema),
+    name
+  );
+}
+
+export function removeCachedExplorerProcedure(
+  queryClient: QueryClient,
+  connectionId: string,
+  catalog: string | undefined,
+  schema: string | undefined,
+  name: string
+) {
+  removeNameFromCachedMetadata<ProcedureMetadata>(
+    queryClient,
+    getExplorerProceduresQueryKey(connectionId, catalog, schema),
+    name
+  );
+}
+
+export function removeCachedExplorerTrigger(
+  queryClient: QueryClient,
+  connectionId: string,
+  catalog: string | undefined,
+  schema: string | undefined,
+  name: string
+) {
+  removeNameFromCachedMetadata<TriggerMetadata>(
+    queryClient,
+    getExplorerTriggersQueryKey(connectionId, catalog, schema),
+    name
+  );
+}
+
+/**
+ * Drop the cached object list backing a folder after its contents were deleted
+ * wholesale. The next hydration fetches the real list instead of reviving
+ * partially deleted objects.
+ */
+export function invalidateCachedExplorerFolder(
+  queryClient: QueryClient,
+  connectionId: string,
+  catalog: string | undefined,
+  schema: string | undefined,
+  folderName: FolderName
+) {
+  switch (folderName) {
+    case FolderName.TABLES:
+      queryClient.removeQueries({ queryKey: getExplorerTablesQueryKey(connectionId, catalog, schema) });
+      break;
+    case FolderName.VIEWS:
+      queryClient.removeQueries({ queryKey: getExplorerViewsQueryKey(connectionId, catalog, schema) });
+      break;
+    case FolderName.ROUTINES:
+      queryClient.removeQueries({ queryKey: getExplorerFunctionsQueryKey(connectionId, catalog, schema) });
+      queryClient.removeQueries({ queryKey: getExplorerProceduresQueryKey(connectionId, catalog, schema) });
+      break;
+    case FolderName.TRIGGERS:
+      queryClient.removeQueries({ queryKey: getExplorerTriggersQueryKey(connectionId, catalog, schema) });
+      break;
+    default:
+      break;
+  }
+}
+
+/**
+ * Drop every cached object list belonging to one catalog (database). Query keys
+ * nest catalog before schema, so a prefix match also clears all of its schemas.
+ */
+export function clearExplorerMetadataForCatalog(
+  queryClient: QueryClient,
+  connectionId: string,
+  catalog: string
+) {
+  queryClient.removeQueries({ queryKey: getExplorerDatabasesQueryKey(connectionId) });
+  queryClient.removeQueries({ queryKey: getExplorerSchemasQueryKey(connectionId, catalog) });
+  // The schema slot is always present (normalized to ''), so stop the prefix at
+  // the catalog to match every schema under it.
+  const catalogPrefix = normalizeScope(catalog);
+  for (const kind of EXPLORER_OBJECT_KINDS) {
+    queryClient.removeQueries({
+      queryKey: [EXPLORER_METADATA_QUERY_ROOT, kind, connectionId, catalogPrefix],
+    });
+  }
+}
+
+/** Drop every cached list for a connection, across all catalogs and schemas. */
 export function clearExplorerMetadataForConnection(queryClient: QueryClient, connectionId: string) {
-  queryClient.removeQueries({ queryKey: [EXPLORER_METADATA_QUERY_ROOT, 'databases', connectionId] });
+  queryClient.removeQueries({ queryKey: getExplorerDatabasesQueryKey(connectionId) });
   queryClient.removeQueries({ queryKey: [EXPLORER_METADATA_QUERY_ROOT, 'schemas', connectionId] });
-  queryClient.removeQueries({ queryKey: [EXPLORER_METADATA_QUERY_ROOT, 'tables', connectionId] });
-  queryClient.removeQueries({ queryKey: [EXPLORER_METADATA_QUERY_ROOT, 'views', connectionId] });
-  queryClient.removeQueries({ queryKey: [EXPLORER_METADATA_QUERY_ROOT, 'functions', connectionId] });
-  queryClient.removeQueries({ queryKey: [EXPLORER_METADATA_QUERY_ROOT, 'procedures', connectionId] });
-  queryClient.removeQueries({ queryKey: [EXPLORER_METADATA_QUERY_ROOT, 'triggers', connectionId] });
+  for (const kind of EXPLORER_OBJECT_KINDS) {
+    queryClient.removeQueries({ queryKey: [EXPLORER_METADATA_QUERY_ROOT, kind, connectionId] });
+  }
 }

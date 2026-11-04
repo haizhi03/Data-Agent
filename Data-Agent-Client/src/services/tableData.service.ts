@@ -60,6 +60,7 @@ export interface ImportTableDataParams {
   schema?: string;
   fileType: string;
   encoding?: string;
+  createTableIfMissing?: boolean;
   file: File;
 }
 
@@ -241,6 +242,7 @@ export const tableDataService = {
     if (params.encoding != null && params.encoding !== '') {
       formData.append('encoding', params.encoding);
     }
+    formData.append('createTableIfMissing', String(params.createTableIfMissing ?? false));
 
     const response = await http.post<ImportTableDataResult>(ApiPaths.TABLE_IMPORT, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },

@@ -7,14 +7,18 @@ import com.fasterxml.jackson.core.JsonToken;
 import edu.zsc.ai.domain.service.db.ConnectionService;
 import edu.zsc.ai.domain.service.db.transfer.AbstractTableDataImporter;
 import edu.zsc.ai.domain.service.db.transfer.ColumnValueConverter;
+import edu.zsc.ai.domain.service.db.transfer.CreateTableDdlGenerator;
 import edu.zsc.ai.domain.service.db.transfer.ImportBatchSupport;
 import edu.zsc.ai.domain.service.db.transfer.ImportFailureException;
 import edu.zsc.ai.domain.service.db.transfer.ImportPrepareSupport;
+import edu.zsc.ai.domain.service.db.transfer.InferColumnTypeSupport;
 import edu.zsc.ai.plugin.model.metadata.ColumnMetadata;
 import org.springframework.stereotype.Component;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.PushbackInputStream;
 import java.io.StringWriter;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -34,13 +38,58 @@ public class JsonTableDataImporter extends AbstractTableDataImporter {
     public JsonTableDataImporter(ConnectionService connectionService,
                                  ImportPrepareSupport prepareSupport,
                                  ColumnValueConverter valueConverter,
-                                 ImportBatchSupport batchSupport) {
-        super(connectionService, prepareSupport, valueConverter, batchSupport);
+                                 ImportBatchSupport batchSupport,
+                                 InferColumnTypeSupport inferSupport,
+                                 CreateTableDdlGenerator ddlGenerator) {
+        super(connectionService, prepareSupport, valueConverter, batchSupport, inferSupport, ddlGenerator);
     }
 
     @Override
     public String fileType() {
         return "JSON";
+    }
+
+    @Override
+    protected PeekResult peekHeadersAndSample(PushbackInputStream pushback, String encoding) throws IOException {
+        byte[] allBytes = pushback.readAllBytes();
+        if (allBytes.length == 0) {
+            return PeekResult.empty();
+        }
+        try {
+            JsonParser parser = new JsonFactory().createParser(new ByteArrayInputStream(allBytes));
+            try {
+                if (parser.nextToken() != JsonToken.START_ARRAY) return PeekResult.empty();
+                if (parser.nextToken() != JsonToken.START_OBJECT) return PeekResult.empty();
+
+                JsonRow firstRow = readJsonRow(parser, 1);
+                List<String> headers = firstRow.names();
+                if (headers.isEmpty()) return PeekResult.empty();
+
+                List<String[]> samples = new ArrayList<>();
+                Map<String, Integer> fieldIndexByName = new HashMap<>();
+                for (int i = 0; i < headers.size(); i++) {
+                    fieldIndexByName.put(headers.get(i).toLowerCase(Locale.ROOT), i);
+                }
+                samples.add(sampleValues(firstRow, fieldIndexByName, 1));
+                int row = 1;
+                while (samples.size() < InferColumnTypeSupport.SAMPLE_ROW_LIMIT) {
+                    JsonToken t = parser.nextToken();
+                    if (t == null || t == JsonToken.END_ARRAY) break;
+                    if (t != JsonToken.START_OBJECT) break;
+                    row++;
+                    JsonRow r = readJsonRow(parser, row);
+                    samples.add(sampleValues(r, fieldIndexByName, row));
+                }
+                // Return the full bytes so the caller re-parses from a fresh stream
+                // (the whole file no longer fits a bounded pushback buffer).
+                return new PeekResult(headers, samples, allBytes);
+            } finally {
+                parser.close();
+            }
+        } catch (RuntimeException ex) {
+            // Malformed JSON — surface so that prepare() fails later with a specific message
+            throw new IOException("Failed to peek JSON header: " + ex.getMessage(), ex);
+        }
     }
 
     @Override
@@ -123,6 +172,19 @@ public class JsonTableDataImporter extends AbstractTableDataImporter {
     }
 
     // --- JSON row parsing ---
+
+    private String[] sampleValues(JsonRow row, Map<String, Integer> fieldIndexByName, int fileRow) {
+        String[] values = new String[fieldIndexByName.size()];
+        for (int i = 0; i < row.names().size(); i++) {
+            Integer index = fieldIndexByName.get(row.names().get(i).toLowerCase(Locale.ROOT));
+            if (index == null) {
+                throw new ImportFailureException(fileRow, "JSON field '" + row.names().get(i)
+                        + "' was not present in the first row object");
+            }
+            values[index] = row.values().get(i);
+        }
+        return values;
+    }
 
     /** One JSON row object: field names in file order and their text values (null for JSON null). */
     private record JsonRow(List<String> names, List<String> values) {

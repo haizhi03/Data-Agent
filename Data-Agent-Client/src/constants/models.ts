@@ -1,14 +1,15 @@
 import type { ModelOption } from '../types/ai';
 
-/**
- * Frontend fallback chat models used when /api/ai/models is unavailable.
- * Keep these aligned with backend chat-visible ai.models.supported entries for graceful degradation.
- */
+/** Availability and defaults come exclusively from the current workspace's server response. */
+export const FALLBACK_MODELS: ModelOption[] = [];
+export const DEFAULT_MODEL = '';
 
-/** Fallback models list (used when API is unavailable). */
-export const FALLBACK_MODELS: ModelOption[] = [
-  { modelName: 'qwen3.6-max-preview', supportThinking: true, memoryThreshold: 230000, maxContextTokens: 262144 },
-  { modelName: 'qwen3-max-2026-01-23', supportThinking: true, memoryThreshold: 230000, maxContextTokens: 258048 },
-];
+export function defaultModelSelection(options: ModelOption[]): string {
+  return (options.find((m) => m.defaultModel) ?? options[0])?.modelName ?? '';
+}
 
-export const DEFAULT_MODEL = FALLBACK_MODELS[0]?.modelName ?? 'qwen3.6-max-preview';
+export function modelRequest(selection: string, options: ModelOption[]): { modelConfigId: string } | { model: string } {
+  const option = options.find((m) => m.modelName === selection);
+  if (!option) return { model: '__unavailable__' };
+  return option.modelConfigId ? { modelConfigId: option.modelConfigId } : { model: option.modelName };
+}

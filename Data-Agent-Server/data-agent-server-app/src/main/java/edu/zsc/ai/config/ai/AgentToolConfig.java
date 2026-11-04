@@ -1,10 +1,13 @@
 package edu.zsc.ai.config.ai;
 
-import dev.langchain4j.agent.tool.Tool;
 import dev.langchain4j.agent.tool.ReturnBehavior;
+import dev.langchain4j.agent.tool.Tool;
+import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.agent.tool.ToolSpecifications;
+import dev.langchain4j.invocation.InvocationContext;
 import dev.langchain4j.service.tool.DefaultToolExecutor;
+import dev.langchain4j.service.tool.ToolExecutionResult;
 import dev.langchain4j.service.tool.ToolExecutor;
 import edu.zsc.ai.agent.annotation.AgentTool;
 import edu.zsc.ai.agent.tool.ask.AskUserQuestionTool;
@@ -16,30 +19,31 @@ import edu.zsc.ai.agent.tool.orchestrator.CallingExplorerTool;
 import edu.zsc.ai.agent.tool.orchestrator.CallingPlannerTool;
 import edu.zsc.ai.agent.tool.plan.ExitPlanModeTool;
 import edu.zsc.ai.agent.tool.skill.ActivateSkillTool;
+import edu.zsc.ai.agent.tool.sql.ExecuteSqlTool;
 import edu.zsc.ai.agent.tool.sql.GetConnectionsTool;
-import edu.zsc.ai.agent.tool.sql.GetObjectDetailTool;
 import edu.zsc.ai.agent.tool.sql.GetDatabasesTool;
+import edu.zsc.ai.agent.tool.sql.GetObjectDetailTool;
 import edu.zsc.ai.agent.tool.sql.GetSchemasTool;
 import edu.zsc.ai.agent.tool.sql.SearchObjectsTool;
-import edu.zsc.ai.agent.tool.sql.ExecuteSqlTool;
 import edu.zsc.ai.agent.tool.thinking.ThinkingTool;
 import edu.zsc.ai.agent.tool.todo.TodoTool;
+import edu.zsc.ai.common.constant.InvocationContextConstant;
 import edu.zsc.ai.common.enums.ai.AgentModeEnum;
 import edu.zsc.ai.common.enums.ai.AgentTypeEnum;
+import edu.zsc.ai.config.ai.model.ModelRunSnapshot;
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.apache.commons.collections4.CollectionUtils;
 import org.springframework.aop.support.AopUtils;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-
-import java.lang.reflect.Method;
-import java.util.ArrayList;
-import java.util.LinkedHashSet;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.stream.Collectors;
 
 @Configuration
 public class AgentToolConfig {
@@ -111,13 +115,23 @@ public class AgentToolConfig {
         Map<ToolSpecification, ToolExecutor> executors = new LinkedHashMap<>();
         Set<String> immediateReturnToolNames = new LinkedHashSet<>();
         for (ToolRegistration registration : registrations) {
+            ToolExecutor delegate = new DefaultToolExecutor(registration.toolBean(), registration.originalMethod(), registration.invocableMethod());
             executors.put(
                     registration.specification(),
-                    new DefaultToolExecutor(
-                            registration.toolBean(),
-                            registration.originalMethod(),
-                            registration.invocableMethod()
-                    )
+                    new ToolExecutor() {
+                        public String execute(ToolExecutionRequest request, Object memoryId) {
+                            return delegate.execute(request, memoryId);
+                        }
+                        @Override public ToolExecutionResult executeWithContext(
+                                ToolExecutionRequest request, InvocationContext context) {
+                            if (context.invocationParameters() != null) {
+                                ModelRunSnapshot run = context.invocationParameters().get(
+                                        InvocationContextConstant.MODEL_RUN_SNAPSHOT);
+                                if (run != null) return run.executeTool(context.invocationId(), request, () -> delegate.executeWithContext(request, context));
+                            }
+                            return delegate.executeWithContext(request, context);
+                        }
+                    }
             );
             if (registration.returnBehavior() == ReturnBehavior.IMMEDIATE) {
                 immediateReturnToolNames.add(registration.specification().name());

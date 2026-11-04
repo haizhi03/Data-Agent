@@ -31,6 +31,11 @@ public final class DmTableManager implements TableManager {
     }
 
     @Override
+    public String getTableComment(Connection connection, String catalog, String schema, String tableName) {
+        return support.getTableComment(connection, support.resolveSchema(connection, schema), tableName.trim());
+    }
+
+    @Override
     public String getTableDdl(Connection connection, String catalog, String schema, String tableName) {
         String owner = support.resolveSchema(connection, schema);
         String ddl = support.getObjectDdl(

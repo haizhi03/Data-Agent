@@ -82,6 +82,29 @@ export interface SqlCompletionParams {
   cursorOffset: number;
 }
 
+/** Hover card, returned from backend /api/db/sql/hover. Blank markdown means no hover. */
+export interface SqlHoverResponse {
+  markdown?: string | null;
+  rangeStart: number;
+  rangeEnd: number;
+}
+
+export interface SqlSignatureParameter {
+  label: string;
+}
+
+export interface SqlSignatureItem {
+  label: string;
+  parameters: SqlSignatureParameter[];
+}
+
+/** Signature help, returned from backend /api/db/sql/signature */
+export interface SqlSignatureHelpResponse {
+  signatures: SqlSignatureItem[];
+  activeSignature: number;
+  activeParameter: number;
+}
+
 /**
  * SQL Execution Response
  * Returned from backend /api/db/sql/execute

@@ -12,6 +12,6 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class ConversationCompactRequest {
 
-    @NotBlank(message = "Model cannot be empty")
     private String model;
+    private String modelConfigId;
 }

@@ -66,5 +66,16 @@ public interface TableService {
      */
     ImportTableDataResponse importTableData(
             DbContext db, String tableName, String fileType, InputStream inputStream, String encoding);
+
+    /**
+     * Import with optional auto-create-table flag. When {@code createTableIfMissing}
+     * is true and the target table does not exist, the importer infers column
+     * types from the file header + sample rows, runs a CREATE TABLE DDL, then
+     * resumes with the normal import. SQL importers treat {@code createTableIfMissing}
+     * as informational — they already accept CREATE TABLE statements in the file.
+     */
+    ImportTableDataResponse importTableData(
+            DbContext db, String tableName, String fileType, InputStream inputStream, String encoding,
+            boolean createTableIfMissing);
 }
 

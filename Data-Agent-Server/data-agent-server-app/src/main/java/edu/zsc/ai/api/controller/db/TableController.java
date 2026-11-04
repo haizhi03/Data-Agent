@@ -183,9 +183,10 @@ public class TableController {
             @RequestParam(required = false) String schema,
             @RequestParam(defaultValue = "CSV") String fileType,
             @RequestParam(defaultValue = "AUTO") String encoding,
+            @RequestParam(defaultValue = "false") boolean createTableIfMissing,
             @RequestParam("file") MultipartFile file) {
-        log.info("Importing table data: connectionId={}, tableName={}, catalog={}, schema={}, fileType={}, encoding={}, size={}",
-                connectionId, tableName, catalog, schema, fileType, encoding, file.getSize());
+        log.info("Importing table data: connectionId={}, tableName={}, catalog={}, schema={}, fileType={}, encoding={}, autoCreate={}, size={}",
+                connectionId, tableName, catalog, schema, fileType, encoding, createTableIfMissing, file.getSize());
 
         if (file.isEmpty()) {
             throw new BusinessException("Uploaded file is empty");
@@ -194,7 +195,7 @@ public class TableController {
         DbContext db = new DbContext(connectionId, catalog, schema);
         try {
             ImportTableDataResponse result = tableService.importTableData(
-                    db, tableName, fileType, file.getInputStream(), encoding);
+                    db, tableName, fileType, file.getInputStream(), encoding, createTableIfMissing);
             return ApiResponse.success(result);
         } catch (IOException ex) {
             throw new RuntimeException("Failed to read uploaded file: " + ex.getMessage(), ex);

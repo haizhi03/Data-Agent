@@ -1,0 +1,79 @@
+# M2 deployment template. Not an automatically enabled profile.
+# Replace workspace ownership and verify limits against the actual account-enabled models.
+ai:
+  model-routing:
+    enabled: true
+    max-calls-per-run: 64
+    legacy-workspaces: []
+  model-connections:
+    - code: openai-responses
+      workspace-type: PERSONAL
+      owner-id: 1
+      provider: OPENAI
+      api-style: OPENAI_RESPONSES
+      endpoint: https://api.openai.com/v1
+      credential-ref: env:OPENAI_API_KEY
+      credential-version: 1
+      compatibility-profile: openai-responses-v1
+    - code: anthropic-messages
+      workspace-type: PERSONAL
+      owner-id: 1
+      provider: ANTHROPIC
+      api-style: ANTHROPIC_MESSAGES
+      endpoint: https://api.anthropic.com/v1
+      credential-ref: env:ANTHROPIC_API_KEY
+      credential-version: 1
+      compatibility-profile: anthropic-messages-v1
+  model-configs:
+    - code: responses-main
+      workspace-type: PERSONAL
+      owner-id: 1
+      connection-code: openai-responses
+      name: OpenAI Responses
+      model-id: ${OPENAI_RESPONSES_MODEL_ID}
+      capability-profile: responses-tools-v1
+      default-options:
+        thinking-mode: DISABLED
+        max-output-tokens: 4096
+      max-context-tokens: 32768
+      memory-threshold: 24000
+    - code: messages-main
+      workspace-type: PERSONAL
+      owner-id: 1
+      connection-code: anthropic-messages
+      name: Anthropic Messages
+      model-id: ${ANTHROPIC_MESSAGES_MODEL_ID}
+      capability-profile: anthropic-tools-v1
+      default-options:
+        thinking-mode: DISABLED
+        max-output-tokens: 4096
+      max-context-tokens: 32768
+      memory-threshold: 24000
+  model-bindings:
+    - workspace-type: PERSONAL
+      owner-id: 1
+      purposes:
+        MAIN_CHAT: responses-main
+        EXPLORER: responses-main
+        PLANNER: messages-main
+        COMPRESSION: responses-main
+        MEMORY_WRITER: messages-main
+
+# For a Responses reasoning model, change its capability-profile to responses-reasoning-v1:
+# default-options:
+#   thinking-mode: ENABLED
+#   reasoning-effort: medium   # low / medium / high, subject to the chosen model's actual support
+#   max-output-tokens: 4096
+# Do not set temperature or thinking-budget for this profile.
+#
+# For a Messages model supporting manual extended thinking, use anthropic-thinking-v1:
+# default-options:
+#   thinking-mode: ENABLED
+#   thinking-budget: 2048      # >= 1024 and strictly below max-output-tokens
+#   max-output-tokens: 4096
+#
+# For a Messages model requiring/supporting adaptive thinking, use anthropic-adaptive-v1:
+# default-options:
+#   thinking-mode: ADAPTIVE
+#   max-output-tokens: 4096
+# Manual budgets and sampling temperature are rejected for adaptive thinking.

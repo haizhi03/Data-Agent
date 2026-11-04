@@ -36,6 +36,21 @@ export const TOOL_RUN_EMPTY_PLACEHOLDER = '—';
 
 /** Status key → i18n key mapping for STATUS blocks. */
 export const STATUS_LABEL_KEYS: Record<string, string> = {
+  MODEL_CONFIG_UNAVAILABLE: 'ai.model_errors.unavailable',
+  MODEL_MANAGEMENT_UNAVAILABLE: 'ai.model_errors.unavailable',
+  MODEL_CAPABILITY_UNSUPPORTED: 'ai.model_errors.capability',
+  MODEL_AUTH_FAILED: 'ai.model_errors.auth',
+  MODEL_RATE_LIMITED: 'ai.model_errors.rate_limit',
+  MODEL_UPSTREAM_TIMEOUT: 'ai.model_errors.timeout',
+  MODEL_UPSTREAM_UNAVAILABLE: 'ai.model_errors.upstream',
+  MODEL_PROTOCOL_ERROR: 'ai.model_errors.protocol',
+  MODEL_PROVIDER_STATE_INCOMPATIBLE: 'ai.model_errors.history',
+  MODEL_OUTPUT_TRUNCATED: 'ai.model_errors.truncated',
+  MODEL_REFUSED: 'ai.model_errors.refused',
+  AGENT_BUDGET_EXCEEDED: 'ai.model_errors.budget',
+  AGENT_RUN_CANCELLED: 'ai.model_errors.cancelled',
+  TOOL_FORBIDDEN: 'ai.model_errors.tool',
+  TOOL_VALIDATION_FAILED: 'ai.model_errors.tool',
   compacting: I18N_KEYS.AI.COMPACT.LOADING,
   compressing: I18N_KEYS.AI.COMPACT.LOADING,
 };

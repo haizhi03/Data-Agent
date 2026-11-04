@@ -7,6 +7,7 @@ import { useTheme } from '../../hooks/useTheme';
 import { useAuthStore } from '../../store/authStore';
 import { EXPLORER_SQL_OBJECT_CHANGED } from '../../constants/explorer';
 import { SqlCompletionSession, staticCompletions, completionSortText } from './completion/sqlCompletion';
+import { parameterSpans } from './completion/sqlSignatureHelp';
 import { SqlCompletionDictionary } from './completion/sqlCompletionDictionary';
 import './MonacoEditor.css';
 
@@ -18,6 +19,9 @@ export interface MonacoEditorHandle {
    * Returns the selected text if selection exists, otherwise returns full editor content
    */
   getSelectionOrAllContent(): string;
+
+  /** Snapshot the selection, or full SQL and cursor for dialect-aware execution. */
+  getSelectionOrCursorInput(): { sql: string; cursorOffset?: number };
 
   /**
    * Programmatically set editor content
@@ -219,7 +223,7 @@ export const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(
       };
     }, []);
 
-    const registerCompletionProvider = (monaco: any) => {
+    const registerLanguageProviders = (monaco: any) => {
       completionDisposableRef.current?.dispose();
       const session = new SqlCompletionSession(sqlCompletionService.complete);
       sessionRef.current = session;
@@ -275,7 +279,64 @@ export const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(
           return { suggestions: suggestions(model, result.items), incomplete: result.incomplete };
         },
       });
-      completionDisposableRef.current = { dispose() { session.reset(); provider.dispose(); } };
+      const languageParams = (model: any, position: any) => {
+        const ctx = completionContextRef.current;
+        if (!ctx?.connectionId || model !== editorRef.current?.getModel()) return null;
+        return {
+          connectionId: ctx.connectionId, databaseName: ctx.databaseName, schemaName: ctx.schemaName,
+          sql: model.getValue(), cursorOffset: model.getOffsetAt(position),
+        };
+      };
+      const hoverProvider = monaco.languages.registerHoverProvider('sql', {
+        provideHover: async (model: any, position: any, token: any) => {
+          const params = languageParams(model, position);
+          if (!params) return null;
+          const requestBinding = bindingRef.current;
+          const controller = new AbortController();
+          const subscription = token.onCancellationRequested(() => controller.abort());
+          try {
+            const result = await sqlCompletionService.hover(params, controller.signal);
+            if (token.isCancellationRequested || bindingRef.current !== requestBinding || model.isDisposed()
+              || model !== editorRef.current?.getModel() || !result.markdown) return null;
+            const start = model.getPositionAt(result.rangeStart);
+            const end = model.getPositionAt(result.rangeEnd);
+            return {
+              contents: [{ value: result.markdown }],
+              range: new monaco.Range(start.lineNumber, start.column, end.lineNumber, end.column),
+            };
+          } catch { return null; } finally { subscription.dispose(); }
+        },
+      });
+      const signatureProvider = monaco.languages.registerSignatureHelpProvider('sql', {
+        signatureHelpTriggerCharacters: ['(', ','],
+        provideSignatureHelp: async (model: any, position: any, token: any) => {
+          const params = languageParams(model, position);
+          if (!params) return null;
+          const requestBinding = bindingRef.current;
+          const controller = new AbortController();
+          const subscription = token.onCancellationRequested(() => controller.abort());
+          try {
+            const result = await sqlCompletionService.signature(params, controller.signal);
+            if (token.isCancellationRequested || bindingRef.current !== requestBinding || model.isDisposed()
+              || model !== editorRef.current?.getModel() || !result.signatures.length) return null;
+            return {
+              value: {
+                signatures: result.signatures.map(signature => {
+                  const spans = parameterSpans(signature);
+                  return {
+                    label: signature.label,
+                    parameters: signature.parameters.map((parameter, index) => ({ label: spans ? spans[index] : parameter.label })),
+                  };
+                }),
+                activeSignature: result.activeSignature,
+                activeParameter: result.activeParameter,
+              },
+              dispose() { },
+            };
+          } catch { return null; } finally { subscription.dispose(); }
+        },
+      });
+      completionDisposableRef.current = { dispose() { session.reset(); provider.dispose(); hoverProvider.dispose(); signatureProvider.dispose(); } };
 
     };
 
@@ -288,6 +349,15 @@ export const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(
           return editor.getModel()?.getValueInRange(selection) ?? '';
         }
         return editor.getValue();
+      },
+      getSelectionOrCursorInput(): { sql: string; cursorOffset?: number } {
+        const editor = editorRef.current;
+        const model = editor?.getModel();
+        if (!editor || !model) return { sql: '' };
+        const selection = editor.getSelection();
+        if (selection && !selection.isEmpty()) return { sql: model.getValueInRange(selection) };
+        const position = editor.getPosition();
+        return { sql: model.getValue(), cursorOffset: position ? model.getOffsetAt(position) : 0 };
       },
       setValue(newValue: string): void {
         if (editorRef.current) {
@@ -310,7 +380,7 @@ export const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(
           monacoRef.current = monaco;
           // The pinned 0.43 runtime accepts a boolean; installed 0.55 typings use a string.
           editorRef.current.updateOptions({ wordBasedSuggestions: false });
-          registerCompletionProvider(monaco);
+          registerLanguageProviders(monaco);
           monaco.editor.setModelMarkers(editor.getModel(), 'dm-sql-parser', diagnostics.map(error => ({
             startLineNumber: error.line,
             startColumn: error.column + 1,

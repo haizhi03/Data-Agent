@@ -25,14 +25,6 @@ public final class CryptoUtil {
         return UUID.randomUUID().toString().replace("-", "");
     }
 
-    /**
-     * Generate a random secure password (typically for OAuth users)
-     * Returns a 64-character random string
-     */
-    public static String generateRandomPassword() {
-        return randomToken() + randomToken();
-    }
-
     // SHA-256 (using Apache Commons Codec)
     public static String sha256Hex(String input) {
         return DigestUtils.sha256Hex(input);

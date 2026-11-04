@@ -5,8 +5,14 @@ import { AppearanceSection } from './AppearanceSection';
 import { QueryBehaviorSection } from './QueryBehaviorSection';
 import { ResetSection } from './ResetSection';
 import { SettingsModalFooter } from './SettingsModalFooter';
+import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { Settings2 } from 'lucide-react';
+import { ROUTES } from '../../constants/routes';
 
 export function SettingsModal() {
+  const navigate = useNavigate();
+  const { t } = useTranslation();
   const {
     isSettingsModalOpen,
     setSettingsModalOpen,
@@ -25,6 +31,9 @@ export function SettingsModal() {
         <SettingsModalHeader onClose={() => setSettingsModalOpen(false)} />
 
         <div className="p-5 space-y-6 overflow-y-auto max-h-[70vh] no-scrollbar">
+          <button type="button" className="w-full flex items-center gap-2 rounded-md border theme-border p-3 theme-text-primary hover:bg-primary/5" onClick={() => { setSettingsModalOpen(false); navigate(ROUTES.MODELS); }}>
+            <Settings2 size={16} />{t('model_settings.title')}
+          </button>
           <LanguageSection />
           <AppearanceSection />
 

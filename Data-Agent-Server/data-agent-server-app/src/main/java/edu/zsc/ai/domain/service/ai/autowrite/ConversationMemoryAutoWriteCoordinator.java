@@ -9,6 +9,11 @@ import edu.zsc.ai.domain.service.ai.AiConversationService;
 import edu.zsc.ai.domain.service.ai.AiMessageService;
 import edu.zsc.ai.domain.service.ai.MemoryService;
 import edu.zsc.ai.domain.service.ai.model.MemoryWriteContext;
+import edu.zsc.ai.context.RequestContext;
+import edu.zsc.ai.context.RequestContextInfo;
+import edu.zsc.ai.context.AgentRequestContext;
+import edu.zsc.ai.context.AgentRequestContextInfo;
+import edu.zsc.ai.context.ModelContextScope;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -48,7 +53,7 @@ public class ConversationMemoryAutoWriteCoordinator {
     private final ConversationMemoryAdvisoryLockService advisoryLockService;
 
     private final ConcurrentHashMap<Long, AtomicBoolean> inFlight = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<Long, AtomicBoolean> pending = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Long, PendingContext> pending = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, AtomicInteger> turnCounters = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, AtomicInteger> failureCounts = new ConcurrentHashMap<>();
 
@@ -68,30 +73,38 @@ public class ConversationMemoryAutoWriteCoordinator {
 
     private void executeWithPendingCheck(Long conversationId) {
         AtomicBoolean running = inFlight.computeIfAbsent(conversationId, k -> new AtomicBoolean(false));
-
-        if (!running.compareAndSet(false, true)) {
-            pending.computeIfAbsent(conversationId, k -> new AtomicBoolean(false)).set(true);
-            log.info("[MemAutoWrite] Already in-flight, marked pending: conversationId={}", conversationId);
-            return;
+        PendingContext next = new PendingContext(RequestContext.snapshot(), AgentRequestContext.snapshot());
+        synchronized (running) {
+            if (running.get()) {
+                pending.put(conversationId, next);
+                log.info("[MemAutoWrite] Already in-flight, marked pending: conversationId={}", conversationId);
+                return;
+            }
+            running.set(true);
         }
-
+        boolean released = false;
         try {
-            boolean ran = advisoryLockService.tryRunWithConversationLock(conversationId, () -> doWrite(conversationId));
-            if (!ran) {
-                log.info("[MemAutoWrite] Extraction skipped (advisory lock not acquired): conversationId={}",
-                        conversationId);
+            while (true) {
+                try (var ignored = new ModelContextScope(next.request(), next.agent())) {
+                    boolean ran = advisoryLockService.tryRunWithConversationLock(conversationId, () -> doWrite(conversationId));
+                    if (!ran) log.info("[MemAutoWrite] Extraction skipped (advisory lock not acquired): conversationId={}", conversationId);
+                }
+                synchronized (running) {
+                    next = pending.remove(conversationId);
+                    if (next == null) {
+                        running.set(false);
+                        released = true;
+                        return;
+                    }
+                }
+                log.info("[MemAutoWrite] Running pending follow-up: conversationId={}", conversationId);
             }
         } finally {
-            running.set(false);
-        }
-
-        // Check if a follow-up run is needed (bypasses throttle — already queued)
-        AtomicBoolean pendingFlag = pending.get(conversationId);
-        if (pendingFlag != null && pendingFlag.compareAndSet(true, false)) {
-            log.info("[MemAutoWrite] Running pending follow-up: conversationId={}", conversationId);
-            executeWithPendingCheck(conversationId);
+            if (!released) synchronized (running) { running.set(false); }
         }
     }
+
+    private record PendingContext(RequestContextInfo request, AgentRequestContextInfo agent) {}
 
     private void doWrite(Long conversationId) {
         long startTime = System.currentTimeMillis();

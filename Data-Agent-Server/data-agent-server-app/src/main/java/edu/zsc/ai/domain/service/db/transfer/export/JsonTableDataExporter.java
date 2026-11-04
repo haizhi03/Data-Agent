@@ -68,7 +68,9 @@ public class JsonTableDataExporter extends AbstractTableDataExporter<JsonTableDa
 
     @Override
     protected void cleanup(JsonSession session) {
-        closeQuietly(session.generator());
+        // Do NOT close the generator — it wraps response.getOutputStream() and
+        // closing it would prematurely terminate the HTTP download stream.
+        // Spring owns the response stream lifecycle; we only flush in onFinish.
     }
 
     private void writeJsonObject(JsonGenerator generator, List<String> headers, List<Object> row,

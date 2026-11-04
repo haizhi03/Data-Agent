@@ -27,6 +27,17 @@ import lombok.extern.slf4j.Slf4j;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    @ExceptionHandler(edu.zsc.ai.domain.service.ai.model.ModelManagementException.class)
+    public ResponseEntity<ApiResponse<Void>> handleModelStorageException(edu.zsc.ai.domain.service.ai.model.ModelManagementException error) {
+        return ResponseEntity.status(error.status()).body(ApiResponse.error(error.status().value(), error.getMessage()));
+    }
+
+    @ExceptionHandler(edu.zsc.ai.config.ai.model.ModelIntegrationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleModelIntegrationException(edu.zsc.ai.config.ai.model.ModelIntegrationException error) {
+        // Only the stable model error code is exposed; no provider body, URL or credentials.
+        return ResponseEntity.status(error.getStatusCode()).body(ApiResponse.error(error.getStatusCode().value(), error.getReason()));
+    }
+
     @Autowired
     private I18nUtils i18nUtils;
 

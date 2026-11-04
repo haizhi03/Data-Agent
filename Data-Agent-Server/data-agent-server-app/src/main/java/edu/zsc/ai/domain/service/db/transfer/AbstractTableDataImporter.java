@@ -10,11 +10,15 @@ import edu.zsc.ai.plugin.model.metadata.ColumnMetadata;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.PushbackInputStream;
+import java.io.SequenceInputStream;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.List;
 
 /**
@@ -35,20 +39,38 @@ public abstract class AbstractTableDataImporter implements TableDataImporter {
     protected final ImportPrepareSupport prepareSupport;
     protected final ColumnValueConverter valueConverter;
     protected final ImportBatchSupport batchSupport;
+    protected final InferColumnTypeSupport inferSupport;
+    protected final CreateTableDdlGenerator ddlGenerator;
 
     protected AbstractTableDataImporter(ConnectionService connectionService,
                                         ImportPrepareSupport prepareSupport,
                                         ColumnValueConverter valueConverter,
-                                        ImportBatchSupport batchSupport) {
+                                        ImportBatchSupport batchSupport,
+                                        InferColumnTypeSupport inferSupport,
+                                        CreateTableDdlGenerator ddlGenerator) {
         this.connectionService = connectionService;
         this.prepareSupport = prepareSupport;
         this.valueConverter = valueConverter;
         this.batchSupport = batchSupport;
+        this.inferSupport = inferSupport;
+        this.ddlGenerator = ddlGenerator;
     }
 
     @Override
     public final ImportTableDataResponse importData(DbContext db, String tableName,
                                                      InputStream inputStream, String encoding) {
+        return importData(db, tableName, inputStream, encoding, false);
+    }
+
+    /**
+     * Import with an optional auto-create-table flag. When {@code createTableIfMissing}
+     * is true and the target table does not exist, the file is pre-scanned for
+     * headers + sample rows, a CREATE TABLE DDL is executed, and the original
+     * import flow resumes against the newly-created table.
+     */
+    public final ImportTableDataResponse importData(DbContext db, String tableName,
+                                                     InputStream inputStream, String encoding,
+                                                     boolean createTableIfMissing) {
         connectionService.openConnection(db);
 
         ActiveConnectionRegistry.ActiveConnection active = ActiveConnectionRegistry.getOwnedConnection(db);
@@ -61,9 +83,35 @@ public abstract class AbstractTableDataImporter implements TableDataImporter {
             ImportPrepareSupport.ResolvedTableColumns resolved =
                     prepareSupport.resolveTableColumns(columnManager, connection, db, tableName);
 
+            // --- Auto-create-table path ---
+            if (resolved.columns().isEmpty() && createTableIfMissing) {
+                PushbackInputStream pb = new PushbackInputStream(inputStream, 64 * 1024);
+                PeekResult peek = peekHeadersAndSample(pb, encoding);
+                if (!peek.headerNames().isEmpty()) {
+                    List<ColumnMetadata> inferred = inferSupport.inferColumnTypes(
+                            peek.headerNames(), peek.sampleRows());
+                    String identifierQuote = ImportPrepareSupport.resolveIdentifierQuote(connection);
+                    String ddl = ddlGenerator.buildCreateTable(identifierQuote, db, tableName, inferred);
+                    log.info("Auto-creating table {} before import: {}", tableName, ddl);
+                    try (Statement stmt = connection.createStatement()) {
+                        stmt.execute(ddl);
+                    }
+                    resolved = prepareSupport.resolveTableColumns(columnManager, connection, db, tableName);
+                }
+                // Replay the consumed prefix (including parser read-ahead), then
+                // continue the original stream. Full-buffer formats are already at EOF.
+                inputStream = peek.content() != null
+                        ? new SequenceInputStream(new ByteArrayInputStream(peek.content()), pb)
+                        : pb;
+            }
+
+            if (resolved.columns().isEmpty()) {
+                throw new ImportFailureException(1, "Cannot resolve columns of table: " + tableName);
+            }
+
             try (ImportSource source = prepare(inputStream, encoding, resolved, tableName)) {
                 List<ColumnMetadata> targetColumns = source.targetColumns();
-                String identifierQuote = prepareSupport.resolveIdentifierQuote(connection);
+                String identifierQuote = ImportPrepareSupport.resolveIdentifierQuote(connection);
                 String insertSql = prepareSupport.buildImportInsertSql(identifierQuote, tableName, targetColumns);
                 return runImportBatch(connection, insertSql, targetColumns, source, db, tableName);
             }
@@ -142,6 +190,22 @@ public abstract class AbstractTableDataImporter implements TableDataImporter {
 
     // --- Abstract methods ---
 
+    /** Returns the file format name, e.g. "CSV", "JSON", "SQL". */
+    public abstract String fileType();
+
+    /**
+     * Pre-scans the file on a {@link PushbackInputStream}, extracts the header
+     * (column names) and up to {@link InferColumnTypeSupport#SAMPLE_ROW_LIMIT}
+     * data rows for type inference. Return consumed bytes in {@link PeekResult#content()}
+     * so the caller can replay them before the remainder of the stream.
+     *
+     * <p>Format importers that do not support per-column type inference (e.g.
+     * SQL — the file already contains DDL) should return {@link PeekResult#empty()}
+     * so that no auto-create is attempted.
+     */
+    protected abstract PeekResult peekHeadersAndSample(PushbackInputStream inputStream,
+                                                       String encoding) throws IOException;
+
     /**
      * Parse the uploaded file, validate its header against the target table
      * columns, and return a row-iterable source. The returned source's
@@ -153,6 +217,17 @@ public abstract class AbstractTableDataImporter implements TableDataImporter {
                                            String tableName) throws IOException;
 
     // --- Shared types ---
+
+    /**
+     * Result of pre-scanning a file for auto-create-table: header names + sample
+     * rows, one String per column per row, plus any consumed bytes to replay
+     * before the remainder of the stream ({@code null} when nothing was consumed).
+     */
+    public record PeekResult(List<String> headerNames, List<String[]> sampleRows, byte[] content) {
+        public static PeekResult empty() {
+            return new PeekResult(List.of(), List.of(), null);
+        }
+    }
 
     /** A row-iterable source produced by {@link #prepare}. */
     public interface ImportSource extends AutoCloseable {

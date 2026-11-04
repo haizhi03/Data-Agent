@@ -1,0 +1,6 @@
+package edu.zsc.ai.config.ai.model;
+
+public enum ModelApiStyle {
+    OPENAI_CHAT_COMPLETIONS, OPENAI_RESPONSES, ANTHROPIC_MESSAGES,
+    DASHSCOPE_CHAT, GEMINI_GENERATE_CONTENT
+}

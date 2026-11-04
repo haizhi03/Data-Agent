@@ -3,9 +3,11 @@ package edu.zsc.ai.domain.service.db.transfer.importer;
 import edu.zsc.ai.domain.service.db.ConnectionService;
 import edu.zsc.ai.domain.service.db.transfer.AbstractTableDataImporter;
 import edu.zsc.ai.domain.service.db.transfer.ColumnValueConverter;
+import edu.zsc.ai.domain.service.db.transfer.CreateTableDdlGenerator;
 import edu.zsc.ai.domain.service.db.transfer.ImportBatchSupport;
 import edu.zsc.ai.domain.service.db.transfer.ImportFailureException;
 import edu.zsc.ai.domain.service.db.transfer.ImportPrepareSupport;
+import edu.zsc.ai.domain.service.db.transfer.InferColumnTypeSupport;
 import edu.zsc.ai.plugin.model.metadata.ColumnMetadata;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
@@ -13,12 +15,15 @@ import org.apache.commons.csv.CSVRecord;
 import org.springframework.stereotype.Component;
 
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
+import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.PushbackInputStream;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
@@ -36,13 +41,88 @@ public class CsvTableDataImporter extends AbstractTableDataImporter {
     public CsvTableDataImporter(ConnectionService connectionService,
                                 ImportPrepareSupport prepareSupport,
                                 ColumnValueConverter valueConverter,
-                                ImportBatchSupport batchSupport) {
-        super(connectionService, prepareSupport, valueConverter, batchSupport);
+                                ImportBatchSupport batchSupport,
+                                InferColumnTypeSupport inferSupport,
+                                CreateTableDdlGenerator ddlGenerator) {
+        super(connectionService, prepareSupport, valueConverter, batchSupport, inferSupport, ddlGenerator);
     }
 
     @Override
     public String fileType() {
         return "CSV";
+    }
+
+    @Override
+    protected PeekResult peekHeadersAndSample(PushbackInputStream pushback, String encoding) throws IOException {
+        Charset charset = resolveCharset(pushback, encoding);
+        ByteArrayOutputStream consumed = new ByteArrayOutputStream();
+        // Capture parser read-ahead as well as complete sampled records. The
+        // original stream stays open so prepare() can replay this prefix and
+        // then continue streaming the rest of a large file.
+        InputStream recording = new FilterInputStream(pushback) {
+            @Override
+            public int read() throws IOException {
+                int value = in.read();
+                if (value >= 0) consumed.write(value);
+                return value;
+            }
+
+            @Override
+            public int read(byte[] bytes, int offset, int length) throws IOException {
+                int count = in.read(bytes, offset, length);
+                if (count > 0) consumed.write(bytes, offset, count);
+                return count;
+            }
+
+            @Override
+            public void close() { /* The import owns the original stream. */ }
+        };
+        BufferedReader reader = new BufferedReader(new InputStreamReader(recording, charset));
+        reader.mark(1);
+        if (reader.read() != '\uFEFF') reader.reset();
+        CSVFormat format = CSVFormat.DEFAULT.builder().setHeader().setSkipHeaderRecord(true).build();
+        try (CSVParser parser = format.parse(reader)) {
+            List<String> headers = parser.getHeaderNames();
+            List<String[]> samples = new ArrayList<>();
+            Iterator<CSVRecord> records = parser.iterator();
+            while (samples.size() < InferColumnTypeSupport.SAMPLE_ROW_LIMIT && records.hasNext()) {
+                CSVRecord record = records.next();
+                String[] row = new String[headers.size()];
+                for (int i = 0; i < headers.size(); i++) {
+                    row[i] = record.isSet(i) ? record.get(i) : null;
+                }
+                samples.add(row);
+            }
+            return new PeekResult(headers, samples, consumed.toByteArray());
+        } catch (RuntimeException ex) {
+            throw new IOException("Failed to peek CSV header: " + ex.getMessage(), ex);
+        }
+    }
+
+    /** Resolves an explicit non-AUTO charset request, or {@code null} to auto-detect. */
+    private Charset explicitCharset(String requested) {
+        if (requested != null && !requested.isBlank() && !"AUTO".equalsIgnoreCase(requested.trim())) {
+            return Charset.forName(requested.trim().toUpperCase(Locale.ROOT));
+        }
+        return null;
+    }
+
+    /**
+     * Sniffs the charset from a byte sample: BOM wins (UTF-8/UTF-16LE/UTF-16BE),
+     * otherwise strict UTF-8 validation decides between UTF-8 and GBK.
+     */
+    private Charset sniffCharset(byte[] sample, int length) {
+        if (length >= 3 && (sample[0] & 0xFF) == 0xEF && (sample[1] & 0xFF) == 0xBB
+                && (sample[2] & 0xFF) == 0xBF) {
+            return StandardCharsets.UTF_8;
+        }
+        if (length >= 2 && (sample[0] & 0xFF) == 0xFF && (sample[1] & 0xFF) == 0xFE) {
+            return StandardCharsets.UTF_16LE;
+        }
+        if (length >= 2 && (sample[0] & 0xFF) == 0xFE && (sample[1] & 0xFF) == 0xFF) {
+            return StandardCharsets.UTF_16BE;
+        }
+        return looksLikeValidUtf8(sample, length) ? StandardCharsets.UTF_8 : Charset.forName("GBK");
     }
 
     @Override
@@ -117,8 +197,9 @@ public class CsvTableDataImporter extends AbstractTableDataImporter {
      * keeps UTF-8, otherwise the file is decoded as GBK.
      */
     private Charset resolveCharset(PushbackInputStream inputStream, String requested) throws IOException {
-        if (requested != null && !requested.isBlank() && !"AUTO".equalsIgnoreCase(requested.trim())) {
-            return Charset.forName(requested.trim().toUpperCase(Locale.ROOT));
+        Charset explicit = explicitCharset(requested);
+        if (explicit != null) {
+            return explicit;
         }
         byte[] sample = new byte[ENCODE_DETECT_SAMPLE_SIZE];
         int sampleLength = inputStream.readNBytes(sample, 0, sample.length);
@@ -126,17 +207,7 @@ public class CsvTableDataImporter extends AbstractTableDataImporter {
             return StandardCharsets.UTF_8;
         }
         inputStream.unread(sample, 0, sampleLength);
-        if (sampleLength >= 3 && (sample[0] & 0xFF) == 0xEF && (sample[1] & 0xFF) == 0xBB
-                && (sample[2] & 0xFF) == 0xBF) {
-            return StandardCharsets.UTF_8;
-        }
-        if (sampleLength >= 2 && (sample[0] & 0xFF) == 0xFF && (sample[1] & 0xFF) == 0xFE) {
-            return StandardCharsets.UTF_16LE;
-        }
-        if (sampleLength >= 2 && (sample[0] & 0xFF) == 0xFE && (sample[1] & 0xFF) == 0xFF) {
-            return StandardCharsets.UTF_16BE;
-        }
-        return looksLikeValidUtf8(sample, sampleLength) ? StandardCharsets.UTF_8 : Charset.forName("GBK");
+        return sniffCharset(sample, sampleLength);
     }
 
     /**

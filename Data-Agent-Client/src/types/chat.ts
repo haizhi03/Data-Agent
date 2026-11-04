@@ -1,3 +1,5 @@
+import type { ThinkingMode } from './modelManagement';
+
 export interface ChatContext {
   connectionId?: number;
   catalogName?: string;
@@ -18,6 +20,9 @@ export interface ChatRequest {
   message: string;
   /** Model name for chat, e.g. qwen3.6-max-preview or qwen3-max-2026-01-23. */
   model?: string;
+  modelConfigId?: string;
+  /** Per-message override for the current conversation's main model. */
+  thinkingMode?: ThinkingMode;
   /** Prompt language for backend system prompt routing (e.g. en, zh). */
   language?: string;
   /** Agent mode: "Agent" or "Plan". */
@@ -120,6 +125,9 @@ export interface ChatMessage {
 }
 
 export interface DoneMetadata {
+  runId?: string;
+  status?: 'SUCCEEDED' | 'FAILED' | 'INCOMPLETE' | 'CANCELLED';
+  errorCode?: string;
   toolCount?: number;
   toolCounts?: Record<string, number>;
   totalTokens?: number;

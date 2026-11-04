@@ -5,6 +5,7 @@ import { ROUTES } from "./constants/routes";
 
 const Home = lazy(() => import("./pages/Home").then((m) => ({ default: m.default })));
 const Settings = lazy(() => import("./pages/Settings").then((m) => ({ default: m.default })));
+const ModelSettings = lazy(() => import("./pages/ModelSettings"));
 const Profile = lazy(() => import("./pages/Profile").then((m) => ({ default: m.default })));
 const PasswordReset = lazy(() => import("./pages/PasswordReset").then((m) => ({ default: m.default })));
 const Sessions = lazy(() => import("./pages/Sessions").then((m) => ({ default: m.default })));
@@ -69,6 +70,7 @@ const routes: RouterConfig[] = [
             { path: "profile", element: <Suspense fallback={null}><Profile /></Suspense>, requiresAuth: true },
             { path: "password", element: <Suspense fallback={null}><PasswordReset /></Suspense>, requiresAuth: true },
             { path: "sessions", element: <Suspense fallback={null}><Sessions /></Suspense>, requiresAuth: true },
+            { path: "models", element: <Suspense fallback={null}><ModelSettings /></Suspense>, requiresAuth: true },
             { path: "organization", element: <Navigate to={ROUTES.ORGANIZATION} replace /> },
         ],
     },

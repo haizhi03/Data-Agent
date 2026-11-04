@@ -14,7 +14,7 @@ import { useRenameActions } from '../../hooks/useRenameActions';
 import { I18N_KEYS } from '../../constants/i18nKeys';
 import { DataAttributes } from '../../constants/dataAttributes';
 import { EXPLORER_SQL_OBJECT_CHANGED, ExplorerNodeType, FolderName } from '../../constants/explorer';
-import type { ExplorerNode } from '../../types/explorer';
+import type { ExplorerNode, SqlScriptTarget } from '../../types/explorer';
 import { ExplorerHeader } from './ExplorerHeader';
 import { ExplorerTree, type ExplorerTreeHandle } from './ExplorerTree';
 import { ExplorerDialogs } from './ExplorerDialogs';
@@ -26,6 +26,14 @@ import { BatchImportDialog } from './BatchImportDialog';
 import type { BatchImportParams } from './BatchImportDialog';
 import { ImportDataDialog } from './ImportDataDialog';
 import type { ImportDataParams } from './ImportDataDialog';
+import { SchemaDdlGeneratorDialog } from './SchemaDdlGeneratorDialog';
+import { RunSqlScriptDialog } from './RunSqlScriptDialog';
+import { GroupNameDialog } from './GroupNameDialog';
+import { RuleGroupDialog } from './RuleGroupDialog';
+import { useTableGroupStore, tableGroupScopeKey, type TableGroupRule } from '../../store/tableGroupStore';
+
+/** Stable fallback so the rule dialog is not reset on every parent re-render. */
+const EMPTY_GROUP_RULE: TableGroupRule = { type: 'exact', tableNames: [] };
 
 export function DatabaseExplorer() {
   const { t } = useTranslation();
@@ -40,6 +48,7 @@ export function DatabaseExplorer() {
     hydrateNodeFromCache,
     loadNodeData,
     refreshNodeById,
+    rebuildTablesFolder,
     handleDisconnect,
     isConnectionsLoading,
     refetchConnections,
@@ -116,7 +125,7 @@ export function DatabaseExplorer() {
   });
 
   // Data view actions
-  const { handleViewDdl, handleViewData, handleTableOrViewDoubleClick, handleOpenQueryConsole, handleCreateTable, handleOpenErDiagram, getDdlConfig } = useDataViewActions({
+  const { handleViewDdl, handleGenerateIndexes, handleViewData, handleTableOrViewDoubleClick, handleOpenQueryConsole, handleCreateTable, handleOpenErDiagram, getDdlConfig, resolveConsoleContext } = useDataViewActions({
     setSelectedDdlNode,
     setDdlDialogOpen,
     setTableDataDialogOpen,
@@ -141,6 +150,7 @@ export function DatabaseExplorer() {
     setRenameState,
     renameState,
     setTreeDataState,
+    rebuildTablesFolder,
   });
 
   const ddlConfig = getDdlConfig();
@@ -182,6 +192,7 @@ export function DatabaseExplorer() {
   // Batch import wizard (right-click the tables folder)
   const [batchImportOpen, setBatchImportOpen] = useState(false);
   const [batchImportParams, setBatchImportParams] = useState<BatchImportParams | null>(null);
+  const [batchImportTargetNodeId, setBatchImportTargetNodeId] = useState<string | null>(null);
   const handleImportTablesWizard = (node: ExplorerNode) => {
     const conn = node.dbConnection ?? connections.find((c) => String(c.id) === node.connectionId);
     const catalog = node.catalog ?? conn?.database ?? '';
@@ -190,6 +201,7 @@ export function DatabaseExplorer() {
       catalog: catalog || undefined,
       schema: node.schema || undefined,
     });
+    setBatchImportTargetNodeId(node.id ?? null);
     setBatchImportOpen(true);
   };
 
@@ -209,6 +221,183 @@ export function DatabaseExplorer() {
       schema: node.schema || undefined,
     });
     setImportDialogOpen(true);
+  };
+
+  // SQL script (right-click a database/schema node): run a .sql file, or generate DDL.
+  const [sqlGeneratorOpen, setSqlGeneratorOpen] = useState(false);
+  const [runSqlScriptOpen, setRunSqlScriptOpen] = useState(false);
+  const [sqlScriptTarget, setSqlScriptTarget] = useState<SqlScriptTarget | null>(null);
+
+  const buildSqlScriptTarget = (node: ExplorerNode): SqlScriptTarget | null => {
+    const context = resolveConsoleContext(node);
+    if (!context) return null;
+    const conn = node.dbConnection ?? connections.find((c) => c.id === context.connectionId);
+    const targetPath = [`@${conn?.host ?? ''}`, context.databaseName, context.schemaName]
+      .filter(Boolean).join('/');
+    const scope =
+      node.type === ExplorerNodeType.FOLDER && node.folderName === FolderName.TABLES ? 'tables'
+      : node.type === ExplorerNodeType.FOLDER && node.folderName === FolderName.VIEWS ? 'views'
+      : node.type === ExplorerNodeType.FOLDER && node.folderName === FolderName.ROUTINES ? 'routines'
+      : 'all';
+    return {
+      connectionId: context.connectionId,
+      connectionName: context.connectionName,
+      databaseName: context.databaseName,
+      schemaName: context.schemaName,
+      dbType: context.dbType,
+      targetPath,
+      scope,
+    };
+  };
+
+  const handleSqlGenerator = (node: ExplorerNode) => {
+    // Index nodes and the "indexes" folder have no backend DDL endpoint, so build
+    // CREATE INDEX statements client-side from index metadata.
+    if (node.type === ExplorerNodeType.INDEX
+      || (node.type === ExplorerNodeType.FOLDER && node.folderName === FolderName.INDEXES)) {
+      void handleGenerateIndexes(node);
+      return;
+    }
+    // Database/schema/folder nodes open the multi-object DDL generator dialog.
+    const target = buildSqlScriptTarget(node);
+    if (!target) return;
+    setSqlScriptTarget(target);
+    setSqlGeneratorOpen(true);
+  };
+
+  const handleRunSqlScript = (node: ExplorerNode) => {
+    const target = buildSqlScriptTarget(node);
+    if (!target) return;
+    setSqlScriptTarget(target);
+    setRunSqlScriptOpen(true);
+  };
+
+  // ---- Table groups ----
+  const [groupNameDialogOpen, setGroupNameDialogOpen] = useState(false);
+  const [groupNameMode, setGroupNameMode] = useState<'create' | 'rename'>('create');
+  const [groupTargetNode, setGroupTargetNode] = useState<ExplorerNode | null>(null);
+  const [ruleGroupDialogOpen, setRuleGroupDialogOpen] = useState(false);
+  const [ruleGroupMode, setRuleGroupMode] = useState<'create' | 'edit'>('create');
+  const [ruleGroupNode, setRuleGroupNode] = useState<ExplorerNode | null>(null);
+
+  const scopeOf = (node: ExplorerNode) =>
+    tableGroupScopeKey(node.connectionId ?? '', node.catalog, node.schema);
+
+  const rebuildScope = (node: ExplorerNode) =>
+    rebuildTablesFolder(node.connectionId ?? '', node.catalog, node.schema);
+
+  const hasDuplicateGroupName = (scope: string, name: string, excludeGroupId?: string) =>
+    (useTableGroupStore.getState().groupsByScope[scope] ?? []).some(
+      (g) => g.name === name && g.id !== excludeGroupId
+    );
+
+  const handleCreateGroup = (node: ExplorerNode) => {
+    setGroupTargetNode(node);
+    setGroupNameMode('create');
+    setGroupNameDialogOpen(true);
+  };
+
+  const handleRenameGroup = (node: ExplorerNode) => {
+    setGroupTargetNode(node);
+    setGroupNameMode('rename');
+    setGroupNameDialogOpen(true);
+  };
+
+  const handleCreateRuleGroup = (node: ExplorerNode) => {
+    setRuleGroupNode(node);
+    setRuleGroupMode('create');
+    setRuleGroupDialogOpen(true);
+  };
+
+  const handleEditGroupRule = (node: ExplorerNode) => {
+    setRuleGroupNode(node);
+    setRuleGroupMode('edit');
+    setRuleGroupDialogOpen(true);
+  };
+
+  const confirmGroupName = (name: string) => {
+    const node = groupTargetNode;
+    if (!node) return;
+    const scope = scopeOf(node);
+    if (hasDuplicateGroupName(scope, name, groupNameMode === 'rename' ? node.groupId : undefined)) {
+      toast.error(t(I18N_KEYS.EXPLORER.GROUP_DUPLICATE_NAME));
+      return;
+    }
+    const store = useTableGroupStore.getState();
+    if (groupNameMode === 'create') {
+      store.createGroup(scope, name, { type: 'exact', tableNames: [] });
+      toast.success(t(I18N_KEYS.EXPLORER.GROUP_CREATED));
+    } else if (node.groupId) {
+      store.renameGroup(scope, node.groupId, name);
+      toast.success(t(I18N_KEYS.EXPLORER.GROUP_RENAMED));
+    }
+    rebuildScope(node);
+    setGroupNameDialogOpen(false);
+  };
+
+  const confirmRuleGroup = (name: string, rule: TableGroupRule) => {
+    const node = ruleGroupNode;
+    if (!node) return;
+    const scope = scopeOf(node);
+    if (hasDuplicateGroupName(scope, name, ruleGroupMode === 'edit' ? node.groupId : undefined)) {
+      toast.error(t(I18N_KEYS.EXPLORER.GROUP_DUPLICATE_NAME));
+      return;
+    }
+    const store = useTableGroupStore.getState();
+    if (ruleGroupMode === 'create') {
+      store.createGroup(scope, name, rule);
+      toast.success(t(I18N_KEYS.EXPLORER.GROUP_CREATED));
+    } else if (node.groupId) {
+      store.renameGroup(scope, node.groupId, name);
+      store.updateGroupRule(scope, node.groupId, rule);
+    }
+    rebuildScope(node);
+    setRuleGroupDialogOpen(false);
+  };
+
+  const handleDeleteGroup = (node: ExplorerNode) => {
+    if (!node.groupId) return;
+    useTableGroupStore.getState().deleteGroup(scopeOf(node), node.groupId);
+    toast.success(t(I18N_KEYS.EXPLORER.GROUP_DELETED));
+    rebuildScope(node);
+  };
+
+  const handleClearGroup = (node: ExplorerNode) => {
+    if (!node.groupId) return;
+    useTableGroupStore.getState().updateGroupRule(scopeOf(node), node.groupId, {
+      type: 'exact',
+      tableNames: [],
+    });
+    rebuildScope(node);
+  };
+
+  const handleMoveTableToGroup = (node: ExplorerNode, groupId: string) => {
+    useTableGroupStore.getState().addTableToGroup(scopeOf(node), groupId, node.name);
+    rebuildScope(node);
+  };
+
+  const handleRemoveTableFromGroup = (node: ExplorerNode, groupId: string) => {
+    useTableGroupStore.getState().removeTableFromGroup(scopeOf(node), groupId, node.name);
+    rebuildScope(node);
+  };
+
+  const handleMoveTables = (target: ExplorerNode, tables: ExplorerNode[]) => {
+    const store = useTableGroupStore.getState();
+    const scope = scopeOf(target);
+    // Only move tables that live in the target's own scope; a same-named table in
+    // another database must never be added to / removed from this scope's group.
+    const moved = tables.filter((table) => scopeOf(table) === scope);
+    if (moved.length === 0) return;
+    if (target.type === ExplorerNodeType.GROUP && target.groupId && target.groupKind === 'manual') {
+      for (const table of moved) store.addTableToGroup(scope, target.groupId, table.name);
+    } else if (target.type === ExplorerNodeType.FOLDER && target.folderName === FolderName.TABLES) {
+      for (const table of moved) {
+        if (table.groupId && table.groupKind === 'manual') {
+          store.removeTableFromGroup(scope, table.groupId, table.name);
+        }
+      }
+    }
+    rebuildScope(target);
   };
 
   useEffect(() => {
@@ -300,12 +489,23 @@ export function DatabaseExplorer() {
           onRename={handleRename}
           onDelete={handleDelete}
           onOpenQueryConsole={handleOpenQueryConsole}
+          onRunSqlScript={handleRunSqlScript}
+          onSqlGenerator={handleSqlGenerator}
           onCreateTable={handleCreateTable}
           onImportData={handleImportData}
           onExportData={handleExportData}
           onExportTablesWizard={handleExportTablesWizard}
           onImportTablesWizard={handleImportTablesWizard}
           onOpenErDiagram={handleOpenErDiagram}
+          onCreateGroup={handleCreateGroup}
+          onCreateRuleGroup={handleCreateRuleGroup}
+          onRenameGroup={handleRenameGroup}
+          onDeleteGroup={handleDeleteGroup}
+          onClearGroup={handleClearGroup}
+          onEditGroupRule={handleEditGroupRule}
+          onMoveTableToGroup={handleMoveTableToGroup}
+          onRemoveTableFromGroup={handleRemoveTableFromGroup}
+          onMoveTables={handleMoveTables}
         />
       </div>
 
@@ -367,6 +567,9 @@ export function DatabaseExplorer() {
         open={batchImportOpen}
         onOpenChange={setBatchImportOpen}
         importParams={batchImportParams}
+        onSuccess={() => {
+          if (batchImportTargetNodeId) refreshNodeById(batchImportTargetNodeId);
+        }}
       />
 
       <ImportDataDialog
@@ -375,6 +578,47 @@ export function DatabaseExplorer() {
         targetTablePath={importTargetPath}
         importParams={importParams}
       />
+
+      <SchemaDdlGeneratorDialog
+        open={sqlGeneratorOpen}
+        onOpenChange={setSqlGeneratorOpen}
+        target={sqlScriptTarget}
+      />
+
+      <RunSqlScriptDialog
+        open={runSqlScriptOpen}
+        onOpenChange={setRunSqlScriptOpen}
+        target={sqlScriptTarget}
+      />
+
+      <GroupNameDialog
+        open={groupNameDialogOpen}
+        onOpenChange={(open) => {
+          setGroupNameDialogOpen(open);
+          if (!open) setGroupTargetNode(null);
+        }}
+        title={groupNameMode === 'create' ? t(I18N_KEYS.EXPLORER.NEW_GROUP) : t(I18N_KEYS.EXPLORER.RENAME_GROUP)}
+        initialName={groupNameMode === 'rename' ? (groupTargetNode?.name ?? '') : ''}
+        onConfirm={confirmGroupName}
+      />
+
+      {ruleGroupNode && (
+        <RuleGroupDialog
+          open={ruleGroupDialogOpen}
+          onOpenChange={(open) => {
+            setRuleGroupDialogOpen(open);
+            if (!open) setRuleGroupNode(null);
+          }}
+          title={ruleGroupMode === 'create' ? t(I18N_KEYS.EXPLORER.NEW_RULE_GROUP) : t(I18N_KEYS.EXPLORER.EDIT_GROUP_RULE)}
+          initialName={ruleGroupMode === 'edit' ? (ruleGroupNode.name ?? '') : ''}
+          initialRule={
+            ruleGroupMode === 'edit' && ruleGroupNode.groupId
+              ? (useTableGroupStore.getState().groupsByScope[scopeOf(ruleGroupNode)]?.find((g) => g.id === ruleGroupNode.groupId)?.rule ?? EMPTY_GROUP_RULE)
+              : EMPTY_GROUP_RULE
+          }
+          onConfirm={confirmRuleGroup}
+        />
+      )}
     </div>
   );
 }

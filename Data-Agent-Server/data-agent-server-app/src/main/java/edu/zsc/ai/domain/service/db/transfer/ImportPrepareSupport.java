@@ -32,9 +32,6 @@ public class ImportPrepareSupport {
                                                     DbContext db, String tableName) throws SQLException {
         List<ColumnMetadata> tableColumns = columnManager.getColumns(
                 connection, db.catalog(), db.schema(), tableName);
-        if (tableColumns.isEmpty()) {
-            throw new ImportFailureException(1, "Cannot resolve columns of table: " + tableName);
-        }
         Map<String, ColumnMetadata> columnsByName = new HashMap<>();
         for (ColumnMetadata column : tableColumns) {
             columnsByName.put(column.name().toLowerCase(Locale.ROOT), column);
@@ -42,9 +39,18 @@ public class ImportPrepareSupport {
         return new ResolvedTableColumns(tableColumns, columnsByName);
     }
 
-    public String resolveIdentifierQuote(Connection connection) throws SQLException {
-        String quote = connection.getMetaData().getIdentifierQuoteString();
-        return (quote == null || quote.isBlank()) ? "" : quote;
+    /**
+     * Resolves the database's identifier quote string (e.g. backtick on MySQL),
+     * falling back to no quoting when metadata is unavailable: a metadata hiccup
+     * must not fail an import or export.
+     */
+    public static String resolveIdentifierQuote(Connection connection) {
+        try {
+            String quote = connection.getMetaData().getIdentifierQuoteString();
+            return (quote == null || quote.isBlank()) ? "" : quote.trim();
+        } catch (SQLException ex) {
+            return "";
+        }
     }
 
     public String buildImportInsertSql(String quote, String tableName,

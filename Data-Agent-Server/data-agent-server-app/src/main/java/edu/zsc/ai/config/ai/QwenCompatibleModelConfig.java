@@ -5,13 +5,13 @@ import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.openai.OpenAiChatModel;
 import dev.langchain4j.model.openai.OpenAiChatRequestParameters;
 import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
+import edu.zsc.ai.config.ai.model.MultiProviderProperties;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
-
-import java.util.LinkedHashMap;
-import java.util.Map;
 
 @Configuration
 @RequiredArgsConstructor
@@ -21,9 +21,11 @@ public class QwenCompatibleModelConfig implements ChatModelProvider {
 
     private final AiModelCatalog aiModelCatalog;
     private final QwenProperties qwenProperties;
+    private final MultiProviderProperties multiProviderProperties;
 
     @Override
     public Map<String, StreamingChatModel> streamingChatModels() {
+        if (multiProviderProperties.getModelRouting().isEnabled()) return Map.of();
         Map<String, StreamingChatModel> models = new LinkedHashMap<>();
         for (AiModelProperties.ModelDefinition model : aiModelCatalog.listSupportedModels()) {
             models.put(model.getModelName(), buildStreamingModel(model));
@@ -33,6 +35,7 @@ public class QwenCompatibleModelConfig implements ChatModelProvider {
 
     @Override
     public Map<String, ChatModel> chatModels() {
+        if (multiProviderProperties.getModelRouting().isEnabled()) return Map.of();
         Map<String, ChatModel> models = new LinkedHashMap<>();
         for (AiModelProperties.ModelDefinition model : aiModelCatalog.listSupportedModels()) {
             models.put(model.getModelName(), buildChatModel(model));

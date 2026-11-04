@@ -1,6 +1,6 @@
 import { forwardRef, useImperativeHandle, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Tree as ArboristTree, NodeApi, TreeApi } from 'react-arborist';
+import { Tree as ArboristTree, NodeApi, TreeApi, type MoveHandler } from 'react-arborist';
 import { ExplorerIdPrefix, ExplorerTreeConfig, ExplorerNodeType, FolderName } from '../../constants/explorer';
 import { I18N_KEYS } from '../../constants/i18nKeys';
 import { ExplorerTreeNode } from './ExplorerTreeNode';
@@ -23,12 +23,23 @@ interface ExplorerTreeProps {
   onRename: (node: ExplorerNode) => void;
   onDelete: (node: ExplorerNode, type: ExplorerNodeType) => void;
   onOpenQueryConsole: (node: ExplorerNode) => void;
+  onRunSqlScript: (node: ExplorerNode) => void;
+  onSqlGenerator: (node: ExplorerNode) => void;
   onCreateTable: (node: ExplorerNode) => void;
   onImportData: (node: ExplorerNode) => void;
   onExportData: (node: ExplorerNode) => void;
   onExportTablesWizard: (node: ExplorerNode) => void;
   onImportTablesWizard: (node: ExplorerNode) => void;
   onOpenErDiagram: (node: ExplorerNode) => void;
+  onCreateGroup: (node: ExplorerNode) => void;
+  onCreateRuleGroup: (node: ExplorerNode) => void;
+  onRenameGroup: (node: ExplorerNode) => void;
+  onDeleteGroup: (node: ExplorerNode) => void;
+  onClearGroup: (node: ExplorerNode) => void;
+  onEditGroupRule: (node: ExplorerNode) => void;
+  onMoveTableToGroup: (node: ExplorerNode, groupId: string) => void;
+  onRemoveTableFromGroup: (node: ExplorerNode, groupId: string) => void;
+  onMoveTables: (target: ExplorerNode, tables: ExplorerNode[]) => void;
 }
 
 export interface ExplorerLocateTarget {
@@ -49,6 +60,13 @@ function isDatabaseNode(node: NodeApi<ExplorerNode>) {
   return node.level === 1 && (
     node.data.type === ExplorerNodeType.DB || node.data.type === ExplorerNodeType.SCHEMA
   );
+}
+
+/** Tables can only be moved within their own connection + catalog + schema. */
+function sameTableScope(a: ExplorerNode, b: ExplorerNode) {
+  return (a.connectionId ?? '') === (b.connectionId ?? '')
+    && (a.catalog ?? '') === (b.catalog ?? '')
+    && (a.schema ?? '') === (b.schema ?? '');
 }
 
 async function ensureChildren(node: NodeApi<ExplorerNode>, onHydrateFromCache: ExplorerTreeProps['onHydrateFromCache'], onLoadData: ExplorerTreeProps['onLoadData']) {
@@ -98,15 +116,37 @@ export const ExplorerTree = forwardRef<ExplorerTreeHandle, ExplorerTreeProps>(fu
   onRename,
   onDelete,
   onOpenQueryConsole,
+  onRunSqlScript,
+  onSqlGenerator,
   onCreateTable,
   onImportData,
   onExportData,
   onExportTablesWizard,
   onImportTablesWizard,
   onOpenErDiagram,
+  onCreateGroup,
+  onCreateRuleGroup,
+  onRenameGroup,
+  onDeleteGroup,
+  onClearGroup,
+  onEditGroupRule,
+  onMoveTableToGroup,
+  onRemoveTableFromGroup,
+  onMoveTables,
 }: ExplorerTreeProps, ref) {
   const { t } = useTranslation();
   const treeRef = useRef<TreeApi<ExplorerNode> | undefined>(undefined);
+
+  const handleMove: MoveHandler<ExplorerNode> = ({ dragNodes, parentNode }) => {
+    if (!parentNode) return;
+    // Rule-group members cannot start a drag on their own, but they can ride
+    // along in a multi-selection; keep the two paths consistent by ignoring them.
+    const tables = dragNodes
+      .filter((n) => n.data.type === ExplorerNodeType.TABLE && n.data.groupKind !== 'rule')
+      .map((n) => n.data);
+    if (tables.length === 0) return;
+    onMoveTables(parentNode.data, tables);
+  };
 
   useImperativeHandle(ref, () => ({
     collapseDatabases() {
@@ -163,8 +203,27 @@ export const ExplorerTree = forwardRef<ExplorerTreeHandle, ExplorerTreeProps>(fu
       current = await revealNode(folder, onHydrateFromCache, onLoadData);
 
       const objectType = target.objectType === 'view' ? ExplorerNodeType.VIEW : ExplorerNodeType.TABLE;
-      const match = findChild(current, objectType, target.objectName);
+      let match = findChild(current, objectType, target.objectName);
+      let groupNode: NodeApi<ExplorerNode> | undefined;
+      if (!match) {
+        // The object may be nested inside a table group.
+        for (const child of (current.children ?? [])) {
+          if (child.data.type === ExplorerNodeType.GROUP) {
+            const found = findChild(child, objectType, target.objectName);
+            if (found) {
+              match = found;
+              groupNode = child;
+              break;
+            }
+          }
+        }
+      }
       if (!match) return false;
+      if (groupNode) {
+        current = await revealNode(groupNode, onHydrateFromCache, onLoadData);
+        match = findChild(current, objectType, target.objectName);
+        if (!match) return false;
+      }
       const opened = await revealNode(match, onHydrateFromCache, onLoadData);
       opened.select();
       await tree.scrollTo(opened.id, 'center');
@@ -190,12 +249,22 @@ export const ExplorerTree = forwardRef<ExplorerTreeHandle, ExplorerTreeProps>(fu
         onRename={onRename}
         onDelete={onDelete}
         onOpenQueryConsole={onOpenQueryConsole}
+        onRunSqlScript={onRunSqlScript}
+        onSqlGenerator={onSqlGenerator}
         onCreateTable={onCreateTable}
         onImportData={onImportData}
         onExportData={onExportData}
         onExportTablesWizard={onExportTablesWizard}
         onImportTablesWizard={onImportTablesWizard}
         onOpenErDiagram={onOpenErDiagram}
+        onCreateGroup={onCreateGroup}
+        onCreateRuleGroup={onCreateRuleGroup}
+        onRenameGroup={onRenameGroup}
+        onDeleteGroup={onDeleteGroup}
+        onClearGroup={onClearGroup}
+        onEditGroupRule={onEditGroupRule}
+        onMoveTableToGroup={onMoveTableToGroup}
+        onRemoveTableFromGroup={onRemoveTableFromGroup}
       />
     );
   };
@@ -216,6 +285,20 @@ export const ExplorerTree = forwardRef<ExplorerTreeHandle, ExplorerTreeProps>(fu
             rowHeight={ExplorerTreeConfig.ROW_HEIGHT}
             searchTerm={searchTerm}
             searchMatch={(node, term) => node.data.name.toLowerCase().includes(term.toLowerCase())}
+            onMove={handleMove}
+            disableDrag={(data) => data.type !== ExplorerNodeType.TABLE || data.groupKind === 'rule'}
+            disableDrop={({ parentNode, dragNodes }) => {
+              const d = parentNode.data;
+              const isGroupTarget = d.type === ExplorerNodeType.GROUP && d.groupKind === 'manual';
+              const isTablesFolder = d.type === ExplorerNodeType.FOLDER && d.folderName === FolderName.TABLES;
+              if (!isGroupTarget && !isTablesFolder) return true;
+              // Refuse cross-database drops, otherwise a same-named table could be
+              // added to / removed from a group of another connection or schema.
+              // Only tables are actually moved; other selected rows ride along.
+              return dragNodes
+                .filter((n) => n.data.type === ExplorerNodeType.TABLE)
+                .some((n) => !sameTableScope(n.data, d));
+            }}
           >
             {renderNode}
           </ArboristTree>

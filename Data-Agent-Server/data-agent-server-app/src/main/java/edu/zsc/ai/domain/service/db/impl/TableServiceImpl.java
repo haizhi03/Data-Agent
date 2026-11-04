@@ -238,7 +238,15 @@ public class TableServiceImpl implements TableService {
     @Override
     public ImportTableDataResponse importTableData(DbContext db, String tableName, String fileType,
                                                    InputStream inputStream, String encoding) {
-        return transferRegistry.resolveImporter(fileType).importData(db, tableName, inputStream, encoding);
+        return importTableData(db, tableName, fileType, inputStream, encoding, false);
+    }
+
+    @Override
+    public ImportTableDataResponse importTableData(DbContext db, String tableName, String fileType,
+                                                   InputStream inputStream, String encoding,
+                                                   boolean createTableIfMissing) {
+        return transferRegistry.resolveImporter(fileType).importData(
+                db, tableName, inputStream, encoding, createTableIfMissing);
     }
 
     @Override

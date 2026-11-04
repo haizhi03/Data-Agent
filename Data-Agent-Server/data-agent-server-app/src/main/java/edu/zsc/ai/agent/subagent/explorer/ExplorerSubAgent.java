@@ -11,10 +11,11 @@ import edu.zsc.ai.agent.subagent.SubAgentStreamBridge;
 import edu.zsc.ai.agent.subagent.contract.SchemaSummary;
 import edu.zsc.ai.common.constant.AgentRuntimeLoggerNames;
 import edu.zsc.ai.common.constant.InvocationContextConstant;
-import edu.zsc.ai.config.ai.SubAgentFactory;
 import edu.zsc.ai.common.enums.ai.AgentTypeEnum;
 import edu.zsc.ai.config.ai.AiModelCatalog;
+import edu.zsc.ai.config.ai.SubAgentFactory;
 import edu.zsc.ai.config.ai.SubAgentProperties;
+import edu.zsc.ai.config.ai.model.ModelPurpose;
 import edu.zsc.ai.context.AgentExecutionContext;
 import edu.zsc.ai.context.AgentRequestContext;
 import edu.zsc.ai.context.RequestContext;
@@ -23,6 +24,11 @@ import edu.zsc.ai.domain.model.dto.response.agent.ChatResponseBlock;
 import edu.zsc.ai.domain.service.agent.SseEmitterRegistry;
 import edu.zsc.ai.util.ConnectionIdUtil;
 import edu.zsc.ai.util.JsonUtil;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
@@ -31,12 +37,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Sinks;
-
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
 /**
  * Explorer SubAgent implementation.
@@ -70,7 +70,7 @@ public class ExplorerSubAgent extends AbstractSubAgent<SubAgentRequest, SchemaSu
         RequestContextInfo requestContextSnapshot = RequestContext.snapshot();
         String taskId = AgentExecutionContext.getTaskId();
         String parentToolCallId = AgentExecutionContext.getParentToolCallId();
-        String modelName = resolveModelName(log, aiModelCatalog);
+        String modelName = resolveModelName(log, aiModelCatalog, ModelPurpose.EXPLORER);
         log.info("[Explorer] invoke start, conversationId={}, taskId={}, parentToolCallId={}, modelName={}, connectionIds={}, requestedTimeoutSeconds={}, effectiveTimeoutSeconds={}, hasRequestContext={}, hasAgentContext={}, hasContext={}, instructionLength={}, contextLength={}, instructionPreview={}, contextPreview={}",
                 requestContextSnapshot != null ? requestContextSnapshot.getConversationId() : conversationId,
                 taskId,

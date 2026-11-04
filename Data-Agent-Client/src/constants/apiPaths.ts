@@ -75,4 +75,6 @@ export const SqlPaths = {
   COMPLETE: '/db/sql/complete',
   COMPLETION_DICTIONARY: '/db/sql/completion-dictionary',
   COMPLETION_INVALIDATE: '/db/sql/completion-invalidate',
+  HOVER: '/db/sql/hover',
+  SIGNATURE: '/db/sql/signature',
 } as const;

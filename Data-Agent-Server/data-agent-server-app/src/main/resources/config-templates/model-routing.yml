@@ -1,0 +1,88 @@
+# Deployment template, not an active Spring profile. Copy to your external configuration.
+# Startup IDs are startup/<workspace-type>/<owner-id>/<model-code> in M1.
+ai:
+  model-routing:
+    enabled: true
+    max-calls-per-run: 64
+    legacy-workspaces: []
+  model-connections:
+    - code: bailian-primary
+      workspace-type: PERSONAL
+      owner-id: 1 # Replace with the authorized user ID; use ORGANIZATION + org ID for organization resources.
+      provider: ALIBABA_CLOUD
+      api-style: OPENAI_CHAT_COMPLETIONS
+      endpoint: https://dashscope.aliyuncs.com/compatible-mode/v1
+      auth-type: API_KEY
+      credential-ref: env:DASHSCOPE_API_KEY
+      credential-version: 1
+      compatibility-profile: qwen-chat-v1
+      enabled: true
+    - code: bailian-secondary
+      workspace-type: PERSONAL
+      owner-id: 1
+      provider: ALIBABA_CLOUD
+      api-style: OPENAI_CHAT_COMPLETIONS
+      endpoint: https://dashscope.aliyuncs.com/compatible-mode/v1
+      auth-type: API_KEY
+      credential-ref: env:DASHSCOPE_SECONDARY_API_KEY
+      credential-version: 1
+      compatibility-profile: qwen-chat-v1
+      enabled: true
+  model-configs:
+    - code: analysis-main
+      workspace-type: PERSONAL
+      owner-id: 1
+      connection-code: bailian-primary
+      name: 百炼主连接
+      model-id: qwen3.6-max-preview # Replace with an account-enabled model and verified context limits.
+      capability-profile: qwen-tools-v1
+      default-options:
+        thinking-mode: ENABLED
+        thinking-budget: 1000
+        max-output-tokens: 4096
+      max-context-tokens: 262144
+      memory-threshold: 230000
+      legacy-names: [qwen3.6-max-preview]
+    - code: analysis-secondary
+      workspace-type: PERSONAL
+      owner-id: 1
+      connection-code: bailian-secondary
+      name: 百炼备用连接
+      model-id: qwen3.6-max-preview
+      capability-profile: qwen-tools-v1
+      default-options:
+        thinking-mode: DISABLED
+        max-output-tokens: 4096
+      max-context-tokens: 262144
+      memory-threshold: 230000
+    - code: analysis-background
+      workspace-type: PERSONAL
+      owner-id: 1
+      connection-code: bailian-primary
+      name: 摘要与记忆
+      model-id: qwen3.6-plus
+      capability-profile: qwen-tools-v1
+      chat-visible: false
+      default-options:
+        thinking-mode: DISABLED
+        max-output-tokens: 4096
+      max-context-tokens: 1000000
+      memory-threshold: 900000
+  model-bindings:
+    - workspace-type: PERSONAL
+      owner-id: 1
+      purposes:
+        MAIN_CHAT: analysis-main
+        EXPLORER: analysis-main
+        PLANNER: analysis-main
+        COMPRESSION: analysis-background
+        MEMORY_WRITER: analysis-background
+
+# To import ONLY the existing Qwen configuration instead of defining connections/models above:
+# ai:
+#   model-routing:
+#     enabled: true
+#     legacy-workspaces:
+#       - workspace-type: PERSONAL
+#         owner-id: 1
+# Do not also define purpose bindings for an imported workspace.

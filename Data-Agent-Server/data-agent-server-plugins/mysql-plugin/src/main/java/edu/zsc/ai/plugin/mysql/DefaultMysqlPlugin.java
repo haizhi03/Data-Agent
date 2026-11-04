@@ -14,7 +14,8 @@ import edu.zsc.ai.plugin.mysql.executor.MySQLSqlExecutor;
 import edu.zsc.ai.plugin.mysql.manager.*;
 import edu.zsc.ai.plugin.mysql.support.MysqlCapabilitySupport;
 import edu.zsc.ai.plugin.mysql.validator.MySqlSqlValidator;
-import edu.zsc.ai.plugin.sql.DefaultSqlSplitter;
+import edu.zsc.ai.plugin.mysql.validator.MySqlScriptAnalyzer;
+import edu.zsc.ai.plugin.model.sql.SqlScriptAnalysis;
 
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
@@ -23,7 +24,7 @@ import java.util.List;
 public abstract class DefaultMysqlPlugin extends AbstractDatabasePlugin
         implements ConnectionManager, CommandExecutor<SqlCommandRequest, SqlCommandResult>, DatabaseManager,
         TableManager, ViewManager, ColumnManager, IndexManager,
-        FunctionManager, ProcedureManager, TriggerManager, SqlSplitter, SqlValidator {
+        FunctionManager, ProcedureManager, TriggerManager, SqlSplitter, SqlValidator, SqlAnalyzer {
 
     private final ConnectionManager connectionManager = new MysqlConnectionManager(
             this::getDriverClassName,
@@ -124,7 +125,12 @@ public abstract class DefaultMysqlPlugin extends AbstractDatabasePlugin
 
     @Override
     public java.util.List<String> split(String sql) {
-        return DefaultSqlSplitter.INSTANCE.split(sql);
+        return MySqlScriptAnalyzer.INSTANCE.split(sql);
+    }
+
+    @Override
+    public SqlScriptAnalysis analyze(String sql) {
+        return MySqlScriptAnalyzer.INSTANCE.analyze(sql);
     }
 
     @Override
@@ -171,6 +177,12 @@ public abstract class DefaultMysqlPlugin extends AbstractDatabasePlugin
     @Override
     public void deleteTable(Connection connection, String catalog, String schema, String tableName) {
         tableManager.deleteTable(connection, catalog, schema, tableName);
+    }
+
+    @Override
+    public void renameTable(Connection connection, String catalog, String schema,
+                            String tableName, String newTableName) {
+        tableManager.renameTable(connection, catalog, schema, tableName, newTableName);
     }
 
     @Override

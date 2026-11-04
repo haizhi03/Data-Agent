@@ -1,6 +1,7 @@
 package edu.zsc.ai.domain.event;
 
 import edu.zsc.ai.config.ExecutorConfig;
+import edu.zsc.ai.context.AgentInvocationContext;
 import edu.zsc.ai.domain.service.ai.autowrite.ConversationMemoryAutoWriteCoordinator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -20,7 +21,7 @@ public class ConversationMemoryAutoWriteEventListener {
     public void onMemoryAutoWriteRequested(ConversationMemoryAutoWriteRequestedEvent event) {
         Long conversationId = event.getConversationId();
         log.info("[MemAutoWrite] === Event received === conversationId={}", conversationId);
-        try {
+        try (var ignored = AgentInvocationContext.from(event.getInvocationParameters())) {
             autoWriteCoordinator.submit(conversationId);
             log.info("[MemAutoWrite] === Event completed === conversationId={}", conversationId);
         } catch (Exception e) {

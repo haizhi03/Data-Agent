@@ -38,7 +38,8 @@ class CompressionServiceImplTest {
         Map<String, ChatModel> chatModelsByName = Map.of(
                 aiModelCatalog.compressionModelName(), mockChatModel
         );
-        compressionService = new CompressionServiceImpl(aiModelCatalog, chatModelsByName);
+        compressionService = new CompressionServiceImpl(aiModelCatalog, chatModelsByName,
+                mock(edu.zsc.ai.config.ai.model.ModelRuntime.class));
     }
 
     @Test

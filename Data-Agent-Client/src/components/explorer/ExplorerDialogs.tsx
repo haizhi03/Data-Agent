@@ -9,6 +9,7 @@ import { CreateTableDialog } from './CreateTableDialog';
 import { RenameTableDialog } from './RenameTableDialog';
 import { ExplorerNodeType } from '../../constants/explorer';
 import { I18N_KEYS } from '../../constants/i18nKeys';
+import { collectDeletableChildren } from '../../utils/treeOperations';
 import type { ExplorerNode } from '../../types/explorer';
 import type { DbConnection } from '../../types/connection';
 
@@ -213,7 +214,7 @@ export function ExplorerDialogs({
           isPending={deleteState.isPending}
           itemCount={
             deleteState.type === ExplorerNodeType.FOLDER
-              ? deleteState.node.children?.filter((c: any) => c.type !== 'empty').length
+              ? collectDeletableChildren(deleteState.node.children ?? []).length
               : undefined
           }
         />

@@ -4,28 +4,32 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import edu.zsc.ai.agent.memory.ChatMemoryCompressor;
 import edu.zsc.ai.common.converter.ai.ConversationConverter;
 import edu.zsc.ai.config.ai.AiModelCatalog;
+import edu.zsc.ai.config.ai.model.ModelIntegrationException;
+import edu.zsc.ai.config.ai.model.ModelPurpose;
+import edu.zsc.ai.config.ai.model.ModelRuntime;
+import edu.zsc.ai.context.AgentRequestContext;
+import edu.zsc.ai.context.AgentRequestContextInfo;
 import edu.zsc.ai.domain.model.dto.request.ai.ConversationCompactRequest;
-import edu.zsc.ai.domain.model.dto.request.base.PageRequest;
 import edu.zsc.ai.domain.model.dto.request.ai.ConversationUpdateRequest;
+import edu.zsc.ai.domain.model.dto.request.base.PageRequest;
 import edu.zsc.ai.domain.model.dto.response.ai.ConversationCompactResponse;
-import edu.zsc.ai.domain.model.dto.response.base.ApiResponse;
-import edu.zsc.ai.domain.model.dto.response.base.PageResponse;
 import edu.zsc.ai.domain.model.dto.response.ai.ConversationMessageResponse;
 import edu.zsc.ai.domain.model.dto.response.ai.ConversationResponse;
+import edu.zsc.ai.domain.model.dto.response.base.ApiResponse;
+import edu.zsc.ai.domain.model.dto.response.base.PageResponse;
 import edu.zsc.ai.domain.model.entity.ai.AiConversation;
 import edu.zsc.ai.domain.service.ai.AiConversationService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
-import org.springframework.http.HttpStatus;
-
-import java.util.List;
 
 /**
  * Conversation management API.
@@ -41,6 +45,7 @@ public class ConversationController {
     private final AiConversationService aiConversationService;
     private final ChatMemoryCompressor chatMemoryCompressor;
     private final AiModelCatalog aiModelCatalog;
+    private final ModelRuntime modelRuntime;
 
     @GetMapping
     public ApiResponse<PageResponse<ConversationResponse>> list(
@@ -85,6 +90,18 @@ public class ConversationController {
     public ApiResponse<ConversationCompactResponse> compact(
             @PathVariable @NotNull Long id,
             @Valid @RequestBody ConversationCompactRequest request) {
+        if (modelRuntime.enabled()) {
+            var run = modelRuntime.prepare(request.getModelConfigId(), request.getModel());
+            var previous = AgentRequestContext.snapshot();
+            try {
+                AgentRequestContext.set(AgentRequestContextInfo.builder().modelRunSnapshot(run).build());
+                return compactResponse(id, run.model(ModelPurpose.MAIN_CHAT).modelConfigId());
+            } finally {
+                if (previous == null) AgentRequestContext.clear();
+                else AgentRequestContext.set(previous);
+            }
+        }
+        if (request.getModelConfigId() != null && !request.getModelConfigId().isBlank()) throw ModelIntegrationException.unavailable();
         final String modelName;
         try {
             modelName = aiModelCatalog.resolve(request.getModel()).getModelName();
@@ -92,6 +109,10 @@ public class ConversationController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage(), e);
         }
 
+        return compactResponse(id, modelName);
+    }
+
+    private ApiResponse<ConversationCompactResponse> compactResponse(Long id, String modelName) {
         var result = chatMemoryCompressor.compressNow(id, modelName);
         return ApiResponse.success(ConversationCompactResponse.builder()
                 .compressed(result.memoryCompressed())

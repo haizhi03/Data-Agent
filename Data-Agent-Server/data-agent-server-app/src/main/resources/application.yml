@@ -50,20 +50,22 @@ sa-token:
 auth:
   refresh-token:
     expire-seconds: 2592000     # 30 days
-  oauth2:
-    clients:
-      google:
-        client-id: ${GOOGLE_CLIENT_ID}
-        client-secret: ${GOOGLE_CLIENT_SECRET}
-        redirect-uri: ${GOOGLE_REDIRECT_URI}
-      github:
-        client-id: ${GITHUB_CLIENT_ID}
-        client-secret: ${GITHUB_CLIENT_SECRET}
-        redirect-uri: ${GITHUB_REDIRECT_URI}
 
 ai:
+  model-routing:
+    enabled: ${MODEL_ROUTING_ENABLED:true}
+    persistence-enabled: ${MODEL_CONFIG_PERSISTENCE_ENABLED:true}
+    storage-directory: ${MODEL_CONFIG_DIRECTORY:${user.home}/.data-agent/model-config}
+    legacy-aliases-enabled: ${MODEL_LEGACY_ALIASES_ENABLED:true}
+    max-calls-per-run: 64
+    # Workspace JSON files; no model-management SQL migration. Explicit deployment-key grants only.
+    legacy-workspaces: []
+    allowed-private-hosts: []
+  model-credentials:
+    # Optional MODEL_CREDENTIAL_KEY_<version> takes priority; otherwise initialize <storage-directory>/.keys/<version>.key.
+    active-key-version: ${MODEL_CREDENTIAL_ACTIVE_KEY_VERSION:V1}
   qwen:
-    api-key: ${ALIYUN_AI_API_KEY}
+    api-key: ${ALIYUN_AI_API_KEY:}
     gateway:
       enabled: true
       base-url: https://dashscope.aliyuncs.com/compatible-mode/v1

@@ -9,16 +9,17 @@ import edu.zsc.ai.agent.ReActAgentProvider;
 import edu.zsc.ai.common.enums.ai.AgentModeEnum;
 import edu.zsc.ai.common.enums.ai.AgentTypeEnum;
 import edu.zsc.ai.common.enums.ai.PromptEnum;
+import edu.zsc.ai.config.ai.model.ModelPurpose;
+import edu.zsc.ai.config.ai.model.ModelRuntime;
 import edu.zsc.ai.domain.service.agent.systemprompt.SystemPromptAssemblyContext;
 import edu.zsc.ai.domain.service.agent.systemprompt.SystemPromptManager;
+import java.util.List;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
-
-import java.util.List;
-import java.util.Map;
 
 @Configuration
 @Slf4j
@@ -32,6 +33,7 @@ public class AgentManager {
     private final AgentSkillConfig agentSkillConfig;
     private final SystemPromptManager systemPromptManager;
     private final TerminalToolResultPolicy terminalToolResultPolicy;
+    private final ModelRuntime modelRuntime;
 
     @Bean
     @Primary
@@ -39,7 +41,8 @@ public class AgentManager {
         return (modelName, language, agentMode) -> {
             AgentModeEnum mode = AgentModeEnum.fromRequest(agentMode);
             PromptEnum promptLanguage = resolveMainPrompt(language, mode);
-            StreamingChatModel model = modelsByName.get(modelName);
+            StreamingChatModel model = modelRuntime.enabled()
+                    ? modelRuntime.streaming(ModelPurpose.MAIN_CHAT) : modelsByName.get(modelName);
             if (model == null) {
                 throw new IllegalArgumentException(
                         "No StreamingChatModel configured for model=" + modelName);

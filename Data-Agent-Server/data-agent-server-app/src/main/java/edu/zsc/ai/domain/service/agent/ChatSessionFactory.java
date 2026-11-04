@@ -1,14 +1,5 @@
 package edu.zsc.ai.domain.service.agent;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-
-import org.springframework.http.HttpStatus;
-import org.springframework.stereotype.Component;
-import org.springframework.web.server.ResponseStatusException;
-
 import dev.langchain4j.invocation.InvocationParameters;
 import edu.zsc.ai.agent.PreparedReActAgent;
 import edu.zsc.ai.agent.ReActAgent;
@@ -20,6 +11,10 @@ import edu.zsc.ai.common.constant.InvocationContextConstant;
 import edu.zsc.ai.common.enums.ai.AgentModeEnum;
 import edu.zsc.ai.common.enums.ai.AgentTypeEnum;
 import edu.zsc.ai.config.ai.AiModelCatalog;
+import edu.zsc.ai.config.ai.model.ModelIntegrationException;
+import edu.zsc.ai.config.ai.model.ModelPurpose;
+import edu.zsc.ai.config.ai.model.ModelRunSnapshot;
+import edu.zsc.ai.config.ai.model.ModelRuntime;
 import edu.zsc.ai.context.AgentRequestContext;
 import edu.zsc.ai.context.AgentRequestContextInfo;
 import edu.zsc.ai.context.RequestContext;
@@ -29,8 +24,15 @@ import edu.zsc.ai.domain.service.agent.runtimecontext.strategy.ConnectionSummary
 import edu.zsc.ai.domain.service.ai.AiConversationService;
 import edu.zsc.ai.domain.service.db.DbConnectionService;
 import edu.zsc.ai.util.ConnectionIdUtil;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Component;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Prepares all state needed before an agent invocation:
@@ -46,6 +48,7 @@ public class ChatSessionFactory {
     private final AiConversationService aiConversationService;
     private final DbConnectionService dbConnectionService;
     private final AiModelCatalog aiModelCatalog;
+    private final ModelRuntime modelRuntime;
 
     /**
      * Build a ChatSession from an incoming ChatRequest.
@@ -54,19 +57,25 @@ public class ChatSessionFactory {
         RequestContextInfo previousRequestContext = RequestContext.snapshot();
         AgentRequestContextInfo previousAgentRequestContext = AgentRequestContext.snapshot();
         try {
-            String modelName = resolveModel(request.getModel());
+            ModelRunSnapshot modelRun = modelRuntime.enabled() ? request.getThinkingMode()==null
+                    ? modelRuntime.prepare(request.getModelConfigId(),request.getModel())
+                    : modelRuntime.prepare(request.getModelConfigId(),request.getModel(),request.getThinkingMode()) : null;
+            if (modelRun == null && request.getThinkingMode() != null) throw ModelIntegrationException.capability();
+            if (modelRun == null && request.getModelConfigId() != null && !request.getModelConfigId().isBlank()) throw ModelIntegrationException.unavailable();
+            String modelName = modelRun == null ? resolveModel(request.getModel()) : modelRun.model(ModelPurpose.MAIN_CHAT).modelConfigId();
             AgentModeEnum agentMode = AgentModeEnum.fromRequest(request.getAgentType());
             AgentRequestContext.set(AgentRequestContextInfo.builder()
                     .agentMode(agentMode.getCode())
                     .agentType(AgentTypeEnum.MAIN.getCode())
                     .modelName(modelName)
+                    .modelRunSnapshot(modelRun)
                     .language(request.getLanguage())
                     .build());
 
+            Long conversationId = ensureConversation(request);
+            RequestContext.updateConversationId(conversationId);
             PreparedReActAgent prepared = reActAgentProvider.getAgent(modelName, request.getLanguage(), agentMode.getCode());
             ReActAgent agent = prepared.agent();
-
-            Long conversationId = ensureConversation(request);
 
             String memoryId = MemoryIdUtil.build(RequestContext.getUserId(), conversationId, modelName);
 

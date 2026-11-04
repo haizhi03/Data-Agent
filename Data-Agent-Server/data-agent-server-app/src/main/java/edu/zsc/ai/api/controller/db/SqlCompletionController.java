@@ -4,6 +4,8 @@ import edu.zsc.ai.domain.model.context.DbContext;
 import edu.zsc.ai.domain.model.dto.request.db.CompleteSqlRequest;
 import edu.zsc.ai.domain.model.dto.response.base.ApiResponse;
 import edu.zsc.ai.domain.model.dto.response.db.SqlCompletionResponse;
+import edu.zsc.ai.domain.model.dto.response.db.SqlHoverResponse;
+import edu.zsc.ai.domain.model.dto.response.db.SqlSignatureHelpResponse;
 import edu.zsc.ai.domain.service.db.SqlCompletionService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -38,5 +40,17 @@ public class SqlCompletionController {
     public ApiResponse<SqlCompletionResponse> complete(@Valid @RequestBody CompleteSqlRequest request) {
         DbContext db = new DbContext(request.connectionId(), request.catalog(), request.schema());
         return ApiResponse.success(sqlCompletionService.complete(db, request.sql(), request.cursorOffset()));
+    }
+
+    @PostMapping("/hover")
+    public ApiResponse<SqlHoverResponse> hover(@Valid @RequestBody CompleteSqlRequest request) {
+        DbContext db = new DbContext(request.connectionId(), request.catalog(), request.schema());
+        return ApiResponse.success(sqlCompletionService.hover(db, request.sql(), request.cursorOffset()));
+    }
+
+    @PostMapping("/signature")
+    public ApiResponse<SqlSignatureHelpResponse> signature(@Valid @RequestBody CompleteSqlRequest request) {
+        DbContext db = new DbContext(request.connectionId(), request.catalog(), request.schema());
+        return ApiResponse.success(sqlCompletionService.signature(db, request.sql(), request.cursorOffset()));
     }
 }

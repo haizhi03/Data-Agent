@@ -1,12 +1,15 @@
 import { createContext, useContext, type ReactNode } from 'react';
 import type { ChatContext, ChatRequest, ChatUserMention, SubmitMessageOptions } from '../../types/chat';
 import type { ModelOption } from '../../types/ai';
+import type { ThinkingMode } from '../../types/modelManagement';
 import type { AgentType } from './agentTypes';
 
 export interface ModelState {
   model: string;
   setModel: (model: string) => void;
   modelOptions: ModelOption[];
+  thinkingMode?: ThinkingMode;
+  setThinkingMode: (mode: ThinkingMode) => void;
 }
 
 export interface AgentState {

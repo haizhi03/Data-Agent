@@ -34,7 +34,7 @@ export const conversationService = {
     return response.data;
   },
 
-  compact: async (id: number, body: { model: string }): Promise<CompactConversationResponse> => {
+  compact: async (id: number, body: { model?: string; modelConfigId?: string }): Promise<CompactConversationResponse> => {
     const response = await http.post<CompactConversationResponse>(`/conversations/${id}/compact`, body, {
       timeout: 120000,
     });

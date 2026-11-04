@@ -18,6 +18,7 @@ import type { FunctionMetadata } from '../services/function.service';
 import type { ProcedureMetadata } from '../services/procedure.service';
 import type { TriggerMetadata } from '../services/trigger.service';
 import { formatRoutineSignature, loadFolderContentsByType } from './folderContentLoaders';
+import { buildTablesFolderChildren } from '../lib/tableGrouping';
 import {
   fetchExplorerFunctions,
   fetchExplorerProcedures,
@@ -95,7 +96,13 @@ export function createCachedObjectFolders(
         ctx.catalog,
         ctx.schema,
         ctx.t,
-        toTableNodes(ctx, tables)
+        buildTablesFolderChildren({
+          connectionId: ctx.connId,
+          catalog: ctx.catalog,
+          schema: ctx.schema,
+          folderId: folderId(ctx, FolderName.TABLES),
+          tableNames: tables,
+        })
       )
     );
   }
@@ -176,19 +183,6 @@ type DbSchemaContext = {
 
 function folderId(ctx: DbSchemaContext, fn: FolderName) {
   return `${ctx.parentId}${ExplorerIdPrefix.FOLDER}${fn}`;
-}
-
-function toTableNodes(ctx: DbSchemaContext, names: string[]): ExplorerNode[] {
-  const prefix = folderId(ctx, FolderName.TABLES);
-  return names.map((name) => ({
-    id: `${prefix}${ExplorerIdPrefix.TABLE}${name}`,
-    name,
-    type: ExplorerNodeType.TABLE,
-    connectionId: ctx.connId,
-    catalog: ctx.catalog,
-    schema: ctx.schema,
-    children: [],
-  }));
 }
 
 function toViewNodes(ctx: DbSchemaContext, names: string[]): ExplorerNode[] {

@@ -196,6 +196,8 @@ class ConversationMemoryAutoWriteCoordinatorTest {
         CountDownLatch firstCallEntered = new CountDownLatch(1);
         CountDownLatch releaseFirstCall = new CountDownLatch(1);
         AtomicInteger writerCalls = new AtomicInteger();
+        var firstSnapshot = new edu.zsc.ai.config.ai.model.ModelRunSnapshot(java.util.Map.of(), 64);
+        var pendingSnapshot = new edu.zsc.ai.config.ai.model.ModelRunSnapshot(java.util.Map.of(), 64);
 
         givenConversationAndCursor(88L, 7L, cursor);
         when(memoryService.hasManualWritesSince(eq(7L), eq(88L), any())).thenReturn(false);
@@ -207,8 +209,11 @@ class ConversationMemoryAutoWriteCoordinatorTest {
         ));
         doAnswer(invocation -> {
             if (writerCalls.incrementAndGet() == 1) {
+                org.junit.jupiter.api.Assertions.assertSame(firstSnapshot, edu.zsc.ai.context.AgentRequestContext.snapshot().getModelRunSnapshot());
                 firstCallEntered.countDown();
                 assertTrue(releaseFirstCall.await(2, TimeUnit.SECONDS));
+            } else {
+                org.junit.jupiter.api.Assertions.assertSame(pendingSnapshot, edu.zsc.ai.context.AgentRequestContext.snapshot().getModelRunSnapshot());
             }
             return null;
         }).when(memoryWriter).writeMemory(any(MemoryWriteContext.class), eq(88L), eq(7L));
@@ -216,16 +221,21 @@ class ConversationMemoryAutoWriteCoordinatorTest {
         ExecutorService executor = Executors.newSingleThreadExecutor();
         try {
             // First call passes throttle (counter starts at EXTRACTION_INTERVAL)
-            Future<?> firstRun = executor.submit(() -> coordinator.submit(88L));
+            Future<?> firstRun = executor.submit(() -> {
+                edu.zsc.ai.context.AgentRequestContext.set(edu.zsc.ai.context.AgentRequestContextInfo.builder().modelRunSnapshot(firstSnapshot).build());
+                try { coordinator.submit(88L); } finally { edu.zsc.ai.context.AgentRequestContext.clear(); }
+            });
             assertTrue(firstCallEntered.await(2, TimeUnit.SECONDS));
 
             // Second call while first is running: passes throttle but CAS fails → marks pending
             // The pending follow-up bypasses throttle via executeWithPendingCheck
             coordinator.submit(88L); // throttled
+            edu.zsc.ai.context.AgentRequestContext.set(edu.zsc.ai.context.AgentRequestContextInfo.builder().modelRunSnapshot(pendingSnapshot).build());
             coordinator.submit(88L); // CAS fails on inFlight → marks pending
             releaseFirstCall.countDown();
             firstRun.get(2, TimeUnit.SECONDS);
         } finally {
+            edu.zsc.ai.context.AgentRequestContext.clear();
             executor.shutdownNow();
         }
 

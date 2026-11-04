@@ -3,13 +3,12 @@ package edu.zsc.ai.context;
 import edu.zsc.ai.common.constant.InvocationContextConstant;
 import edu.zsc.ai.common.enums.ai.AgentTypeEnum;
 import edu.zsc.ai.util.ConnectionIdUtil;
-import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections4.CollectionUtils;
-import org.apache.commons.lang3.StringUtils;
-
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 
 @Slf4j
 public final class AgentRequestContext {
@@ -111,6 +110,8 @@ public final class AgentRequestContext {
         putIfNotNull(map, InvocationContextConstant.ALLOWED_CONNECTION_IDS, ConnectionIdUtil.toCsv(getAllowedConnectionIds()));
         putIfNotNull(map, InvocationContextConstant.READABLE_CONNECTION_IDS, ConnectionIdUtil.toCsv(getReadableConnectionIds()));
         putIfNotNull(map, InvocationContextConstant.MODEL_NAME, getModelName());
+        AgentRequestContextInfo context = peek();
+        putIfNotNull(map, InvocationContextConstant.MODEL_RUN_SNAPSHOT, context == null ? null : context.getModelRunSnapshot());
         putIfNotNull(map, InvocationContextConstant.LANGUAGE, getLanguage());
         return map;
     }

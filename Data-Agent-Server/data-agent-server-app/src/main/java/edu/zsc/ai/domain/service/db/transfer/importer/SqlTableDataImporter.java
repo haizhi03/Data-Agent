@@ -67,18 +67,18 @@ public class SqlTableDataImporter implements TableDataImporter {
                         for (String sql : statements) {
                             counters[0]++;
                             String lower = sql.toLowerCase(Locale.ROOT);
-                            // Whitelist: INSERT loads data; SET only changes session settings
-                            // (e.g. "SET NAMES utf8mb4;" written by this app's own SQL export).
-                            // UPDATE/DELETE/DROP and other statements stay rejected.
-                            if (!lower.startsWith("insert") && !lower.startsWith("set")) {
+                            // Whitelist: INSERT loads data, SET changes session settings,
+                            // CREATE TABLE lets SQL users bootstrap a new missing table.
+                            // UPDATE/DELETE/DROP/ALTER and other statements stay rejected.
+                            if (!isAllowedSqlStatement(lower)) {
                                 throw new ImportFailureException(counters[0],
-                                        "Only INSERT and SET statements are supported, but statement "
-                                                + counters[0] + " starts with '"
+                                        "Only INSERT, SET and CREATE TABLE statements are supported, "
+                                                + "but statement " + counters[0] + " starts with '"
                                                 + firstSqlWord(sql) + "'");
                             }
                             try {
                                 int affected = statement.executeUpdate(sql);
-                                if (lower.startsWith("insert")) {
+                                if (isInsertStatement(lower)) {
                                     counters[1] += affected;
                                 }
                             } catch (SQLException ex) {
@@ -185,5 +185,31 @@ public class SqlTableDataImporter implements TableDataImporter {
         }
         String word = trimmed.substring(0, end);
         return word.length() > 20 ? word.substring(0, 20) + "..." : word;
+    }
+
+    /**
+     * Whitelists a statement by its leading keyword: INSERT, SET, or CREATE
+     * TABLE. Keywords are matched as whole words (a word boundary must follow),
+     * so prefixes like "inserted", "setup" or "create tableXYZ" are rejected
+     * instead of slipping through as a loose prefix match.
+     */
+    private static boolean isAllowedSqlStatement(String lower) {
+        return isInsertStatement(lower)
+                || startsWithKeyword(lower, "set")
+                || startsWithKeyword(lower, "create table");
+    }
+
+    private static boolean isInsertStatement(String lower) {
+        return startsWithKeyword(lower, "insert");
+    }
+
+    /** True when {@code lower} starts with {@code keyword} followed by a word boundary. */
+    private static boolean startsWithKeyword(String lower, String keyword) {
+        if (!lower.startsWith(keyword)) {
+            return false;
+        }
+        int after = keyword.length();
+        return after >= lower.length()
+                || !(Character.isLetterOrDigit(lower.charAt(after)) || lower.charAt(after) == '_');
     }
 }

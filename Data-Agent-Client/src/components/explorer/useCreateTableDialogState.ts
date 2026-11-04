@@ -13,6 +13,20 @@ const MIN_WIDTH = 520;
 const MIN_HEIGHT = 400;
 const DEFAULT_WIDTH = 800;
 const DEFAULT_HEIGHT = 980;
+/** Keep the dialog clear of the viewport edges when fitting / clamping. */
+const VIEWPORT_MARGIN = 16;
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), Math.max(min, max));
+}
+
+/** Dialog size that still fits the current browser window. */
+function fitToViewport(width: number, height: number) {
+  return {
+    width: Math.max(MIN_WIDTH, Math.min(width, window.innerWidth - VIEWPORT_MARGIN * 2)),
+    height: Math.max(MIN_HEIGHT, Math.min(height, window.innerHeight - VIEWPORT_MARGIN * 2)),
+  };
+}
 
 const COMMON_TYPES = [
   'INT',
@@ -98,7 +112,12 @@ export function useCreateTableDialogState({
   const [isDragging, setIsDragging] = useState(false);
   const dragRef = useRef<{ startX: number; startY: number; startLeft: number; startTop: number } | null>(null);
   const [size, setSize] = useState({ width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT });
+  const sizeRef = useRef(size);
   const resizeRef = useRef<{ startX: number; startY: number; startW: number; startH: number } | null>(null);
+
+  useEffect(() => {
+    sizeRef.current = size;
+  }, [size]);
 
   const connectionId = node?.connectionId ? String(node.connectionId) : undefined;
   const catalog = node?.catalog ?? (node?.type === ExplorerNodeType.DB ? node.name : '');
@@ -120,15 +139,34 @@ export function useCreateTableDialogState({
   };
 
   const initPosition = useCallback(() => {
-    setSize({ width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT });
-    const x = Math.max(0, (window.innerWidth - DEFAULT_WIDTH) / 2);
-    const y = Math.max(0, (window.innerHeight - DEFAULT_HEIGHT) / 2);
-    setPosition({ x, y });
+    // Fit the default size to the window so the footer buttons stay reachable
+    // on smaller screens, then center the dialog.
+    const { width, height } = fitToViewport(DEFAULT_WIDTH, DEFAULT_HEIGHT);
+    setSize({ width, height });
+    setPosition({
+      x: clamp((window.innerWidth - width) / 2, VIEWPORT_MARGIN, window.innerWidth - width),
+      y: clamp((window.innerHeight - height) / 2, VIEWPORT_MARGIN, window.innerHeight - height),
+    });
   }, []);
 
   useEffect(() => {
     if (open) initPosition();
   }, [open, initPosition]);
+
+  // Shrink / reposition back into view when the window is resized while open.
+  useEffect(() => {
+    if (!open) return;
+    const handleWindowResize = () => {
+      const { width, height } = fitToViewport(sizeRef.current.width, sizeRef.current.height);
+      setSize({ width, height });
+      setPosition((prev) => ({
+        x: clamp(prev.x, 0, window.innerWidth - width),
+        y: clamp(prev.y, 0, window.innerHeight - height),
+      }));
+    };
+    window.addEventListener('resize', handleWindowResize);
+    return () => window.removeEventListener('resize', handleWindowResize);
+  }, [open]);
 
   const handleHeaderMouseDown = (e: ReactMouseEvent) => {
     if ((e.target as HTMLElement).closest('button, a, [role="button"]')) return;
@@ -147,9 +185,10 @@ export function useCreateTableDialogState({
       if (!dragRef.current) return;
       const dx = e.clientX - dragRef.current.startX;
       const dy = e.clientY - dragRef.current.startY;
+      // Keep the dialog fully inside the window.
       setPosition({
-        x: Math.max(0, dragRef.current.startLeft + dx),
-        y: Math.max(0, dragRef.current.startTop + dy),
+        x: clamp(dragRef.current.startLeft + dx, 0, window.innerWidth - sizeRef.current.width),
+        y: clamp(dragRef.current.startTop + dy, 0, window.innerHeight - sizeRef.current.height),
       });
     };
     const onUp = () => {
@@ -172,13 +211,16 @@ export function useCreateTableDialogState({
       startW: size.width,
       startH: size.height,
     };
+    // Clamp manual resizing to the space left between the dialog and the window edge.
+    const maxWidth = Math.max(MIN_WIDTH, window.innerWidth - position.x);
+    const maxHeight = Math.max(MIN_HEIGHT, window.innerHeight - position.y);
     const onMove = (event: MouseEvent) => {
       if (!resizeRef.current) return;
       const dw = event.clientX - resizeRef.current.startX;
       const dh = event.clientY - resizeRef.current.startY;
       setSize({
-        width: Math.max(MIN_WIDTH, resizeRef.current.startW + dw),
-        height: Math.max(MIN_HEIGHT, resizeRef.current.startH + dh),
+        width: clamp(resizeRef.current.startW + dw, MIN_WIDTH, maxWidth),
+        height: clamp(resizeRef.current.startH + dh, MIN_HEIGHT, maxHeight),
       });
     };
     const onUp = () => {

@@ -51,7 +51,7 @@ public class ChatEventListener {
         }
 
         aiConversationService.updateTokenCount(conversationId, totalTokens);
-        eventPublisher.publishEvent(new ConversationMemoryAutoWriteRequestedEvent(this, conversationId));
+        eventPublisher.publishEvent(new ConversationMemoryAutoWriteRequestedEvent(this, conversationId, event.getInvocationParameters()));
     }
 
     @Async

@@ -76,6 +76,7 @@ export function useTableDataRowActions({
 
   // Selection + pending operations
   const [selectedRow, setSelectedRow] = useState<LocalSelectedRow | null>(null);
+  const [selectedRows, setSelectedRows] = useState<SelectedTableRow[]>([]);
   const [pendingOps, setPendingOps] = useState<PendingOp[]>([]);
   const [submittingEdits, setSubmittingEdits] = useState(false);
 
@@ -248,6 +249,7 @@ export function useTableDataRowActions({
 
   const resetRowState = useCallback(() => {
     setSelectedRow(null);
+    setSelectedRows([]);
     setIsAddingRow(false);
     setNewRowValues({});
     setInsertError(null);
@@ -274,6 +276,17 @@ export function useTableDataRowActions({
         return;
       }
       setSelectedRow(selection);
+    },
+    [isTransposeMode],
+  );
+
+  const handleGridMultiSelectionChange = useCallback(
+    (rows: SelectedTableRow[]) => {
+      if (isTransposeMode) {
+        setSelectedRows([]);
+        return;
+      }
+      setSelectedRows(rows);
     },
     [isTransposeMode],
   );
@@ -628,6 +641,7 @@ export function useTableDataRowActions({
     insertError,
     // Selection
     selectedRowIndex: selectedRow?.rowIndex ?? null,
+    selectedRows,
     hasSelectedRow: selectedRow != null,
     // Pending state
     hasPendingOps: pendingOps.length > 0,
@@ -643,6 +657,7 @@ export function useTableDataRowActions({
     handleConfirmBatchForce,
     // Handlers
     handleGridSelectionChange,
+    handleGridMultiSelectionChange,
     handleGridCellValueChanged,
     handleAddRow,
     handleCancelAddRow,

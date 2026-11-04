@@ -1,9 +1,12 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '../ui/Button';
 import { I18N_KEYS } from '../../constants/i18nKeys';
 import type { TableTabMetadata } from '../../types/tab';
 import { DdlViewerDialog } from '../explorer/DdlViewerDialog';
+import { ExportDataDialog } from '../explorer/ExportDataDialog';
+import { ImportDataDialog } from '../explorer/ImportDataDialog';
+import { SqlGeneratorDialog } from './SqlGeneratorDialog';
 import {
   Dialog,
   DialogContent,
@@ -52,6 +55,7 @@ export function TableDataTab({ tabId, metadata }: TableDataTabProps) {
     loadingColumns,
     insertError,
     selectedRowIndex,
+    selectedRows,
     hasSelectedRow,
     hasPendingOps,
     pendingCount,
@@ -74,6 +78,7 @@ export function TableDataTab({ tabId, metadata }: TableDataTabProps) {
     handleViewModeChange,
     handleGridSortChange,
     handleGridSelectionChange,
+    handleGridMultiSelectionChange,
     handleGridCellValueChanged,
     handleDatabaseChange,
     handleFirstPage,
@@ -95,6 +100,20 @@ export function TableDataTab({ tabId, metadata }: TableDataTabProps) {
     displayName,
     loadDdl,
   } = useTableDataTabState({ tabId, metadata });
+
+  const [sqlGeneratorOpen, setSqlGeneratorOpen] = useState(false);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+
+  // Import/export operate on the whole table, same as the explorer right-click actions.
+  const transferCatalog = metadata.catalog ?? metadata.databaseName ?? '';
+  const transferParams = {
+    connectionId: metadata.connectionId,
+    tableName: metadata.objectName,
+    catalog: transferCatalog || undefined,
+    schema: metadata.schema ?? metadata.schemaName ?? undefined,
+  };
+  const transferTargetPath = `@${metadata.connectionName}/${transferCatalog}/${metadata.objectName}`;
 
   const {
     findVisible,
@@ -153,6 +172,9 @@ export function TableDataTab({ tabId, metadata }: TableDataTabProps) {
         onAddRow={handleAddRow}
         onDeleteRow={handleDeleteRow}
         onOpenDdl={() => setDdlDialogOpen(true)}
+        onOpenSqlGenerator={() => setSqlGeneratorOpen(true)}
+        onImportData={() => setImportDialogOpen(true)}
+        onExportData={() => setExportDialogOpen(true)}
         onDatabaseChange={handleDatabaseChange}
         onViewModeChange={handleViewModeChange}
         findVisible={findVisible}
@@ -208,6 +230,28 @@ export function TableDataTab({ tabId, metadata }: TableDataTabProps) {
         loadDdl={loadDdl}
       />
 
+      <SqlGeneratorDialog
+        open={sqlGeneratorOpen}
+        onOpenChange={setSqlGeneratorOpen}
+        metadata={metadata}
+        headers={columns}
+        rows={selectedRows.filter((row) => !row.pendingLocalId).map((row) => row.row)}
+      />
+
+      <ImportDataDialog
+        open={importDialogOpen}
+        onOpenChange={setImportDialogOpen}
+        targetTablePath={transferTargetPath}
+        importParams={transferParams}
+      />
+
+      <ExportDataDialog
+        open={exportDialogOpen}
+        onOpenChange={setExportDialogOpen}
+        targetTablePath={transferTargetPath}
+        exportParams={transferParams}
+      />
+
       <Dialog
         open={batchForceConfirmOpen}
         onOpenChange={(open) => {
@@ -248,6 +292,8 @@ export function TableDataTab({ tabId, metadata }: TableDataTabProps) {
         pendingDeleteRowIndexes={pendingDeleteRowIndexes}
         pendingInsertRows={pendingInsertRows}
         onRowSelectionChange={handleGridSelectionChange}
+        onSelectionChange={handleGridMultiSelectionChange}
+        onOpenSqlGenerator={() => setSqlGeneratorOpen(true)}
         onGridSortChange={handleGridSortChange}
         onCellValueChanged={handleGridCellValueChanged}
         formatCellValue={formatCellValue}

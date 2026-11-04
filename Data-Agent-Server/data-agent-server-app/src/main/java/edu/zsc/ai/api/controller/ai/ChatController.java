@@ -1,9 +1,9 @@
 package edu.zsc.ai.api.controller.ai;
 
+import edu.zsc.ai.api.model.request.ChatRequest;
 import edu.zsc.ai.aspect.annotation.EnableRequestContext;
 import edu.zsc.ai.domain.model.dto.response.agent.ChatResponseBlock;
 import edu.zsc.ai.domain.service.agent.ChatService;
-import edu.zsc.ai.api.model.request.ChatRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -30,8 +30,8 @@ public class ChatController {
 
     @PostMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<ChatResponseBlock> chat(@Valid @RequestBody ChatRequest request) {
-        log.info("Chat request received: model={}, language={}, message={}, conversationId={}, connectionId={}",
-                request.getModel(), request.getLanguage(), request.getMessage(), request.getConversationId(), request.getConnectionId());
+        log.info("Chat request received: model={}, modelConfigId={}, language={}, messageLength={}, conversationId={}, connectionId={}",
+                request.getModel(), request.getModelConfigId(), request.getLanguage(), request.getMessage().length(), request.getConversationId(), request.getConnectionId());
         return chatService.chat(request);
     }
 }

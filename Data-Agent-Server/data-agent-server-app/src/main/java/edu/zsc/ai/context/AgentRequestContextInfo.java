@@ -1,11 +1,11 @@
 package edu.zsc.ai.context;
 
+import edu.zsc.ai.config.ai.model.ModelRunSnapshot;
+import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-
-import java.util.List;
 
 @Data
 @Builder(toBuilder = true)
@@ -25,4 +25,7 @@ public class AgentRequestContextInfo {
     private String modelName;
 
     private String language;
+
+    /** Immutable purpose bindings shared by the main agent, tool threads and continuations. */
+    private ModelRunSnapshot modelRunSnapshot;
 }

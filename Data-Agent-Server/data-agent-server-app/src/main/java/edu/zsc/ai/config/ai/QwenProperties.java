@@ -7,6 +7,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "ai.qwen")
 public class QwenProperties {
 
+    @lombok.ToString.Exclude
     private String apiKey;
 
     private Gateway gateway = new Gateway();

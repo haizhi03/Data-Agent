@@ -1,14 +1,16 @@
 package edu.zsc.ai.agent.subagent;
 
+import edu.zsc.ai.agent.subagent.contract.ExploreObject;
 import edu.zsc.ai.common.constant.InvocationContextConstant;
 import edu.zsc.ai.common.enums.ai.AgentTypeEnum;
 import edu.zsc.ai.config.ai.AiModelCatalog;
+import edu.zsc.ai.config.ai.model.ModelPurpose;
 import edu.zsc.ai.context.AgentRequestContext;
 import edu.zsc.ai.context.RequestContext;
-import org.slf4j.Logger;
-
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import org.slf4j.Logger;
 
 public abstract class AbstractSubAgent<I, O> implements SubAgent<I, O> {
 
@@ -30,6 +32,12 @@ public abstract class AbstractSubAgent<I, O> implements SubAgent<I, O> {
         return aiModelCatalog.defaultModelName();
     }
 
+    protected String resolveModelName(Logger logger, AiModelCatalog catalog, ModelPurpose purpose) {
+        var context = AgentRequestContext.snapshot();
+        if (context != null && context.getModelRunSnapshot() != null) return context.getModelRunSnapshot().model(purpose).modelConfigId();
+        return resolveModelName(logger, catalog);
+    }
+
     protected Map<String, Object> createInvocationContext(AgentTypeEnum agentType) {
         Map<String, Object> invocationContext = new HashMap<>(RequestContext.toMap());
         invocationContext.putAll(AgentRequestContext.toMap());
@@ -41,7 +49,7 @@ public abstract class AbstractSubAgent<I, O> implements SubAgent<I, O> {
         return SubAgentTextSupport.preview(value);
     }
 
-    protected String summarizeObjects(java.util.List<edu.zsc.ai.agent.subagent.contract.ExploreObject> objects) {
+    protected String summarizeObjects(List<ExploreObject> objects) {
         return SubAgentTextSupport.summarizeObjects(objects);
     }
 

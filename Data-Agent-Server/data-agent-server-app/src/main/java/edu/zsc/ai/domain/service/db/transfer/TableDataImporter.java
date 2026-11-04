@@ -30,4 +30,16 @@ public interface TableDataImporter {
      *                 formats like CSV use it, others ignore it
      */
     ImportTableDataResponse importData(DbContext db, String tableName, InputStream inputStream, String encoding);
+
+    /**
+     * Import with optional auto-create-table flag. Defaults to {@code false}
+     * (identical to the 4-arg form). Formats that cannot infer a CREATE TABLE
+     * from their input (e.g. SQL — the file may already contain DDL) may
+     * override without honouring the flag.
+     */
+    default ImportTableDataResponse importData(DbContext db, String tableName,
+                                                InputStream inputStream, String encoding,
+                                                boolean createTableIfMissing) {
+        return importData(db, tableName, inputStream, encoding);
+    }
 }

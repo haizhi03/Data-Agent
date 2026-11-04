@@ -1,9 +1,12 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import type {
   CellClassParams,
   CellValueChangedEvent,
+  DefaultMenuItem,
+  GetContextMenuItemsParams,
   GridApi,
   GridReadyEvent,
+  MenuItemDef,
   RowClassParams,
   SelectionChangedEvent,
   SortChangedEvent,
@@ -40,6 +43,8 @@ interface TableDataGridAgProps {
   pendingDeleteRowIndexes: Set<number>;
   pendingInsertRows: TableDataGridAgRow[];
   onRowSelectionChange: (selection: SelectedTableRow | null) => void;
+  onSelectionChange?: (rows: SelectedTableRow[]) => void;
+  onOpenSqlGenerator?: () => void;
   onGridSortChange: (column: string | null, direction: 'asc' | 'desc' | null) => void;
   onCellValueChanged?: (event: CellValueChangedEvent<TableDataGridAgRow>) => void;
   formatCellValue: (value: unknown) => string;
@@ -61,6 +66,8 @@ export function TableDataGridAg({
   pendingDeleteRowIndexes,
   pendingInsertRows,
   onRowSelectionChange,
+  onSelectionChange,
+  onOpenSqlGenerator,
   onGridSortChange,
   onCellValueChanged,
   formatCellValue,
@@ -197,28 +204,10 @@ export function TableDataGridAg({
 
     syncingSelectionRef.current = true;
 
-    if (isTransposeMode) {
-      api.deselectAll();
-      syncingSelectionRef.current = false;
-      return;
-    }
-
-    if (selectedRowIndex == null) {
-      api.deselectAll();
-      syncingSelectionRef.current = false;
-      return;
-    }
-
-    let matched = false;
-    api.forEachNode((node) => {
-      const shouldSelect = node.data?.__rowIndex === selectedRowIndex;
-      node.setSelected(shouldSelect);
-      if (shouldSelect) {
-        matched = true;
-      }
-    });
-
-    if (!matched) {
+    // Only reset selection here (table switch / transpose). Re-applying a
+    // single row from selectedRowIndex would clobber multi-row selection, so
+    // non-null indices are left to the grid's own selection state.
+    if (isTransposeMode || selectedRowIndex == null) {
       api.deselectAll();
     }
 
@@ -256,33 +245,31 @@ export function TableDataGridAg({
       return;
     }
 
-    const selectedNode = event.api.getSelectedNodes()[0];
-    if (!selectedNode?.data) {
-      onRowSelectionChange(null);
-      return;
-    }
+    const toSelectedRow = (data: TableDataGridAgRow | undefined): SelectedTableRow | null => {
+      if (!data || !Array.isArray(data.__sourceRow)) {
+        return null;
+      }
+      // Staged INSERT rows: expose with pendingLocalId so delete/update can target them.
+      if (data.__pendingInsert != null) {
+        return {
+          rowIndex: data.__rowIndex ?? -1,
+          row: data.__sourceRow,
+          pendingLocalId: data.__pendingInsert,
+        };
+      }
+      if (data.__rowIndex == null) {
+        return null;
+      }
+      return { rowIndex: data.__rowIndex, row: data.__sourceRow };
+    };
 
-    const selectedData = selectedNode.data;
+    const selectedRows = event.api
+      .getSelectedNodes()
+      .map((node) => toSelectedRow(node.data))
+      .filter((row): row is SelectedTableRow => row != null);
 
-    // Staged INSERT rows: expose with pendingLocalId so delete/update can target them.
-    if (selectedData.__pendingInsert != null) {
-      onRowSelectionChange({
-        rowIndex: selectedData.__rowIndex ?? -1,
-        row: selectedData.__sourceRow ?? [],
-        pendingLocalId: selectedData.__pendingInsert,
-      });
-      return;
-    }
-
-    if (selectedData.__rowIndex == null || selectedData.__sourceRow == null) {
-      onRowSelectionChange(null);
-      return;
-    }
-
-    onRowSelectionChange({
-      rowIndex: selectedData.__rowIndex,
-      row: selectedData.__sourceRow,
-    });
+    onSelectionChange?.(selectedRows);
+    onRowSelectionChange(selectedRows[0] ?? null);
   };
 
   const handleSortChanged = (event: SortChangedEvent<TableDataGridAgRow>) => {
@@ -299,6 +286,20 @@ export function TableDataGridAg({
       (sortedColumn?.sort as 'asc' | 'desc' | undefined) ?? null,
     );
   };
+
+  const getContextMenuItems = useCallback(
+    (params: GetContextMenuItemsParams<TableDataGridAgRow>): (MenuItemDef<TableDataGridAgRow> | DefaultMenuItem)[] => {
+      const items: (MenuItemDef<TableDataGridAgRow> | DefaultMenuItem)[] = [
+        {
+          name: t(I18N_KEYS.EXPLORER.SQL_GENERATOR),
+          action: () => onOpenSqlGenerator?.(),
+        },
+        'separator',
+      ];
+      return [...items, ...(params.defaultItems ?? [])];
+    },
+    [onOpenSqlGenerator, t],
+  );
 
   return (
     <div className="flex-1 min-h-0 overflow-hidden border-t theme-border">
@@ -318,7 +319,7 @@ export function TableDataGridAg({
               isTransposeMode
                 ? undefined
                 : {
-                    mode: 'singleRow',
+                    mode: 'multiRow',
                     enableClickSelection: true,
                     checkboxes: false,
                   }
@@ -336,6 +337,7 @@ export function TableDataGridAg({
             onGridReady={handleGridReady}
             onSelectionChanged={handleSelectionChanged}
             onSortChanged={handleSortChanged}
+            getContextMenuItems={getContextMenuItems}
             onCellValueChanged={isEditable ? onCellValueChanged : undefined}
           />
         </div>

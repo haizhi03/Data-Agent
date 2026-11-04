@@ -120,9 +120,13 @@ public final class MysqlCapabilitySupport {
                     String.format("Connection, %s name and new name must not be null or empty", objectType));
         }
 
+        // Qualify both sides: with an unqualified target MySQL resolves the new
+        // name against the session's default database, which is unset when the
+        // connection was created without one. Fully qualifying keeps the rename
+        // inside the table's own database either way.
         String fullOldName = MysqlIdentifierBuilder.buildFullIdentifier(catalog, objectName);
-        String quotedNewName = MysqlIdentifierEscaper.getInstance().quoteIdentifier(newObjectName.trim());
-        String sql = String.format(sqlTemplate, fullOldName, quotedNewName);
+        String fullNewName = MysqlIdentifierBuilder.buildFullIdentifier(catalog, newObjectName.trim());
+        String sql = String.format(sqlTemplate, fullOldName, fullNewName);
 
         SqlCommandResult result = execute(connection, catalog, sql);
         if (!result.isSuccess()) {

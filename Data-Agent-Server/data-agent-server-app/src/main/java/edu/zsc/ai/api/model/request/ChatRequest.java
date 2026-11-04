@@ -1,8 +1,7 @@
 package edu.zsc.ai.api.model.request;
 
-import java.util.List;
-
 import jakarta.validation.constraints.NotBlank;
+import java.util.List;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
@@ -23,6 +22,12 @@ public class ChatRequest extends BaseRequest {
      * Optional; server defaults to ai.models.default-model when blank.
      */
     private String model;
+
+    /** Internal server configuration ID; a supplied legacy name must identify the same configuration. */
+    private String modelConfigId;
+
+    /** Optional per-message main-chat thinking override; capabilities are validated server-side. */
+    private edu.zsc.ai.config.ai.model.MultiProviderProperties.ThinkingMode thinkingMode;
 
     /**
      * Preferred prompt language, e.g. "en" or "zh".

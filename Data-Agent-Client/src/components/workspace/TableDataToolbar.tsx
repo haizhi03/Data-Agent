@@ -1,7 +1,8 @@
-import { Play, Plus, Minus, FileText, ChevronDown, ChevronUp, RefreshCcw, Search, X, ArrowUp } from 'lucide-react';
+import { Play, Plus, Minus, FileText, ChevronDown, ChevronUp, RefreshCcw, Search, X, ArrowUp, Wand2, Upload, Download } from 'lucide-react';
 import type { Ref } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '../ui/Button';
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '../ui/Tooltip';
 import { I18N_KEYS } from '../../constants/i18nKeys';
 import { TransactionModeSelector } from './TransactionModeSelector';
 import { TransactionMode, IsolationLevel } from '../../constants/transactionSettings';
@@ -35,6 +36,9 @@ interface TableDataToolbarProps {
   onAddRow: () => void;
   onDeleteRow: () => void;
   onOpenDdl: () => void;
+  onOpenSqlGenerator: () => void;
+  onImportData: () => void;
+  onExportData: () => void;
   onDatabaseChange: (db: string) => void;
   onViewModeChange: (mode: 'grid' | 'transpose') => void;
   findVisible: boolean;
@@ -72,6 +76,9 @@ export function TableDataToolbar({
   onAddRow,
   onDeleteRow,
   onOpenDdl,
+  onOpenSqlGenerator,
+  onImportData,
+  onExportData,
   onDatabaseChange,
   onViewModeChange,
   findVisible,
@@ -166,12 +173,58 @@ export function TableDataToolbar({
         variant="ghost"
         size="sm"
         className="h-6 px-2 gap-1 text-[11px]"
+        title={t(I18N_KEYS.EXPLORER.IMPORT_DATA)}
+        onClick={onImportData}
+        disabled={!isTable}
+      >
+        <Upload className="w-3.5 h-3.5 theme-text-secondary" />
+        {t(I18N_KEYS.EXPLORER.IMPORT_DATA)}
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-6 px-2 gap-1 text-[11px]"
+        title={t(I18N_KEYS.EXPLORER.EXPORT_DATA)}
+        onClick={onExportData}
+        disabled={!isTable}
+      >
+        <Download className="w-3.5 h-3.5 theme-text-secondary" />
+        {t(I18N_KEYS.EXPLORER.EXPORT_DATA)}
+      </Button>
+      <div className="w-px h-4 bg-border mx-0.5" />
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-6 px-2 gap-1 text-[11px]"
         onClick={onOpenDdl}
         title={t(I18N_KEYS.EXPLORER.VIEW_DDL)}
       >
         <FileText className="w-3.5 h-3.5 theme-text-secondary" />
         DDL
       </Button>
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="inline-flex">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 px-2 gap-1 text-[11px]"
+                onClick={onOpenSqlGenerator}
+                disabled={!hasRowSelection || isTransposeMode}
+              >
+                <Wand2 className="w-3.5 h-3.5 theme-text-secondary" />
+                {t(I18N_KEYS.EXPLORER.SQL_GENERATOR_DML)}
+              </Button>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" className="max-w-xs text-xs">
+            {!hasRowSelection || isTransposeMode
+              ? t(I18N_KEYS.EXPLORER.SQL_GENERATOR_DML_DISABLED_HINT)
+              : t(I18N_KEYS.EXPLORER.SQL_GENERATOR_DML_HINT)}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
       <div className="w-px h-4 bg-border mx-0.5" />
       <Button
         variant="ghost"

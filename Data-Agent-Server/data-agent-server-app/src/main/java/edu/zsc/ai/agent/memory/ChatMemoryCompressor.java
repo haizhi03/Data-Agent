@@ -8,6 +8,10 @@ import dev.langchain4j.data.message.ChatMessageType;
 import dev.langchain4j.data.message.SystemMessage;
 import edu.zsc.ai.common.constant.CompressionLogConstant;
 import edu.zsc.ai.config.ai.AiModelCatalog;
+import edu.zsc.ai.config.ai.model.ModelPurpose;
+import edu.zsc.ai.config.ai.model.ProtocolHistory;
+import edu.zsc.ai.config.ai.model.ProtocolStateCodec;
+import edu.zsc.ai.context.AgentRequestContext;
 import edu.zsc.ai.domain.event.MemoryCompressionStartedEvent;
 import edu.zsc.ai.domain.model.entity.ai.AiConversation;
 import edu.zsc.ai.domain.model.entity.ai.StoredChatMessage;
@@ -16,19 +20,18 @@ import edu.zsc.ai.domain.service.ai.AiMessageService;
 import edu.zsc.ai.domain.service.ai.CompressionService;
 import edu.zsc.ai.domain.service.ai.model.CompressionDoneMetadata;
 import edu.zsc.ai.domain.service.ai.model.CompressionResult;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.stereotype.Component;
-
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.stereotype.Component;
 
 @Slf4j
 @Component
@@ -212,6 +215,7 @@ public class ChatMemoryCompressor {
                                                boolean shouldRememberDoneMetadata) {
         int splitIndex = findCleanSplitPoint(messages,
                 (int) Math.ceil(messages.size() * COMPRESSION_RATIO));
+        if (splitIndex == 0) throw new IllegalStateException("No closed history prefix is available for compression");
 
         List<ChatMessage> compactedWindow = messages.subList(0, splitIndex);
         String existingCompactedSummary = CompactionContextSupport.extractExistingCompactedSummary(
@@ -227,8 +231,8 @@ public class ChatMemoryCompressor {
                 "toCompressCount", compactedWindow.size(),
                 "toKeepCount", toKeep.size(),
                 "hasExistingCompactedSummary", existingCompactedSummary != null,
-                "toCompressMessages", toCompress.stream().map(ChatMessageSerializer::messageToJson).toList(),
-                "toKeepMessages", toKeep.stream().map(ChatMessageSerializer::messageToJson).toList()
+                "toCompressMessages", toCompress.stream().map(m -> m instanceof AiMessage ai ? ProtocolStateCodec.portable(ai) : m).map(ChatMessageSerializer::messageToJson).toList(),
+                "toKeepMessages", toKeep.stream().map(m -> m instanceof AiMessage ai ? ProtocolStateCodec.portable(ai) : m).map(ChatMessageSerializer::messageToJson).toList()
         ));
 
         CompressionResult compressionResult = compressionService.compress(toCompress);
@@ -305,19 +309,14 @@ public class ChatMemoryCompressor {
      * a tool-call / tool-result pair.
      */
     private int findCleanSplitPoint(List<ChatMessage> messages, int targetIndex) {
-        for (int i = targetIndex; i > 0; i--) {
-            ChatMessage msg = messages.get(i);
-            if (msg.type() == ChatMessageType.USER) {
-                return i;
-            }
-            if (msg.type() == ChatMessageType.AI && !((AiMessage) msg).hasToolExecutionRequests()) {
-                return i;
-            }
-        }
-        return targetIndex;
+        return ProtocolHistory.safeSplit(messages, targetIndex);
     }
 
     private int resolveMemoryThreshold(String modelName) {
+        var context = AgentRequestContext.snapshot();
+        if (context != null && context.getModelRunSnapshot() != null) {
+            return context.getModelRunSnapshot().model(ModelPurpose.MAIN_CHAT).memoryThreshold();
+        }
         if (!aiModelCatalog.supports(modelName)) {
             log.warn("Unknown model '{}', falling back to default threshold", modelName);
         }

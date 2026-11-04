@@ -40,7 +40,7 @@ export function ChatInput() {
     onCommand,
     messages,
   } = useAIAssistantContext();
-  const { model, setModel, modelOptions } = modelState;
+  const { model, setModel, modelOptions, thinkingMode, setThinkingMode } = modelState;
   const { agent, setAgent } = agentState;
   const { setChatContext } = chatContextState;
   const { setUserMentions } = mentionState;
@@ -201,6 +201,8 @@ export function ChatInput() {
             model={model}
             setModel={setModel}
             modelOptions={modelOptions}
+            thinkingMode={thinkingMode}
+            setThinkingMode={setThinkingMode}
             onSend={onSend}
             onStop={onStop}
             isLoading={isLoading}

@@ -14,7 +14,7 @@ import { useAuthStore } from '../../store/authStore';
 import { conversationService } from '../../services/conversation.service';
 import { aiService } from '../../services/ai.service';
 import { ChatPaths } from '../../constants/apiPaths';
-import { DEFAULT_MODEL, FALLBACK_MODELS } from '../../constants/models';
+import { DEFAULT_MODEL, FALLBACK_MODELS, modelRequest, defaultModelSelection } from '../../constants/models';
 import { ROUTES } from '../../constants/routes';
 import { resolveErrorMessage } from '../../lib/errorMessage';
 import { SLASH_COMMAND_IDS } from './slashCommands';
@@ -22,6 +22,8 @@ import { I18N_KEYS } from '../../constants/i18nKeys';
 import type { ChatContext, ChatMessage, ChatUserMention } from '../../types/chat';
 import { MessageBlockType, MessageRole } from '../../types/chat';
 import type { ModelOption } from '../../types/ai';
+import type { ThinkingMode } from '../../types/modelManagement';
+import { chatThinkingRequest } from '../../lib/chatThinking';
 import { findMentionTokens } from './mentionTypes';
 import { chatMessagesToMessages } from './MessageList';
 import { extractPlansFromMessages } from './blocks/exitPlanModeTypes';
@@ -70,10 +72,12 @@ export function AIAssistant({ onClosePanel, historyAsLeftSidebar = false }: AIAs
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const accessToken = useAuthStore((s) => s.accessToken);
+  const modelScope = useAuthStore((s) => `${s.user?.id ?? ''}/${s.workspaceType}/${s.workspaceOrgId ?? ''}`);
 
   const [agent, setAgentState] = useState<AgentType>(DEFAULT_AGENT);
   const [modelOptions, setModelOptions] = useState<ModelOption[]>(FALLBACK_MODELS);
   const [model, setModelState] = useState<string>(DEFAULT_MODEL);
+  const [thinkingMode, setThinkingModeState] = useState<ThinkingMode | undefined>();
   const [chatContext, setChatContext] = useState<ChatContext>({});
   const [userMentions, setUserMentionsState] = useState<ChatUserMention[]>([]);
   const userMentionsRef = useRef<ChatUserMention[]>([]);
@@ -123,7 +127,8 @@ export function AIAssistant({ onClosePanel, historyAsLeftSidebar = false }: AIAs
   } = useConversationRuntime({
     api: ChatPaths.STREAM,
     body: {
-      model,
+      ...modelRequest(model, modelOptions),
+      ...chatThinkingRequest(modelOptions.find((option) => option.modelName === model), thinkingMode),
       language: i18n.resolvedLanguage ?? i18n.language ?? 'en',
       agentType: agent,
       ...(chatContext.connectionId != null && { connectionId: chatContext.connectionId }),
@@ -159,24 +164,29 @@ export function AIAssistant({ onClosePanel, historyAsLeftSidebar = false }: AIAs
     if (prefs) {
       setAgentState(prefs.agent as AgentType);
       setModelState(prefs.model);
+      setThinkingModeState(prefs.thinkingMode);
     } else {
       setAgentState(DEFAULT_AGENT);
-      setModelState(DEFAULT_MODEL);
+      setModelState(defaultModelSelection(modelOptions));
+      setThinkingModeState(undefined);
     }
-  }, [activeConversationId, getActivePrefs]);
+  }, [activeConversationId, getActivePrefs, modelOptions]);
 
   // Setters that also persist the choice into the active runtime
   const setAgent = useCallback((value: AgentType) => {
     setAgentState(value);
-    const current = getActivePrefs() ?? { agent: DEFAULT_AGENT, model: DEFAULT_MODEL };
-    setActivePrefs({ ...current, agent: value });
-  }, [getActivePrefs, setActivePrefs]);
+    setActivePrefs({ agent: value, model, thinkingMode });
+  }, [model, thinkingMode, setActivePrefs]);
 
   const setModel = useCallback((value: string) => {
     setModelState(value);
-    const current = getActivePrefs() ?? { agent: DEFAULT_AGENT, model: DEFAULT_MODEL };
-    setActivePrefs({ ...current, model: value });
-  }, [getActivePrefs, setActivePrefs]);
+    setActivePrefs({ agent, model: value, thinkingMode });
+  }, [agent, thinkingMode, setActivePrefs]);
+
+  const setThinkingMode = useCallback((value: ThinkingMode) => {
+    setThinkingModeState(value);
+    setActivePrefs({ agent, model, thinkingMode: value });
+  }, [agent, model, setActivePrefs]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatInputAnchorRef = useRef<HTMLDivElement>(null);
@@ -204,26 +214,32 @@ export function AIAssistant({ onClosePanel, historyAsLeftSidebar = false }: AIAs
   }, [messages]);
 
   useEffect(() => {
+    let active = true;
+    setModelOptions([]);
+    setThinkingModeState(undefined);
     aiService.getModels(true).then((list) => {
+      if (!active) return;
+      setModelOptions(list);
       if (list.length > 0) {
-        setModelOptions(list);
         setModelState((current) => {
-          const exists = list.some((m) => m.modelName === current);
-          return exists ? current : list[0].modelName;
+          return list.some((option) => option.modelName === current) ? current : defaultModelSelection(list);
         });
+      } else {
+        setModelState('');
       }
     });
-  }, []);
+    return () => { active = false; };
+  }, [modelScope]);
 
   const handleSend = useCallback(() => {
-    if (!input.trim()) return;
+    if (!input.trim() || !modelOptions.some((m) => m.modelName === model)) return;
     const messageText = input.trim();
     const activeMentions = resolveMentionsInText(messageText, userMentionsRef.current);
     userHasScrolledUpRef.current = false;
     submitMessage(messageText, activeMentions.length > 0 ? { userMentions: activeMentions } : undefined);
     setInput('');
     setUserMentions([]);
-  }, [input, setInput, submitMessage, setUserMentions]);
+  }, [input, setInput, submitMessage, setUserMentions, modelOptions, model]);
 
   const chatMessages = chatMessagesToMessages(messages);
   const persistedConversationId =
@@ -237,15 +253,17 @@ export function AIAssistant({ onClosePanel, historyAsLeftSidebar = false }: AIAs
 
   const resetToDefaults = useCallback(() => {
     setAgentState(DEFAULT_AGENT);
-    setModelState(DEFAULT_MODEL);
-  }, []);
+    setModelState(defaultModelSelection(modelOptions));
+    setThinkingModeState(undefined);
+  }, [modelOptions]);
 
   const handleNewChat = useCallback(() => {
     resetToDefaults();
     setActiveConversation(null);
+    setActivePrefs({ agent: DEFAULT_AGENT, model: defaultModelSelection(modelOptions) });
     loadMessages(null, []);
     setConversationTokenCount(null, null);
-  }, [loadMessages, resetToDefaults, setActiveConversation, setConversationTokenCount]);
+  }, [loadMessages, resetToDefaults, setActiveConversation, setConversationTokenCount, setActivePrefs, modelOptions]);
 
   const handleSelectConversationFromHistory = useCallback(
     async (c: Conversation) => {
@@ -309,7 +327,7 @@ export function AIAssistant({ onClosePanel, historyAsLeftSidebar = false }: AIAs
     enqueueMessage: submitMessage,
     isLoading,
     conversationId: persistedConversationId,
-    modelState: { model, setModel, modelOptions },
+    modelState: { model, setModel, modelOptions, thinkingMode, setThinkingMode },
     agentState: { agent, setAgent },
     chatContextState: { chatContext, setChatContext },
     mentionState: { userMentions, setUserMentions },
@@ -318,10 +336,7 @@ export function AIAssistant({ onClosePanel, historyAsLeftSidebar = false }: AIAs
     latestPlanTabId: latestPlanTabId_,
     onCommand: (id: string) => {
       if (id === SLASH_COMMAND_IDS.NEW) {
-        resetToDefaults();
-        setActiveConversation(null);
-        loadMessages(null, []);
-        setConversationTokenCount(null, null);
+        handleNewChat();
       } else if (id === SLASH_COMMAND_IDS.HISTORY) {
         if (historyAsLeftSidebar) {
           setHistorySidebarOpen(true);
@@ -358,7 +373,7 @@ export function AIAssistant({ onClosePanel, historyAsLeftSidebar = false }: AIAs
           setIsCompacting(true);
 
           try {
-            const result = await conversationService.compact(targetConversationId, { model });
+            const result = await conversationService.compact(targetConversationId, modelRequest(model, modelOptions));
             if (!result.compressed) {
               loadMessages(targetConversationId, [
                 ...baseMessages,

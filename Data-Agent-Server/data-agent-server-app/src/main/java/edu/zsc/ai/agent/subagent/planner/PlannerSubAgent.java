@@ -15,6 +15,7 @@ import edu.zsc.ai.common.enums.ai.AgentTypeEnum;
 import edu.zsc.ai.config.ai.AiModelCatalog;
 import edu.zsc.ai.config.ai.SubAgentFactory;
 import edu.zsc.ai.config.ai.SubAgentProperties;
+import edu.zsc.ai.config.ai.model.ModelPurpose;
 import edu.zsc.ai.context.AgentExecutionContext;
 import edu.zsc.ai.context.AgentRequestContext;
 import edu.zsc.ai.context.RequestContext;
@@ -22,6 +23,10 @@ import edu.zsc.ai.context.RequestContextInfo;
 import edu.zsc.ai.domain.model.dto.response.agent.ChatResponseBlock;
 import edu.zsc.ai.domain.service.agent.SseEmitterRegistry;
 import edu.zsc.ai.util.JsonUtil;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
@@ -30,10 +35,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Sinks;
-
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
 /**
  * Planner SubAgent implementation.
@@ -67,7 +68,7 @@ public class PlannerSubAgent extends AbstractSubAgent<PlannerRequest, SqlPlan> i
         RequestContextInfo requestContextSnapshot = RequestContext.snapshot();
         String parentToolCallId = AgentExecutionContext.getParentToolCallId();
         String taskId = AgentExecutionContext.getTaskId();
-        String modelName = resolveModelName(log, aiModelCatalog);
+        String modelName = resolveModelName(log, aiModelCatalog, ModelPurpose.PLANNER);
         SchemaSummary schemaSummary = request.getSchemaSummary();
 
         // SSE progress emitter (replaces AgentListener-based observability)
@@ -109,7 +110,7 @@ public class PlannerSubAgent extends AbstractSubAgent<PlannerRequest, SqlPlan> i
             String systemPrompt = "(managed by SystemPromptManager)";
             PlannerAgentService agentService = subAgentFactory.buildPlannerAgent(modelName, conversationId);
 
-            java.util.Map<String, Object> invocationContext = createInvocationContext(AgentTypeEnum.PLANNER);
+            Map<String, Object> invocationContext = createInvocationContext(AgentTypeEnum.PLANNER);
             log.info("[Planner] schema summary serialized, taskId={}, objectCount={}, ddlObjectCount={}, summaryLength={}, rawResponseLength={}, objectPreview={}",
                     taskId,
                     schemaSummary != null ? CollectionUtils.size(schemaSummary.getObjects()) : 0,

@@ -4,6 +4,9 @@ import edu.zsc.ai.domain.model.context.DbContext;
 import edu.zsc.ai.plugin.capability.SqlCompleter;
 import edu.zsc.ai.plugin.manager.DefaultPluginManager;
 import edu.zsc.ai.plugin.model.metadata.ColumnMetadata;
+import edu.zsc.ai.plugin.model.metadata.FunctionMetadata;
+import edu.zsc.ai.plugin.model.metadata.ProcedureMetadata;
+import edu.zsc.ai.plugin.model.sql.CompletionRoutine;
 import edu.zsc.ai.plugin.model.sql.CompletionSynonym;
 import lombok.extern.slf4j.Slf4j;
 
@@ -58,6 +61,50 @@ final class SqlCompletionMetadataResolver {
 
     List<String> packages(DbContext source) {
         return cached(source, "packages", null, () -> dialect.completionPackages(connection, source.schema()));
+    }
+
+    List<CompletionRoutine> packageMembers(DbContext source, String packageName) {
+        return cached(source, "package-members", packageName,
+                () -> dialect.completionPackageMembers(connection, source.schema(), packageName));
+    }
+
+    List<FunctionMetadata> functions(DbContext source) {
+        return cached(source, "functions", null, () -> managers.getFunctionManagerByPluginId(plugin)
+                .getFunctions(connection, source.catalog(), source.schema()));
+    }
+
+    List<ProcedureMetadata> procedures(DbContext source) {
+        return cached(source, "procedures", null, () -> managers.getProcedureManagerByPluginId(plugin)
+                .getProcedures(connection, source.catalog(), source.schema()));
+    }
+
+    /** Table comment, or null when absent/unsupported. */
+    String tableComment(DbContext source, String table) {
+        List<String> values = cached(source, "table-comment", table, () -> {
+            String comment = managers.getTableManagerByPluginId(plugin)
+                    .getTableComment(connection, source.catalog(), source.schema(), table);
+            return comment == null || comment.isBlank() ? List.of() : List.of(comment);
+        });
+        return values.isEmpty() ? null : values.get(0);
+    }
+
+    /** Generated table DDL, or null when unavailable (unsupported, no privilege or not a table). */
+    String tableDdl(DbContext source, String table) {
+        List<String> values = cached(source, "table-ddl", table, () -> {
+            String ddl = managers.getTableManagerByPluginId(plugin)
+                    .getTableDdl(connection, source.catalog(), source.schema(), table);
+            return ddl == null || ddl.isBlank() ? List.of() : List.of(ddl);
+        });
+        return values.isEmpty() ? null : values.get(0);
+    }
+
+    /** "TABLE" or "VIEW" when the exact-cased name exists in the schema, otherwise null. */
+    String objectKind(DbContext source, String name) {
+        if (cached(source, "tables", null, () -> managers.getTableManagerByPluginId(plugin)
+                .getTableNames(connection, source.catalog(), source.schema())).contains(name)) return "TABLE";
+        if (cached(source, "views", null, () -> managers.getViewManagerByPluginId(plugin)
+                .getViews(connection, source.catalog(), source.schema())).contains(name)) return "VIEW";
+        return null;
     }
 
     private List<CompletionSynonym> synonyms(DbContext source) {

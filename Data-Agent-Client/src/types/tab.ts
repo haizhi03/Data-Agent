@@ -5,6 +5,7 @@
  */
 export interface ConsoleTabMetadata {
   connectionId: number;
+  sqlBatchMode?: import('./sql').SqlBatchMode;
   dbType?: string;
   connectionName: string;   // e.g., "MySQL-Dev", "PostgreSQL-Prod"
   databaseName: string | null;

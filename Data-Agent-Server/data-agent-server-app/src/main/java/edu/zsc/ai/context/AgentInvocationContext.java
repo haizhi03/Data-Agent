@@ -6,10 +6,9 @@ import edu.zsc.ai.common.constant.InvocationContextConstant;
 import edu.zsc.ai.common.enums.org.OrganizationRoleEnum;
 import edu.zsc.ai.common.enums.org.WorkspaceTypeEnum;
 import edu.zsc.ai.util.ConnectionIdUtil;
+import java.util.Locale;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
-
-import java.util.Locale;
 
 public class AgentInvocationContext implements AutoCloseable {
 
@@ -59,6 +58,7 @@ public class AgentInvocationContext implements AutoCloseable {
                     .allowedConnectionIds(ConnectionIdUtil.toLongList(params.get(InvocationContextConstant.ALLOWED_CONNECTION_IDS)))
                     .readableConnectionIds(ConnectionIdUtil.toLongList(params.get(InvocationContextConstant.READABLE_CONNECTION_IDS)))
                     .modelName(params.get(InvocationContextConstant.MODEL_NAME))
+                    .modelRunSnapshot(params.get(InvocationContextConstant.MODEL_RUN_SNAPSHOT))
                     .language(params.get(InvocationContextConstant.LANGUAGE))
                     .build();
 
@@ -146,7 +146,7 @@ public class AgentInvocationContext implements AutoCloseable {
     }
 
     private static boolean hasAgentRequestContextData(AgentRequestContextInfo contextInfo) {
-        return StringUtils.isNotBlank(contextInfo.getAgentMode())
+        return contextInfo.getModelRunSnapshot() != null || StringUtils.isNotBlank(contextInfo.getAgentMode())
                 || StringUtils.isNotBlank(contextInfo.getAgentType())
                 || StringUtils.isNotBlank(contextInfo.getModelName())
                 || StringUtils.isNotBlank(contextInfo.getLanguage())

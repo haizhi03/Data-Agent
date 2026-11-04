@@ -19,6 +19,7 @@ export interface BatchImportFilePlan {
   file: File;
   fileType: string;
   tableName: string;
+  createTableIfMissing?: boolean;
 }
 
 export function useBatchImport() {
@@ -35,6 +36,7 @@ export function useBatchImport() {
         catalog?: string;
         schema?: string;
         encoding?: string;
+        createTableIfMissing?: boolean;
       }
     ) => {
       cancelRef.current = false;
@@ -57,6 +59,7 @@ export function useBatchImport() {
             schema: baseParams.schema,
             fileType: item.fileType,
             encoding: item.fileType === 'CSV' ? baseParams.encoding : undefined,
+            createTableIfMissing: item.createTableIfMissing ?? baseParams.createTableIfMissing,
             file: item.file,
           });
           collected.push({ file: item.file.name, fileType: item.fileType, success: data.success, data });

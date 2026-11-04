@@ -1,4 +1,16 @@
+.sql-completion-editor .monaco-editor .suggest-widget .monaco-list .monaco-list-row > .contents,
+.sql-completion-editor .monaco-editor .suggest-widget .monaco-list .monaco-list-row > .contents > .main {
+  width: 100%;
+}
+
+.sql-completion-editor .monaco-editor .suggest-widget .monaco-list .monaco-list-row > .contents > .main > .left {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .sql-completion-editor .monaco-editor .suggest-widget .monaco-list .monaco-list-row > .contents > .main > .right {
+  flex: 0 0 auto;
+  margin-left: auto;
   justify-content: flex-end;
   text-align: right;
 }

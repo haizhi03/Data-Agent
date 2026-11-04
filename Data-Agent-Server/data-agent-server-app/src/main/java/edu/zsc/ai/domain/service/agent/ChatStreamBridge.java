@@ -1,14 +1,25 @@
 package edu.zsc.ai.domain.service.agent;
 
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
+import dev.langchain4j.invocation.InvocationParameters;
+import dev.langchain4j.model.chat.response.ChatResponse;
 import dev.langchain4j.service.TokenStream;
 import edu.zsc.ai.agent.memory.ChatMemoryCompressor;
 import edu.zsc.ai.agent.tool.AgentToolTracker;
 import edu.zsc.ai.common.constant.AgentRuntimeLoggerNames;
 import edu.zsc.ai.common.enums.ai.ToolNameEnum;
+import edu.zsc.ai.config.ai.model.ModelIntegrationException;
 import edu.zsc.ai.context.AgentExecutionContext;
+import edu.zsc.ai.context.ModelContextScope;
 import edu.zsc.ai.domain.event.ChatCompletedEvent;
 import edu.zsc.ai.domain.model.dto.response.agent.ChatResponseBlock;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -18,13 +29,6 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Sinks;
-
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Bridges a LangChain4j {@link TokenStream} into a reactive
@@ -53,10 +57,13 @@ public class ChatStreamBridge {
             AgentToolTracker toolTracker) {
 
         Long conversationId = session.conversationId();
-        TokenStream tokenStream = session.startChat();
-
         Sinks.Many<ChatResponseBlock> sink = Sinks.many().unicast().onBackpressureBuffer();
         sseEmitterRegistry.register(conversationId, sink);
+        TokenStream tokenStream;
+        try { tokenStream = session.startChat(); }
+        catch (RuntimeException e) { sseEmitterRegistry.unregister(conversationId, sink); throw e; }
+        var modelRun = session.agentRequestContextSnapshot() == null ? null : session.agentRequestContextSnapshot().getModelRunSnapshot();
+        var terminal = new AtomicBoolean();
         log.debug("[ChatStream] sink registered for conversation {}", conversationId);
         Set<String> streamedToolCallIds = new HashSet<>();
         Map<String, Long> toolStartedAtById = new ConcurrentHashMap<>();
@@ -187,8 +194,9 @@ public class ChatStreamBridge {
         });
 
         tokenStream.onCompleteResponse(response -> {
+            if (!terminal.compareAndSet(false, true)) return;
             AgentExecutionContext.clear();
-            sseEmitterRegistry.unregister(conversationId);
+            sseEmitterRegistry.unregister(conversationId, sink);
             log.debug("[ChatStream] sink unregistered for conversation {}", conversationId);
             collectTokenUsage(response, toolTracker);
             log.info("Conversation {} completed: toolCount={}, outputTokens={}, totalTokens={}",
@@ -205,12 +213,15 @@ public class ChatStreamBridge {
                     thinkingText.length(),
                     responseText,
                     thinkingText);
-            publishChatCompleted(response, conversationId);
-            sink.tryEmitNext(ChatResponseBlock.doneBlock(buildDoneMetadata(conversationId, toolTracker)));
+            publishChatCompleted(response, conversationId, session.parameters());
+            var metadata = buildDoneMetadata(conversationId, toolTracker);
+            if (modelRun != null) { metadata.put("runId", modelRun.runId()); metadata.put("status", "SUCCEEDED"); }
+            sink.tryEmitNext(ChatResponseBlock.doneBlock(metadata));
             sink.tryEmitComplete();
         });
 
         tokenStream.onError(error -> {
+            if (!terminal.compareAndSet(false, true)) return;
             AgentExecutionContext.clear();
             log.error("Error in chat stream", error);
             runtimeLog.error("conversation_error conversationId={} responseLength={} thinkingLength={}",
@@ -218,16 +229,31 @@ public class ChatStreamBridge {
                     responseText.length(),
                     thinkingText.length(),
                     error);
-            sseEmitterRegistry.unregister(conversationId);
+            sseEmitterRegistry.unregister(conversationId, sink);
             log.debug("[ChatStream] sink unregistered for conversation {} (on error)", conversationId);
-            sink.tryEmitError(error);
+            if (modelRun == null) sink.tryEmitError(error);
+            else {
+                String code = error instanceof ModelIntegrationException known ? known.getReason() : "MODEL_PROTOCOL_ERROR";
+                String status = "MODEL_OUTPUT_TRUNCATED".equals(code) || "AGENT_BUDGET_EXCEEDED".equals(code) ? "INCOMPLETE" : "FAILED";
+                sink.tryEmitNext(ChatResponseBlock.status(code));
+                sink.tryEmitNext(ChatResponseBlock.doneBlock(Map.of("runId", modelRun.runId(), "status", status, "errorCode", code)));
+                sink.tryEmitComplete();
+            }
         });
 
-        tokenStream.start();
-        return sink.asFlux();
+        try (var ignored = new ModelContextScope(session.requestContextSnapshot(), session.agentRequestContextSnapshot())) {
+            try { tokenStream.start(); }
+            catch (RuntimeException e) { sseEmitterRegistry.unregister(conversationId, sink); throw e; }
+        }
+        return sink.asFlux().doOnCancel(() -> {
+            if (terminal.compareAndSet(false, true)) {
+                if (modelRun != null) modelRun.cancel();
+                sseEmitterRegistry.unregister(conversationId, sink);
+            }
+        });
     }
     private void collectTokenUsage(
-            dev.langchain4j.model.chat.response.ChatResponse response, AgentToolTracker toolTracker) {
+            ChatResponse response, AgentToolTracker toolTracker) {
         if (Objects.nonNull(response.tokenUsage())) {
             toolTracker.setTokenUsage(
                     response.tokenUsage().outputTokenCount(),
@@ -240,8 +266,8 @@ public class ChatStreamBridge {
      * listeners (token persistence, memory autowrite) run even if the provider omits token usage metadata.
      */
     private void publishChatCompleted(
-            dev.langchain4j.model.chat.response.ChatResponse response,
-            Long conversationId) {
+            ChatResponse response,
+            Long conversationId, InvocationParameters parameters) {
         Integer outputTokens = null;
         Integer totalTokens = null;
         if (response.tokenUsage() != null) {
@@ -259,7 +285,7 @@ public class ChatStreamBridge {
         }
 
         eventPublisher.publishEvent(
-                new ChatCompletedEvent(this, conversationId, outputTokens, totalTokens));
+                new ChatCompletedEvent(this, conversationId, outputTokens, totalTokens, parameters));
     }
 
     private Map<String, Object> buildDoneMetadata(Long conversationId, AgentToolTracker toolTracker) {

@@ -19,6 +19,7 @@ public final class InvocationContextConstant {
     /** Main agent: connection ids returned by {@code getAllConnections} for this chat (tool-thread access check). */
     public static final String READABLE_CONNECTION_IDS = "readableConnectionIds";
     public static final String MODEL_NAME = "modelName";
+    public static final String MODEL_RUN_SNAPSHOT = "modelRunSnapshot";
     public static final String LANGUAGE = "language";
 
     public static final String WORKSPACE_TYPE = "workspaceType";

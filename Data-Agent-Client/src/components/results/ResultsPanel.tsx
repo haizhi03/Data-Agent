@@ -3,7 +3,7 @@ import { Database, Download, Trash2, Maximize2 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useTranslation } from 'react-i18next';
 import { I18N_KEYS } from '../../constants/i18nKeys';
-import type { ExecuteSqlMessage, ExecuteSqlResponse, ExecuteSqlResultSet } from '../../types/sql';
+import type { ExecuteSqlMessage, ExecuteSqlResponse } from '../../types/sql';
 import { SqlCodeBlock } from '../common/SqlCodeBlock';
 import { buildCsvFromResult, downloadCsv } from '../../utils/exportResult';
 import { formatDmExecutionPlan } from '../../utils/dmExecutionPlan';
@@ -13,6 +13,8 @@ import {
   Group as PanelGroup,
   Separator as PanelResizeHandle
 } from 'react-resizable-panels';
+import { extractResultSet, statementStatusColor, statementStatusLabel } from './statementStatus';
+import { StatementResultRow } from './StatementResultRow';
 
 interface ResultsPanelProps {
   isVisible: boolean;
@@ -33,23 +35,18 @@ export function ResultsPanel({ isVisible, onClose, executeResult: singleResult, 
 
   useEffect(() => setSelectedStatement(0), [scriptResults]);
 
-  const primaryResultSet: ExecuteSqlResultSet | null | undefined =
-    executeResult?.resultSet ??
-    executeResult?.results?.find(r => r.type === 'QUERY')?.resultSet;
+  const scriptSummary = scriptResults && scriptResults.length > 1
+    ? `${scriptResults.length} statements · ${scriptResults.filter(r => r.success).length} ok · ${scriptResults.filter(r => !r.success).length} failed`
+    : null;
 
-  const resultHeaders =
-    primaryResultSet?.columns?.map(c => c.label || c.name || '').filter(Boolean) ??
-    executeResult?.headers ??
-    [];
-
-  const resultRows = primaryResultSet?.rows ?? executeResult?.rows ?? [];
+  const { headers: resultHeaders, rows: resultRows } = extractResultSet(executeResult);
   const isDmExecutionPlan = /^\s*EXPLAIN\b/i.test(executeResult?.executedSql || executeResult?.originalSql || '')
     && resultHeaders.length === 1 && resultHeaders[0] === 'Execution Plan';
 
   // Determine if Results tab should be shown (SELECT query with data)
   const hasResultTab = !!(
     executeResult?.success &&
-    (executeResult?.query || executeResult?.type === 'QUERY' || !!primaryResultSet?.columns?.length)
+    (executeResult?.query || executeResult?.type === 'QUERY' || resultHeaders.length > 0)
   );
 
   // Can export when we have a result set (headers; rows may be empty)
@@ -77,30 +74,12 @@ export function ResultsPanel({ isVisible, onClose, executeResult: singleResult, 
 
   const getStatusIndicatorColor = () => {
     if (isRunning) return 'bg-amber-500 animate-pulse';
-    if (!executeResult) return 'bg-gray-500';
-    if (executeResult.statementState === 'UNKNOWN' || executeResult.batchState === 'UNKNOWN') return 'bg-amber-500';
-    if (executeResult.batchState === 'PARTIAL') return 'bg-amber-500';
-    if (executeResult.statementState === 'ROLLED_BACK' || executeResult.batchState === 'ROLLED_BACK') return 'bg-red-500';
-    if (executeResult.statementState === 'NOT_EXECUTED') return 'bg-gray-500';
-    if (executeResult.success) return 'bg-green-500';
-    return 'bg-red-500';
+    return statementStatusColor(executeResult);
   };
 
   const getStatusText = () => {
     if (isRunning) return 'Running...';
-    if (!executeResult) return 'Ready';
-    if (executeResult.statementState === 'UNKNOWN' || executeResult.batchState === 'UNKNOWN') return 'Outcome unknown';
-    if (executeResult.batchState === 'PARTIAL') return 'Partially applied';
-    if (executeResult.statementState === 'ROLLED_BACK') return 'Rolled back';
-    if (executeResult.statementState === 'NOT_EXECUTED') return 'Not executed';
-    if (!executeResult.success) return executeResult.statementState || 'Error';
-    const duration = executeResult.executionInfo?.durationMs ?? executeResult.executionTimeMs;
-    const fetched = executeResult.executionInfo?.fetchRows ?? resultRows.length;
-    const affected = executeResult.executionInfo?.affectedRows ?? executeResult.affectedRows;
-    if (executeResult.query || executeResult.type === 'QUERY') {
-      return `${fetched} rows | ${duration}ms`;
-    }
-    return `${affected} affected | ${duration}ms`;
+    return statementStatusLabel(executeResult);
   };
 
   const outputMessages: ExecuteSqlMessage[] =
@@ -159,18 +138,23 @@ export function ResultsPanel({ isVisible, onClose, executeResult: singleResult, 
         {/* Toolbar */}
         <div className="workbench-header flex h-11 items-center px-3 shrink-0">
           {(scriptResults?.length ?? 0) > 1 && (
-            <select
-              aria-label="Script statement result"
-              value={selectedStatement}
-              onChange={event => setSelectedStatement(Number(event.target.value))}
-              className="workbench-pill mr-2 text-[10px]"
-            >
-              {scriptResults?.map((result, index) => (
-                <option key={index} value={index}>
-                  {index + 1}. {result.statementState ?? (result.success ? 'EXECUTED' : 'FAILED')}
-                </option>
-              ))}
-            </select>
+            <>
+              <select
+                aria-label="Script statement result"
+                value={selectedStatement}
+                onChange={event => setSelectedStatement(Number(event.target.value))}
+                className="workbench-pill mr-2 text-[10px]"
+              >
+                {scriptResults?.map((result, index) => (
+                  <option key={index} value={index}>
+                    {index + 1}. {result.statementState ?? (result.success ? 'EXECUTED' : 'FAILED')}
+                  </option>
+                ))}
+              </select>
+              {scriptSummary && (
+                <span className="mr-2 text-[10px] theme-text-secondary">{scriptSummary}</span>
+              )}
+            </>
           )}
           <div className="flex space-x-1 h-full">
             {hasResultTab && (
@@ -310,13 +294,13 @@ export function ResultsPanel({ isVisible, onClose, executeResult: singleResult, 
                   {scriptResults && scriptResults.length > 0 && (
                     <div className="mb-2 space-y-1">
                       {scriptResults.map((result, index) => (
-                        <button key={index} type="button" onClick={() => setSelectedStatement(index)}
-                          className="block text-left theme-text-secondary hover:theme-text-primary">
-                          #{index + 1} {result.statementState ?? (result.success ? 'EXECUTED' : 'FAILED')}
-                          {result.transactionOutcome && result.transactionOutcome !== 'NONE'
-                            ? ` · ${result.transactionOutcome}` : ''}
-                          {result.errorMessage ? ` · ${result.errorMessage}` : ''}
-                        </button>
+                        <StatementResultRow
+                          key={index}
+                          result={result}
+                          index={index}
+                          selected={index === selectedStatement}
+                          onSelect={() => setSelectedStatement(index)}
+                        />
                       ))}
                     </div>
                   )}

@@ -44,6 +44,10 @@ public interface TableManager {
         throw new UnsupportedOperationException("Plugin does not support getting table DDL");
     }
 
+    default String getTableComment(Connection connection, String catalog, String schema, String tableName) {
+        return null;
+    }
+
     default void deleteTable(Connection connection, String catalog, String schema, String tableName) {
         throw new UnsupportedOperationException("Plugin does not support deleting table");
     }

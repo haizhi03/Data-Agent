@@ -22,6 +22,8 @@ interface BatchImportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   importParams: BatchImportParams | null;
+  /** Called when at least one file was imported successfully. */
+  onSuccess?: () => void;
 }
 
 interface PlannedFile {
@@ -32,10 +34,14 @@ interface PlannedFile {
   reason?: string;
 }
 
+/** Sentinel value for the "create a new table" option in the target-table dropdown. */
+const NEW_TABLE_OPTION = '__NEW_TABLE__';
+
 export function BatchImportDialog({
   open,
   onOpenChange,
   importParams,
+  onSuccess,
 }: BatchImportDialogProps) {
   const { t } = useTranslation();
   const toast = useToast();
@@ -79,13 +85,28 @@ export function BatchImportDialog({
   }, [open, importParams, batchImport.reset]);
 
   // All ready files are imported into the single target table selected above.
+  const isNewTable = targetTable === NEW_TABLE_OPTION;
+  // SQL files declare their own table name inside CREATE TABLE; for other
+  // formats the new table name is derived from the first file's name (without
+  // extension) so the user does not have to type it.
+  const allSqlFiles = files.length > 0 && files.every((file) => {
+    const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
+    return IMPORT_FILE_TYPES[ext] === 'SQL';
+  });
+  const tableNameFromFile = files[0]?.name.replace(/\.[^.]+$/, '') ?? '';
+  const resolvedTableName = isNewTable
+    ? allSqlFiles
+      ? '' // SQL carries its own table name; nothing to forward.
+      : tableNameFromFile
+    : targetTable;
   const plannedFiles: PlannedFile[] = files.map((file) => {
     const extension = file.name.split('.').pop()?.toLowerCase() ?? '';
     const fileType = IMPORT_FILE_TYPES[extension];
     if (!fileType) {
-      return { file, fileType: '', tableName: targetTable, ready: false, reason: t(I18N_KEYS.EXPLORER.IMPORT_FORMAT_UNSUPPORTED) };
+      return { file, fileType: '', tableName: resolvedTableName, ready: false, reason: t(I18N_KEYS.EXPLORER.IMPORT_FORMAT_UNSUPPORTED) };
     }
-    return { file, fileType, tableName: targetTable, ready: targetTable !== '' };
+    const ready = isNewTable ? allSqlFiles || resolvedTableName !== '' : resolvedTableName !== '';
+    return { file, fileType, tableName: resolvedTableName, ready };
   });
   const readyFiles = plannedFiles.filter((item) => item.ready);
   const hasCsv = plannedFiles.some((item) => item.fileType === 'CSV');
@@ -129,10 +150,16 @@ export function BatchImportDialog({
       catalog: importParams.catalog,
       schema: importParams.schema,
       encoding: fileEncoding,
+      createTableIfMissing: isNewTable,
     });
     if (!outcome.cancelled) {
       const success = outcome.results.filter((r) => r.success).length;
       const failed = outcome.results.length - success;
+      if (success > 0) {
+        // Refresh the explorer tree even on partial success — a new table may have
+        // been auto-created even when some later files failed.
+        onSuccess?.();
+      }
       if (failed === 0 && success > 0) {
         toast.success(t(I18N_KEYS.EXPLORER.IMPORT_BATCH_DONE, { success, failed: 0 }));
       }
@@ -168,6 +195,7 @@ export function BatchImportDialog({
               <option value="">
                 {tablesLoading ? t(I18N_KEYS.COMMON.LOADING) : t(I18N_KEYS.EXPLORER.IMPORT_SELECT_TARGET_TABLE)}
               </option>
+              <option value={NEW_TABLE_OPTION}>➕ 添加新表</option>
               {tables.map((name) => (
                 <option key={name} value={name}>
                   {name}
