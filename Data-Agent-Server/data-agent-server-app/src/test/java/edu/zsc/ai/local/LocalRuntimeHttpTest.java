@@ -128,6 +128,14 @@ class LocalRuntimeHttpTest {
         assertThat(response.body()).doesNotContain(identity.transportTokenForHost(), directory.toString());
     }
 
+    @Test void anEmptyLocalWorkspaceHasAnAvailableChatModelEndpoint() throws Exception {
+        var response = send(request("/api/ai/models", true));
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(JSON.readTree(response.body()).path("data").isArray()).isTrue();
+        assertThat(JSON.readTree(response.body()).path("data").size()).isZero();
+        assertThat(response.body()).doesNotContain(identity.transportTokenForHost(), directory.toString());
+    }
+
     @Test void missingWrongAndPreviousProcessCredentialsAreRejected() throws Exception {
         assertError(send(request("/api/runtime/capabilities", false)), 401, "LOCAL_CLIENT_UNAUTHENTICATED");
         assertError(send(request("/api/runtime/capabilities", false).header("Authorization", "Bearer wrong")),

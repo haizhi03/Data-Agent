@@ -47,11 +47,24 @@ final class LocalConversationRegistry {
         sessionGoneListener.accept(id);
     }
     synchronized void begin(Session session, ModelRunSnapshot run) {
+        begin(session, run, Engine.JAVA);
+    }
+    synchronized void beginCompaction(Session session, ModelRunSnapshot run) {
+        require(session.id);
+        if (session.engine == Engine.PI)
+            throw new LocalRequestException(409, "PI_COMPACTION_NOT_SUPPORTED", "Pi 会话暂不支持压缩，请新建对话");
+        begin(session, run, Engine.JAVA);
+    }
+    synchronized void begin(Session session, ModelRunSnapshot run, Engine engine) {
         require(session.id);
         if (session.active != null) throw new LocalRequestException(409, "LOCAL_SESSION_BUSY", "当前会话仍在运行");
+        if (session.engine != null && session.engine != engine)
+            throw new LocalRequestException(409, "LOCAL_SESSION_ENGINE_MISMATCH", "当前会话的引擎已固定，请新建对话");
         expireWrites(session);
         if (session.writeActive!=null || session.writes.values().stream().anyMatch(w -> w.status.equals("PENDING")))
             throw new LocalRequestException(409,"WRITE_APPROVAL_REQUIRED","请先确认或拒绝待处理写入");
+        // Keep ownership even if the run later fails or is cancelled; each engine holds its own history.
+        session.engine = engine;
         session.active = run;
     }
     synchronized boolean finish(Session session, ModelRunSnapshot run, List<ChatMessage> committed) {
@@ -134,12 +147,14 @@ final class LocalConversationRegistry {
         sessions.keySet().forEach(id -> sessionGoneListener.accept(id));
         sessions.clear();
     }
+    enum Engine { JAVA, PI }
     static final class Session {
         final long id;
         volatile DbContext target;
         volatile Long connectionVersion;
         volatile List<ChatMessage> messages = List.of();
         volatile ModelRunSnapshot active;
+        volatile Engine engine;
         volatile boolean closed;
         volatile String modelConfigId;
         final Map<String,LocalWriteProposal.Operation> writes=new LinkedHashMap<>();

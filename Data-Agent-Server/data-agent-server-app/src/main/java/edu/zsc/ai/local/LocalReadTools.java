@@ -7,9 +7,7 @@ import edu.zsc.ai.config.ai.model.ModelRunSnapshot;
 import edu.zsc.ai.context.*;
 import edu.zsc.ai.api.model.request.ChatUserMention;
 import edu.zsc.ai.domain.model.context.DbContext;
-import edu.zsc.ai.domain.model.dto.request.db.AgentExecuteSqlRequest;
 import edu.zsc.ai.domain.service.db.*;
-import edu.zsc.ai.domain.service.db.impl.SqlExecutionServiceImpl;
 import java.util.*;
 import java.util.function.Function;
 import net.sf.jsqlparser.parser.CCJSqlParserUtil;
@@ -22,7 +20,7 @@ final class LocalReadTools {
     private final ModelRunSnapshot run;
     private final LocalConnectionService connections;
     private final LocalMetadataTools metadata;
-    private final SqlExecutionServiceImpl sql;
+    private final LocalReadOnlyQuery queries;
     private final ObjectMapper json;
     private final LocalWriteService writes;
     private final RequestContextInfo request;
@@ -31,25 +29,36 @@ final class LocalReadTools {
     private final Map<Long,Long> versions=new java.util.concurrent.ConcurrentHashMap<>();
     private final java.util.concurrent.atomic.AtomicInteger toolCount=new java.util.concurrent.atomic.AtomicInteger();
     LocalReadTools(LocalConversationRegistry.Session session, ModelRunSnapshot run, LocalConnectionService connections,
-            LocalMetadataTools metadata, SqlExecutionServiceImpl sql, ObjectMapper json,
+            LocalMetadataTools metadata, LocalReadOnlyQuery queries, ObjectMapper json,
             RequestContextInfo request, AgentRequestContextInfo agent) {
-        this(session,run,connections,metadata,sql,json,request,agent,null);
+        this(session,run,connections,metadata,queries,json,request,agent,null);
     }
     LocalReadTools(LocalConversationRegistry.Session session, ModelRunSnapshot run, LocalConnectionService connections,
-            LocalMetadataTools metadata, SqlExecutionServiceImpl sql, ObjectMapper json,
+            LocalMetadataTools metadata, LocalReadOnlyQuery queries, ObjectMapper json,
             RequestContextInfo request, AgentRequestContextInfo agent, LocalWriteService writes) {
-        this(session,run,connections,metadata,sql,json,request,agent,writes,session.target,session.connectionVersion,List.of());
+        this(session,run,connections,metadata,queries,json,request,agent,writes,session.target,session.connectionVersion,List.of());
     }
     LocalReadTools(LocalConversationRegistry.Session session, ModelRunSnapshot run, LocalConnectionService connections,
-            LocalMetadataTools metadata, SqlExecutionServiceImpl sql, ObjectMapper json,
+            LocalMetadataTools metadata, LocalReadOnlyQuery queries, ObjectMapper json,
             RequestContextInfo request, AgentRequestContextInfo agent, LocalWriteService writes,
             DbContext target, Long version, List<ChatUserMention> mentions) {
         this.writes=writes;this.session=session;this.run=run;this.connections=connections;this.metadata=metadata;
-        this.sql=sql;this.json=json;this.request=request;this.agent=agent;this.defaultTarget=target;
+        this.queries=queries;this.json=json;this.request=request;this.agent=agent;this.defaultTarget=target;
         if(target.connectionId()!=null && version!=null) versions.put(target.connectionId(),version);
         for(var mention:mentions) versions.computeIfAbsent(mention.getConnectionId(),id -> connections.get(id).version());
     }
-    @Tool("List bounded tables. Omitted target fields use the conversation default. Explicit connection/catalog/schema may reference another accessible target.")
+    @Tool("List available data sources (connectionId, name, dbType) without a default connection. Discover these before asking the user for a connection ID; this does not open any database.")
+    public String list_connections() {
+        return toolAction(request, () -> metadata.listConnections(versions));
+    }
+
+    @Tool("Discover databases/catalogs or schemas on one accessible connection. With no catalog, lists catalogs if supported; otherwise lists schemas. Supply a chosen catalog to list its schemas. Check truncated; never guess namespace names.")
+    public String list_namespaces(@P(value="Connection ID from list_connections or context",required=false) Long connectionId,
+            @P(value="Chosen catalog, when applicable",required=false) String catalogName,
+            @P(value="Schema, when applicable",required=false) String schemaName) {
+        return scoped(connectionId,catalogName,schemaName,metadata::listNamespaces);
+    }
+    @Tool("List bounded tables in one known database/schema. Discover missing namespaces with list_namespaces first. Omitted target fields use the conversation default. Explicit connection/catalog/schema may reference another accessible target.")
     public String list_tables(@P(value="Connection ID",required=false) Long connectionId,
             @P(value="Catalog, when applicable",required=false) String catalogName,
             @P(value="Schema, when applicable",required=false) String schemaName) {
@@ -69,17 +78,7 @@ final class LocalReadTools {
     public String query_database(String query,@P(value="Connection ID",required=false) Long connectionId,
             @P(value="Default catalog for unqualified SQL names",required=false) String catalogName,
             @P(value="Default schema for unqualified SQL names",required=false) String schemaName) {
-        return scoped(connectionId,catalogName,schemaName,target -> {
-            LocalReadOnlySql.validate(query);
-            try { if(CCJSqlParserUtil.parseStatements(query).getStatements().size()!=1) throw LocalReadOnlySql.unsupported(); }
-            catch(LocalRequestException e) { throw e; } catch(Exception e) { throw LocalReadOnlySql.unsupported(); }
-            String executionId=UUID.randomUUID().toString();
-            try(var ignored=run.track(() -> sql.cancelExecution(target,executionId))) {
-                run.ensureActive();
-                return sql.executeSql(AgentExecuteSqlRequest.builder().conversationId(session.id).connectionId(target.connectionId())
-                        .catalog(target.catalog()).schema(target.schema()).sql(query).timeoutMs(15000).maxRows(200).executionId(executionId).build());
-            }
-        });
+        return scoped(connectionId,catalogName,schemaName,target -> queries.execute(session.id,run,target,query).response());
     }
     public String query_database(String query) { return query_database(query,null,null,null); }
 
@@ -97,13 +96,17 @@ final class LocalReadTools {
     private String scoped(Long connectionId,String catalogName,String schemaName,Function<DbContext,?> action) {
         // Fill defaults first so the request context can be scoped before any access check runs.
         var probe=LocalMetadataTools.fillDefaults(connectionId,catalogName,schemaName,defaultTarget);
-        try(var ignored=new ModelContextScope(request.toBuilder().connectionId(probe.connectionId())
-                .catalog(probe.catalog()).schema(probe.schema()).build(),agent)) {
+        return toolAction(request.toBuilder().connectionId(probe.connectionId()).catalog(probe.catalog()).schema(probe.schema()).build(), () -> {
+            var scope=metadata.resolveValidated(probe,versions);
+            return metadata.withPinnedVersion(scope,() -> action.apply(scope.target()));
+        });
+    }
+    private String toolAction(RequestContextInfo context,java.util.function.Supplier<?> action) {
+        try(var ignored=new ModelContextScope(context,agent)) {
             run.ensureActive();
             if(toolCount.incrementAndGet()>32) throw new edu.zsc.ai.config.ai.model.ModelIntegrationException("AGENT_BUDGET_EXCEEDED",org.springframework.http.HttpStatus.TOO_MANY_REQUESTS);
             if(session.closed) throw LocalRequestException.forbidden();
-            var scope=metadata.resolveValidated(probe,versions);
-            Object result=metadata.withPinnedVersion(scope,() -> action.apply(scope.target()));
+            Object result=action.get();
             run.ensureActive();String text=json.writeValueAsString(result);
             return text.length()<=12000?text:json.writeValueAsString(Map.of("truncated",true,"preview",text.substring(0,11000)));
         } catch(LocalRequestException e) { return safeError(e.response().reasonCode()); }

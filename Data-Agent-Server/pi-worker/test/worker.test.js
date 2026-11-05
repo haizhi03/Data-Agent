@@ -87,6 +87,101 @@ async function waitHello(worker) {
   assert.equal(hello.protocol, 1);
 }
 
+test('an unscoped assistant discovers data sources and namespaces before listing tables', async () => {
+  const server = await startFixtureServer((body, count) => {
+    const names = body.tools.map(tool => tool.function.name);
+    assert.ok(names.includes('list_connections')); assert.ok(names.includes('list_namespaces'));
+    if (count === 1) return toolCallResponse([{ id: 'sources', name: 'list_connections', args: {} }]);
+    const result = JSON.parse(body.messages.filter(message => message.role === 'tool').at(-1).content);
+    if (count === 2) {
+      assert.equal(result.connections[0].name, 'Demo');
+      return toolCallResponse([{ id: 'namespaces', name: 'list_namespaces', args: { connectionId: result.connections[0].connectionId } }]);
+    }
+    if (count === 3) {
+      assert.deepEqual(result.catalogs, ['sales']);
+      return toolCallResponse([{ id: 'tables', name: 'list_tables', args: { connectionId: 7, catalogName: result.catalogs[0] } }]);
+    }
+    assert.deepEqual(result.tables, ['orders', 'users']);
+    return textResponse('Demo 的 sales 数据库有2张表');
+  });
+  try {
+    const worker = startWorker(); await waitHello(worker);
+    worker.send(startMessage({ baseUrl: server.baseUrl, message: '当前数据库有多少表？', context: { defaultTarget: {} } }));
+    for (const [id, name, args, result] of [
+      ['sources', 'list_connections', {}, { connections: [{ connectionId: 7, name: 'Demo', dbType: 'mysql' }], truncated: false }],
+      ['namespaces', 'list_namespaces', { connectionId: 7 }, { catalogs: ['sales'], schemas: [], supportsCatalog: true, supportsSchema: false, truncated: false }],
+      ['tables', 'list_tables', { connectionId: 7, catalogName: 'sales' }, { tables: ['orders', 'users'], truncated: false }],
+    ]) {
+      const call = await worker.waitFor(message => message.type === 'tool_call' && message.toolCallId === id);
+      assert.equal(call.name, name); assert.deepEqual(JSON.parse(call.arguments), args);
+      worker.send({ type: 'tool_result', runId: 'run-1', toolCallId: id, result: JSON.stringify(result) });
+    }
+    const done = await worker.waitFor(message => message.type === 'finished');
+    assert.equal(done.status, 'SUCCEEDED');
+    assert.match(worker.messages.filter(message => message.type === 'text_delta').map(message => message.delta).join(''), /有2张表/);
+  } finally { await server.close(); }
+});
+
+test('assistant delegates Explorer tasks and resumes with the structured task result', async () => {
+  const tasks = [{ connectionId: 7, catalogName: 'sales', instruction: 'Find orders' }];
+  const server = await startFixtureServer((body, count) => {
+    assert.ok(body.tools.some(tool => tool.function.name === 'callingExplorerSubAgent'));
+    if (count === 1) return toolCallResponse([{ id: 'delegate', name: 'callingExplorerSubAgent', args: { tasks } }]);
+    assert.match(body.messages.filter(message => message.role === 'tool').at(-1).content, /verified orders/);
+    return textResponse('Explorer found orders');
+  });
+  try {
+    const worker = startWorker(); await waitHello(worker);
+    worker.send(startMessage({ baseUrl: server.baseUrl }));
+    const call = await worker.waitFor(message => message.type === 'tool_call');
+    assert.equal(call.name, 'callingExplorerSubAgent'); assert.deepEqual(JSON.parse(call.arguments), { tasks });
+    worker.send({ type: 'tool_result', runId: 'run-1', toolCallId: 'delegate', isError: false,
+      result: JSON.stringify({ taskResults: [{ taskId: 'task-1', status: 'SUCCESS', summaryText: 'verified orders', objects: [] }] }) });
+    assert.equal((await worker.waitFor(message => message.type === 'finished')).status, 'SUCCEEDED');
+    assert.equal(server.calls.length, 2);
+  } finally { await server.close(); }
+});
+
+test('Explorer role has only read tools and a model-call budget stops before another upstream call', async () => {
+  const server = await startFixtureServer(body => {
+    assert.deepEqual(body.tools.map(tool => tool.function.name).sort(), ['describe_table', 'list_tables', 'query_database']);
+    return toolCallResponse([{ id: 'read', name: 'list_tables', args: {} }]);
+  });
+  try {
+    const worker = startWorker(); await waitHello(worker);
+    worker.send(startMessage({ baseUrl: server.baseUrl, role: 'explorer', limits: { maxModelCalls: 1, maxToolCalls: 2 } }));
+    await worker.waitFor(message => message.type === 'tool_call');
+    worker.send({ type: 'tool_result', runId: 'run-1', toolCallId: 'read', isError: false, result: '{"tables":["orders"]}' });
+    const finished = await worker.waitFor(message => message.type === 'finished');
+    assert.equal(finished.status, 'FAILED'); assert.equal(finished.errorCode, 'AGENT_BUDGET_EXCEEDED');
+    assert.equal(server.calls.length, 1);
+    assert.equal(worker.messages.filter(message => message.type === 'finished').length, 1);
+  } finally { await server.close(); }
+});
+
+test('rejects unknown worker roles and oversized call budgets without contacting the model', async () => {
+  const worker = startWorker(); await waitHello(worker);
+  for (const [index, override] of [{ role: 'planner' }, { limits: { maxModelCalls: 100 } }].entries()) {
+    worker.send(startMessage({ runId: `invalid-${index}`, ...override }));
+    const finished = await worker.waitFor(message => message.type === 'finished' && message.runId === `invalid-${index}`);
+    assert.equal(finished.errorCode, 'PI_PROTOCOL_ERROR');
+  }
+});
+
+test('an Explorer tool budget rejects excess execution and prevents a further model call', async () => {
+  const server = await startFixtureServer((_body, count) => toolCallResponse([{ id: `read-${count}`, name: 'list_tables', args: {} }]));
+  try {
+    const worker = startWorker(); await waitHello(worker);
+    worker.send(startMessage({ baseUrl: server.baseUrl, role: 'explorer', limits: { maxModelCalls: 6, maxToolCalls: 1 } }));
+    await worker.waitFor(message => message.type === 'tool_call');
+    worker.send({ type: 'tool_result', runId: 'run-1', toolCallId: 'read-1', isError: false, result: '{"tables":[]}' });
+    const finished = await worker.waitFor(message => message.type === 'finished');
+    assert.equal(finished.errorCode, 'AGENT_BUDGET_EXCEEDED');
+    assert.equal(worker.messages.filter(message => message.type === 'tool_call').length, 1);
+    assert.equal(server.calls.length, 2);
+  } finally { await server.close(); }
+});
+
 test('simple text run streams deltas and finishes SUCCEEDED', async () => {
   const server = await startFixtureServer(() => textResponse('你好，世界'));
   try {
@@ -162,6 +257,46 @@ test('tool failure reaches the model as an error and the run still completes', a
   }
 });
 
+test('metadata to read-only query loop preserves target and result facts until the final answer', async () => {
+  const target = { connectionId: 7, catalogName: 'sales', schemaName: 'PUBLIC' };
+  const server = await startFixtureServer((body, count) => {
+    assert.deepEqual(body.tools.map((tool) => tool.function.name).sort(), ['callingExplorerSubAgent', 'describe_table', 'list_connections', 'list_namespaces', 'list_tables', 'query_database']);
+    if (count === 1) return toolCallResponse([{ id: 'list', name: 'list_tables', args: target }]);
+    if (count === 2) return toolCallResponse([{ id: 'describe', name: 'describe_table', args: { ...target, tableName: 'orders' } }]);
+    if (count === 3) return toolCallResponse([{ id: 'query', name: 'query_database', args: { ...target, query: 'SELECT COUNT(*) FROM orders' } }]);
+    const result = JSON.parse(body.messages.filter((message) => message.role === 'tool').at(-1).content);
+    assert.equal(result.executionId, 'execution-fixture');
+    assert.deepEqual(result.target, target);
+    assert.equal(result.success, true);
+    assert.equal(result.truncated, false);
+    assert.equal(result.result.rows[0][0], 7);
+    return textResponse('根据 execution-fixture 的查询结果，订单总数为7');
+  });
+  try {
+    const worker = startWorker();
+    await waitHello(worker);
+    worker.send(startMessage({ baseUrl: server.baseUrl, message: '查询订单总数' }));
+    for (const [id, name, result] of [
+      ['list', 'list_tables', { target, tables: ['orders'], truncated: false }],
+      ['describe', 'describe_table', { target, columns: [{ name: 'id' }], truncated: false }],
+      ['query', 'query_database', { target, executionId: 'execution-fixture', success: true, truncated: false, result: { rows: [[7]] } }],
+    ]) {
+      const call = await worker.waitFor((message) => message.type === 'tool_call' && message.toolCallId === id);
+      assert.equal(call.name, name);
+      const args = JSON.parse(call.arguments);
+      for (const key of Object.keys(target)) assert.equal(args[key], target[key]);
+      assert.equal(worker.messages.filter((message) => message.type === 'finished').length, 0);
+      worker.send({ type: 'tool_result', runId: 'run-1', toolCallId: id, isError: false, result: JSON.stringify(result) });
+    }
+    const finished = await worker.waitFor((message) => message.type === 'finished');
+    assert.equal(finished.status, 'SUCCEEDED');
+    assert.equal(finished.usage.modelCalls, 4);
+    assert.equal(finished.usage.toolCalls, 3);
+    assert.equal(worker.messages.filter((message) => message.type === 'finished').length, 1);
+    assert.ok(worker.messages.filter((message) => message.type === 'text_delta').map((message) => message.delta).join('').includes('订单总数为7'));
+  } finally { await server.close(); }
+});
+
 test('cancel while the model is streaming ends the run CANCELLED', async () => {
   const server = await startFixtureServer(() => textResponse('x'.repeat(6000), { delayMs: 2 }));
   try {
@@ -177,8 +312,8 @@ test('cancel while the model is streaming ends the run CANCELLED', async () => {
   }
 });
 
-test('cancel while waiting for a tool result ends the run CANCELLED', async () => {
-  const server = await startFixtureServer(() => toolCallResponse([{ id: 'call_1', name: 'list_tables', args: {} }]));
+test('cancel while waiting for a query result ends the run CANCELLED', async () => {
+  const server = await startFixtureServer(() => toolCallResponse([{ id: 'call_1', name: 'query_database', args: { query: 'SELECT 1' } }]));
   try {
     const worker = startWorker();
     await waitHello(worker);

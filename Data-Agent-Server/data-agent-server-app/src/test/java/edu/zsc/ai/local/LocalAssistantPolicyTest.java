@@ -9,9 +9,30 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.EnumSource;
 import static org.assertj.core.api.Assertions.*;
 
 class LocalAssistantPolicyTest {
+    @ParameterizedTest @EnumSource(LocalConversationRegistry.Engine.class)
+    void acceptedRunPinsEngineEvenAfterCancellation(LocalConversationRegistry.Engine engine) {
+        var registry=new LocalConversationRegistry();
+        var session=registry.create(new DbContext(null,null,null),null);
+        var first=new ModelRunSnapshot(Map.of(),1);
+        registry.begin(session,first,engine);
+        registry.cancel(session.id);
+        registry.finish(session,first,null);
+        var other=engine==LocalConversationRegistry.Engine.PI?LocalConversationRegistry.Engine.JAVA:LocalConversationRegistry.Engine.PI;
+        assertThatThrownBy(() -> registry.begin(session,new ModelRunSnapshot(Map.of(),1),other))
+                .isInstanceOfSatisfying(LocalRequestException.class,e -> {
+                    assertThat(e.status()).isEqualTo(409);
+                    assertThat(e.response().reasonCode()).isEqualTo("LOCAL_SESSION_ENGINE_MISMATCH");
+                });
+        assertThat(session.active).isNull();
+        var next=new ModelRunSnapshot(Map.of(),1);
+        assertThatCode(() -> registry.begin(session,next,engine)).doesNotThrowAnyException();
+        registry.shutdown();
+    }
+
     @ParameterizedTest @ValueSource(strings={"SELECT * FROM other.t", "SELECT * FROM `other`.`t`", "SELECT * FROM \"other\".\"t\"", "SELECT * FROM db.other.t", "SELECT 1; SELECT 2"})
     void modelCannotEscapeThePinnedNamespaceOrRunMultipleStatements(String query) {
         assertThatThrownBy(() -> LocalReadTools.validateTarget(query,"db","allowed")).isInstanceOf(LocalRequestException.class);

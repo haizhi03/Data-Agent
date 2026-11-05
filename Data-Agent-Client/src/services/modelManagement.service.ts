@@ -1,4 +1,5 @@
 import http from '../lib/http';
+import type { ModelOption } from '../types/ai';
 import type { ConnectionInput, ConnectionTestInput, ConnectionTestResult, ManagedModel, ModelConnection, ModelInput, ModelManagementStatus, ModelProfile, ModelPurpose, ModelSetupInput, ModelSetupResult, ModelSpecification, ModelTest, PresetBindingInput, PurposeBinding, ThinkingMode } from '../types/modelManagement';
 
 export function createModelManagementService() {
@@ -8,6 +9,7 @@ export function createModelManagementService() {
     specifications: async () => (await http.get<ModelSpecification[]>('/ai/model-specifications')).data,
     connections: async () => (await http.get<ModelConnection[]>('/ai/model-connections')).data,
     models: async () => (await http.get<ManagedModel[]>('/ai/model-configs')).data,
+    chatModels: async () => (await http.get<ModelOption[]>('/ai/models')).data,
     bindings: async () => (await http.get<PurposeBinding[]>('/ai/model-bindings')).data,
     saveSetup: async (body: ModelSetupInput) => (await http.post<ModelSetupResult>('/ai/model-setups', body)).data,
     saveConnection: async (body: ConnectionInput, id?: string) => id

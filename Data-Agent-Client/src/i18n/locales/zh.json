@@ -1402,7 +1402,10 @@
       "CONNECTION_REVISION_CONFLICT": "连接已修改，请新建对话。",
       "LOCAL_STREAM_FAILED": "连接中断，未确认完成，请检查服务后新建对话。",
       "LOCAL_COMPACTION_FAILED": "压缩失败，原上下文已保留。",
+      "PI_COMPACTION_NOT_SUPPORTED": "Pi 会话暂不支持压缩，请新建对话。",
+      "LOCAL_SESSION_ENGINE_MISMATCH": "当前会话的引擎已固定，请新建对话。",
       "MODEL_CONFIG_UNAVAILABLE": "模型配置不可用，请检查模型设置。",
+      "MODEL_MANAGEMENT_UNAVAILABLE": "可用模型列表加载失败，请检查本地服务后重试。",
       "AGENT_BUDGET_EXCEEDED": "本次运行达到限制，请缩小问题范围。",
       "LOCAL_WRITE_RESPONSE_UNCONFIRMED": "写入响应未确认，请刷新状态；不要重复执行。",
       "WRITE_APPROVAL_REQUIRED": "请先确认或拒绝待处理写入。",
@@ -1412,7 +1415,7 @@
       "PI_WORKER_START_FAILED": "Pi Worker 启动失败，请检查 Node 22+ 环境。",
       "PI_WORKER_EXIT": "Pi Worker 异常退出，本轮运行失败；可重试。",
       "PI_PROTOCOL_ERROR": "Pi Worker 协议错误，本轮运行失败。",
-      "PI_UNSUPPORTED_API_STYLE": "Pi 实验入口暂不支持当前模型的接口类型。",
+      "PI_UNSUPPORTED_API_STYLE": "当前模型的接口不受 Pi 支持，请选择使用 OpenAI Chat Completions 或 Anthropic Messages 接口的模型。",
       "PI_SESSION_BUSY": "当前会话仍有 Pi 运行在进行中。",
       "PI_MODEL_ERROR": "模型调用失败，请检查模型配置或稍后重试。",
       "PI_DISABLED": "Pi 实验入口未启用。"
@@ -1429,6 +1432,8 @@
     "calls": "模型调用",
     "tools": "工具调用",
     "usage_partial": "厂商未提供完整用量",
-    "engine_pi": "Pi 引擎（实验）"
+    "engine_pi": "Pi 实验引擎 · 只读查询",
+    "pi_capabilities": "可查看表结构并执行受限只读查询（限时15秒、最多返回200行）；暂不支持写入或压缩对话。",
+    "ephemeral_pi": "对话仅在内存中，关闭面板后清空。"
   }
 }

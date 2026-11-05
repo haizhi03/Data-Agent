@@ -20,6 +20,20 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllGlobals(); });
 
 describe('trusted local startup', () => {
+  it.each([
+    {state:'READY',reasonCode:null},
+    {state:'UNAVAILABLE',reasonCode:'PI_DISABLED'},
+  ])('preserves the validated Pi capability: $state',async piAssistant=>{
+    vi.mocked(fetch).mockResolvedValue({ok:true,json:async()=>({code:200,data:{...capabilities,features:{...capabilities.features,piAssistant}}})} as Response);
+    await initializeRuntime();
+    expect(useRuntimeStore.getState().status).toBe('READY');
+    expect(useRuntimeStore.getState().capabilities?.features.piAssistant).toEqual(piAssistant);
+  });
+  it('rejects a malformed advertised Pi capability',async()=>{
+    vi.mocked(fetch).mockResolvedValue({ok:true,json:async()=>({code:200,data:{...capabilities,features:{...capabilities.features,piAssistant:{state:'READY',reasonCode:'PI_DISABLED'}}}})} as Response);
+    await initializeRuntime();
+    expect(useRuntimeStore.getState().status).toBe('FAILED');
+  });
   it('connects directly to the fixed backend when no host is present', async () => {
     vi.stubGlobal('window', {});
     await initializeRuntime();

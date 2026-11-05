@@ -12,6 +12,7 @@ import type { Message, Segment, TodoBoxSpec } from './types';
 import { isTodoCompleted } from '../blocks/todoTypes';
 import { SegmentKind } from './types';
 import { isHiddenAskUserAnswerMessage } from './hiddenAskUserAnswer';
+import { useMessageListAutoScroll } from './useMessageListAutoScroll';
 
 export type { Message } from './types';
 
@@ -34,6 +35,13 @@ export function MessageList({
 }: MessageListProps) {
   const { t } = useTranslation();
   const displayMessages = useMemo(() => mergeAssistantToolPairs(messages), [messages]);
+  const latestUserMessageId = useMemo(() => {
+    for (let index = messages.length - 1; index >= 0; index--) {
+      if (messages[index].role === MessageRole.USER) return messages[index].id;
+    }
+    return undefined;
+  }, [messages]);
+  const scroll = useMessageListAutoScroll(latestUserMessageId);
   const {
     lastAssistantMessageIndexWithTodo,
     latestTodoItems,
@@ -66,7 +74,11 @@ export function MessageList({
   let previousVisibleRole = lastVisibleRoleBeforeWindow;
 
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-1.5 bg-[color:var(--bg-panel)]">
+    <div ref={scroll.viewportRef} onScroll={scroll.onScroll} onWheel={scroll.onWheel} onKeyDown={scroll.onKeyDown}
+      onPointerDown={scroll.onPointerDown} onTouchStart={scroll.onTouchStart} onTouchMove={scroll.onTouchMove}
+      style={{ overflowAnchor: 'none', scrollBehavior: 'auto' }}
+      tabIndex={0} className="flex-1 min-h-0 overflow-y-auto p-4 bg-[color:var(--bg-panel)]">
+      <div ref={scroll.contentRef} className="space-y-1.5">
       {hiddenCount > 0 && (
         <div className="text-center text-xs theme-text-secondary py-2 opacity-60">
           {hiddenCount} {t('ai.messages_hidden', { defaultValue: 'earlier messages hidden' })}
@@ -160,6 +172,7 @@ export function MessageList({
       )}
       {trailingContent}
       <div ref={messagesEndRef} />
+      </div>
     </div>
   );
 }

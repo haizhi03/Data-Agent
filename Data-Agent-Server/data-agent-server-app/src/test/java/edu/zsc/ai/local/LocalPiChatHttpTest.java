@@ -4,6 +4,12 @@ import com.fasterxml.jackson.databind.*;
 import edu.zsc.ai.DataAgentApplication;
 import edu.zsc.ai.config.ai.model.*;
 import edu.zsc.ai.domain.model.context.DbContext;
+import edu.zsc.ai.domain.model.dto.request.db.AgentExecuteSqlRequest;
+import edu.zsc.ai.domain.model.dto.response.db.ExecuteSqlResponse;
+import edu.zsc.ai.domain.model.dto.response.db.ExecuteSqlResultSet;
+import edu.zsc.ai.domain.service.db.impl.SqlExecutionServiceImpl;
+import edu.zsc.ai.plugin.model.transaction.StatementExecutionState;
+import edu.zsc.ai.plugin.model.transaction.TransactionOutcome;
 import edu.zsc.ai.domain.service.db.ColumnService;
 import edu.zsc.ai.domain.service.db.TableService;
 import edu.zsc.ai.plugin.model.metadata.ColumnMetadata;
@@ -13,6 +19,7 @@ import java.nio.file.*;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -37,9 +44,48 @@ class LocalPiChatHttpTest {
     static String base, token, runtime, modelId;
     static long connectionId;
     static final TableService TABLES=mock(TableService.class);
+    static final edu.zsc.ai.domain.service.db.DatabaseService DATABASES=mock(edu.zsc.ai.domain.service.db.DatabaseService.class);
+    static final edu.zsc.ai.domain.service.db.SchemaService SCHEMAS=mock(edu.zsc.ai.domain.service.db.SchemaService.class);
     static final ColumnService COLUMNS=mock(ColumnService.class);
+    static final SqlExecutionServiceImpl SQL=mock(SqlExecutionServiceImpl.class);
+    static final AtomicReference<CountDownLatch> QUERY_STARTED=new AtomicReference<>(new CountDownLatch(1));
+    static final AtomicReference<CountDownLatch> QUERY_RELEASE=new AtomicReference<>(new CountDownLatch(1));
+    static final List<Long> createdSessions=new CopyOnWriteArrayList<>();
 
     @Configuration(proxyBeanMethods=false) static class Fixture {
+        @Bean @Primary edu.zsc.ai.domain.service.db.DatabaseService fixtureDatabases() {
+            when(DATABASES.getDatabases(any())).thenReturn(List.of("fixture_db")); return DATABASES;
+        }
+        @Bean @Primary edu.zsc.ai.domain.service.db.SchemaService fixtureSchemas() {
+            when(SCHEMAS.listSchemas(any(),any())).thenReturn(List.of("APP")); return SCHEMAS;
+        }
+        @Bean @Primary SqlExecutionServiceImpl fixtureSql() {
+            when(SQL.executeSql(any())).thenAnswer(invocation -> {
+                AgentExecuteSqlRequest request=invocation.getArgument(0);
+                assertThat(edu.zsc.ai.context.RequestContext.snapshot().getConnectionId()).isEqualTo(request.getConnectionId());
+                assertThat(edu.zsc.ai.context.AgentRequestContext.get().getModelRunSnapshot()).isNotNull();
+                if(request.getSql().contains("wait-query")) {
+                    QUERY_STARTED.get().countDown();
+                    assertThat(QUERY_RELEASE.get().await(15,TimeUnit.SECONDS)).isTrue();
+                }
+                var result=new ExecuteSqlResponse(); result.setQuery(true);
+                boolean failed=request.getSql().contains("timeout-query"); result.setSuccess(!failed);
+                result.setStatementState(failed?StatementExecutionState.TIMED_OUT:StatementExecutionState.EXECUTED);
+                result.setTransactionOutcome(failed?TransactionOutcome.UNKNOWN:TransactionOutcome.NONE);
+                if(failed) result.setErrorMessage("fixture query timeout");
+                result.setHeaders(List.of("ROW_COUNT"));
+                result.setRows(List.of(List.of(request.getSql().contains("large-query")?"\"\\\n".repeat(9000):7)));
+                result.setResultSet(new ExecuteSqlResultSet(null,result.getRows(),1,request.getSql().contains("truncated-query")));
+                return result;
+            });
+            when(SQL.cancelExecution(any(),any())).thenAnswer(invocation -> {
+                DbContext target=invocation.getArgument(0);
+                assertThat(edu.zsc.ai.context.RequestContext.getConnectionId()).isEqualTo(target.connectionId());
+                assertThat(edu.zsc.ai.context.AgentRequestContext.get().getModelRunSnapshot()).isNotNull();
+                QUERY_RELEASE.get().countDown(); return null;
+            });
+            return SQL;
+        }
         @Bean @Primary TableService fixtureTables() {
             when(TABLES.getTables(any())).thenReturn(List.of("safe_table")); return TABLES;
         }
@@ -79,11 +125,21 @@ class LocalPiChatHttpTest {
         var saved=call("POST","/api/ai/model-setups",setup,true);
         assertThat(saved.statusCode()).isEqualTo(200);
         modelId=JSON.readTree(saved.body()).path("data").path("model").path("id").asText();
+        var explorerSetup=new LinkedHashMap<>(setup);
+        explorerSetup.put("name","Explorer fixture");explorerSetup.put("modelId","explorer-fixture-model");
+        explorerSetup.put("makeDefault",false);explorerSetup.remove("bindingVersions");
+        var explorerSaved=call("POST","/api/ai/model-setups",explorerSetup,true);
+        String explorerId=JSON.readTree(explorerSaved.body()).path("data").path("model").path("id").asText();
+        call("PUT","/api/ai/model-bindings/EXPLORER",Map.of("expectedVersion",1,"modelConfigId",explorerId),true);
         Path driver=Files.write(root.resolve("fixture-driver.jar"),new byte[0]);
         var connection=call("POST","/api/connections/create",Map.of("name","Fixture db","dbType","mysql","host","example.invalid","port",3306,"username","fixture","driverJarPath",driver.toString()),true);
         assertThat(connection.statusCode()).isEqualTo(200); connectionId=JSON.readTree(connection.body()).path("data").path("id").asLong();
     }
     @AfterAll static void close() { if(context!=null)context.close(); }
+    @AfterEach void releaseSessions() throws Exception {
+        for(long id:createdSessions)call("DELETE","/api/local/conversations/"+id,null,false);
+        createdSessions.clear();
+    }
 
     static HttpRequest request(String method,String path,Object body) throws Exception {
         var builder=HttpRequest.newBuilder(URI.create(base+path)).timeout(Duration.ofSeconds(60))
@@ -98,13 +154,291 @@ class LocalPiChatHttpTest {
     }
     static long session(boolean database) throws Exception {
         var created=call("POST","/api/local/conversations",database?Map.of("connectionId",connectionId,"catalog","fixture_db"):Map.of(),true);
-        return JSON.readTree(created.body()).path("data").path("conversationId").asLong();
+        long id=JSON.readTree(created.body()).path("data").path("conversationId").asLong();createdSessions.add(id);return id;
     }
     static String piTurn(long id,String text,List<Map<String,Object>> mentions) throws Exception {
         var body=new LinkedHashMap<String,Object>();
         body.put("conversationId",id); body.put("message",text); body.put("modelConfigId",modelId);
         if (mentions!=null) body.put("userMentions",mentions);
         return call("POST","/api/local/pi/chat/stream",body,true).body();
+    }
+    static List<JsonNode> blocks(String sse) throws Exception {
+        var result=new ArrayList<JsonNode>();
+        for(String line:sse.split("\n")) if(line.startsWith("data:")) result.add(JSON.readTree(line.substring(5).trim()));
+        return result;
+    }
+    static JsonNode queryTool(String sse) throws Exception {
+        for(var block:blocks(sse)) if(block.path("type").asText().equals("TOOL_RESULT")) {
+            var tool=JSON.readTree(block.path("data").asText());
+            if(tool.path("toolName").asText().equals("query_database")) return tool;
+        }
+        throw new AssertionError("query result missing");
+    }
+    static JsonNode discoveryResult(String sse) throws Exception {
+        for(var block:blocks(sse))if(block.path("type").asText().equals("TOOL_RESULT")) {
+            return JSON.readTree(JSON.readTree(block.path("data").asText()).path("result").asText());
+        }
+        throw new AssertionError("Discovery result missing");
+    }
+
+    @Test void noDefaultConnectionCanDiscoverSourcesThenReadTheChosenDatabase() throws Exception {
+        long id=session(false); clearInvocations(TABLES,SQL,DATABASES,SCHEMAS);
+        var sources=discoveryResult(piTurn(id,"list_connections:{}",null));
+        assertThat(sources.path("connections").findValuesAsText("name")).contains("Fixture db");
+        for(var source:sources.path("connections")) assertThat(source.properties().stream().map(Map.Entry::getKey))
+                .containsExactlyInAnyOrder("connectionId","name","dbType");
+        verifyNoInteractions(TABLES,SQL,DATABASES,SCHEMAS);
+        var namespaces=discoveryResult(piTurn(id,"list_namespaces:"+JSON.writeValueAsString(Map.of("connectionId",connectionId)),null));
+        assertThat(namespaces.path("catalogs").get(0).asText()).isEqualTo("fixture_db");
+        verify(DATABASES).getDatabases(connectionId);verifyNoInteractions(SCHEMAS);
+        var tables=discoveryResult(piTurn(id,"list_tables:"+JSON.writeValueAsString(Map.of("connectionId",connectionId,"catalogName","fixture_db")),null));
+        assertThat(tables.path("tables").get(0).asText()).isEqualTo("safe_table");
+        verify(TABLES).getTables(new DbContext(connectionId,"fixture_db",null));
+        assertThat(JSON.readTree(call("GET","/api/local/conversations/"+id,null,true).body()).path("data").path("defaultTarget").path("connectionId").isNull()).isTrue();
+    }
+
+    @Test void schemaOnlyDiscoveryDoesNotInventACatalogAndBadDiscoveryArgumentsFail() throws Exception {
+        var created=call("POST","/api/connections/create",Map.of("name","Schema discovery","dbType","dm","host","example.invalid","port",5236,
+                "username","fixture","driverJarPath",root.resolve("fixture-driver.jar").toString()),true);
+        long other=JSON.readTree(created.body()).path("data").path("id").asLong();
+        long id=session(false);clearInvocations(DATABASES,SCHEMAS,TABLES);
+        var result=discoveryResult(piTurn(id,"list_namespaces:"+JSON.writeValueAsString(Map.of("connectionId",other,"catalogName","pseudo")),null));
+        assertThat(result.path("supportsCatalog").asBoolean()).isFalse();
+        assertThat(result.path("target").path("catalogName").isNull()).isTrue();
+        assertThat(result.path("schemas").get(0).asText()).isEqualTo("APP");
+        verify(SCHEMAS).listSchemas(other,null);verifyNoInteractions(DATABASES,TABLES);
+        assertThat(piTurn(id,"list_connections:{\"connectionId\":1}",null)).contains("LOCAL_REQUEST_INVALID");
+        assertThat(piTurn(id,"list_namespaces:{\"connectionId\":1.5}",null)).contains("LOCAL_REQUEST_INVALID");
+        assertThat(piTurn(id,"list_namespaces:{}",null)).contains("LOCAL_SCOPE_FORBIDDEN");
+        clearInvocations(TABLES,COLUMNS);
+        assertThat(piTurn(id,"list_tables:"+JSON.writeValueAsString(Map.of("connectionId",connectionId)),null)).contains("LOCAL_NAMESPACE_REQUIRED");
+        assertThat(piTurn(id,"list_tables:"+JSON.writeValueAsString(Map.of("connectionId",other)),null)).contains("LOCAL_NAMESPACE_REQUIRED");
+        verifyNoInteractions(TABLES,COLUMNS);
+    }
+
+    static JsonNode explorerResult(String sse) throws Exception {
+        for(var block:blocks(sse))if(block.path("type").asText().equals("TOOL_RESULT")) {
+            var tool=JSON.readTree(block.path("data").asText());
+            if(tool.path("toolName").asText().equals("callingExplorerSubAgent"))return JSON.readTree(tool.path("result").asText());
+        }
+        throw new AssertionError("Explorer result missing");
+    }
+    static String exploration(String instruction,int timeout) throws Exception {
+        return "explore-json:"+JSON.writeValueAsString(Map.of("tasks",List.of(Map.of("connectionId",connectionId,"instruction",instruction,"timeoutSeconds",timeout))));
+    }
+
+    @Test void piExplorerUsesItsOwnModelAndIsolatedTasksThenReturnsVerifiedStructuredResults() throws Exception {
+        long id=session(true);clearInvocations(TABLES);
+        String task="explore-json:"+JSON.writeValueAsString(Map.of("tasks",List.of(
+                Map.of("connectionId",connectionId,"catalogName","first_db","instruction","find first table"),
+                Map.of("connectionId",connectionId,"catalogName","second_db","instruction","find second table"))));
+        String body=piTurn(id,task,null);
+        var results=explorerResult(body).path("taskResults");assertThat(results.size()).isEqualTo(2);
+        for(var result:results) {
+            assertThat(result.path("status").asText()).isEqualTo("SUCCESS");
+            assertThat(result.path("summaryText").asText()).contains("Explorer model=explorer-fixture-model");
+            assertThat(result.path("objects").get(0).path("objectName").asText()).isEqualTo("safe_table");
+        }
+        assertThat(results.get(0).path("taskId").asText()).isNotEqualTo(results.get(1).path("taskId").asText());
+        assertThat(results.get(0).path("objects").get(0).path("catalog").asText()).isEqualTo("first_db");
+        assertThat(results.get(1).path("objects").get(0).path("catalog").asText()).isEqualTo("second_db");
+        verify(TABLES).getTables(new DbContext(connectionId,"first_db",null));
+        verify(TABLES).getTables(new DbContext(connectionId,"second_db",null));
+        var events=blocks(body);assertThat(events.stream().filter(event->event.path("done").asBoolean())).hasSize(1);
+        assertThat(events.stream().filter(event->event.path("type").asText().equals("SUB_AGENT_START"))).hasSize(2);
+        assertThat(events.stream().filter(event->event.path("type").asText().equals("SUB_AGENT_COMPLETE"))).hasSize(2);
+        assertThat(events.stream().filter(event->event.path("type").asText().equals("TOOL_RESULT") && event.hasNonNull("parentToolCallId"))).hasSize(2);
+        assertThat(body).contains("SUCCEEDED").doesNotContain("FIXTURE_SECRET_NEVER_PRINT");
+        assertThat(JSON.readTree(events.getLast().path("data").asText()).path("statistics").path("modelCalls").asInt()).isEqualTo(3);
+    }
+
+    @Test void piExplorerRejectsCrossConnectionAndCrossCatalogToolTargets() throws Exception {
+        for(var target:List.of(Map.of("connectionId",999999),Map.of("catalogName","unrequested_db"))) {
+            clearInvocations(TABLES,SQL);
+            String body=piTurn(session(true),exploration("escape:"+JSON.writeValueAsString(target),5),null);
+            assertThat(explorerResult(body).path("taskResults").get(0).path("status").asText()).isEqualTo("ERROR");
+            assertThat(body).contains("SUB_AGENT_ERROR","LOCAL_SCOPE_FORBIDDEN");
+            verifyNoInteractions(TABLES,SQL);
+        }
+    }
+
+    @Test void piExplorerRejectsInventedObjectsEvenWhenTheChildModelFinishesNormally() throws Exception {
+        String body=piTurn(session(true),exploration("invent-object",5),null);
+        assertThat(explorerResult(body).path("taskResults").get(0).path("status").asText()).isEqualTo("ERROR");
+        assertThat(body).contains("PI_EXPLORER_RESULT_INVALID");
+    }
+
+    @Test void aChildWorkerCrashIsReportedToTheParentWithoutChangingEngines() throws Exception {
+        long id=session(true);
+        String body=piTurn(id,exploration("crash",5),null);
+        assertThat(explorerResult(body).path("taskResults").get(0).path("status").asText()).isEqualTo("ERROR");
+        assertThat(body).contains("PI_WORKER_EXIT");
+        assertThat(piTurn(id,"hello after child failure",null)).contains("pong-turn2","SUCCEEDED");
+    }
+
+    @Test void piExplorerValidatesAllTasksBeforeStartingAnyChild() throws Exception {
+        clearInvocations(TABLES,SQL);
+        for(var task:List.of(
+                Map.of("tasks",List.of(Map.of("connectionId",connectionId,"instruction","find tables"),Map.of("connectionId",1.5,"instruction","invalid"))),
+                Map.of("tasks",List.of(Map.of("connectionId",connectionId,"instruction","find","timeoutSeconds",90))),
+                Map.of("tasks",List.of(Map.of("connectionId",connectionId,"instruction","find","extra","ignored?"))))) {
+            String body=piTurn(session(true),"explore-json:"+JSON.writeValueAsString(task),null);
+            assertThat(body).contains("LOCAL_REQUEST_INVALID").doesNotContain("SUB_AGENT_START");
+        }
+        verifyNoInteractions(TABLES,SQL);
+    }
+
+    @Test void piExplorerTimeoutCancelsOnlyTheChildQueryAndReturnsAnErrorToTheParent() throws Exception {
+        clearInvocations(SQL);QUERY_STARTED.set(new CountDownLatch(1));QUERY_RELEASE.set(new CountDownLatch(1));
+        try {
+            String body=piTurn(session(true),exploration("wait-query",1),null);
+            assertThat(QUERY_STARTED.get().getCount()).isZero();assertThat(QUERY_RELEASE.get().getCount()).isZero();
+            assertThat(explorerResult(body).path("taskResults").get(0).path("errorMessage").asText()).isEqualTo("PI_EXPLORER_TIMEOUT");
+            verify(SQL).cancelExecution(eq(new DbContext(connectionId,"fixture_db",null)),anyString());
+            assertThat(blocks(body).stream().filter(block->block.path("done").asBoolean())).hasSize(1);
+        } finally { QUERY_RELEASE.get().countDown(); }
+    }
+
+    @Test void cancellingTheParentStopsTheExplorerQueryAndEmitsOnlyOneCancelledDone() throws Exception {
+        long id=session(true);clearInvocations(SQL);QUERY_STARTED.set(new CountDownLatch(1));QUERY_RELEASE.set(new CountDownLatch(1));
+        try {
+            var running=HTTP.sendAsync(request("POST","/api/local/pi/chat/stream",Map.of("conversationId",id,"message",exploration("wait-query",30),"modelConfigId",modelId)),HttpResponse.BodyHandlers.ofString());
+            assertThat(QUERY_STARTED.get().await(10,TimeUnit.SECONDS)).isTrue();
+            call("POST","/api/local/conversations/"+id+"/cancel",null,true);
+            String body=running.get(10,TimeUnit.SECONDS).body();
+            verify(SQL,timeout(3000)).cancelExecution(eq(new DbContext(connectionId,"fixture_db",null)),anyString());
+            var done=blocks(body).stream().filter(block->block.path("done").asBoolean()).toList();assertThat(done).hasSize(1);
+            assertThat(done.getFirst().path("data").asText()).contains("CANCELLED");
+        } finally { QUERY_RELEASE.get().countDown(); }
+    }
+
+    @Test void discoveryStructureAndQueryFlowRetainsExecutionFactsAndOneDone() throws Exception {
+        long id=session(true); clearInvocations(SQL,TABLES,COLUMNS);
+        String body=piTurn(id,"discover-query",null);
+        verify(TABLES).getTables(new DbContext(connectionId,"fixture_db",null));
+        verify(COLUMNS).listColumns(new DbContext(connectionId,"fixture_db",null),"safe_table");
+        var captured=org.mockito.ArgumentCaptor.forClass(AgentExecuteSqlRequest.class); verify(SQL).executeSql(captured.capture());
+        var request=captured.getValue();
+        assertThat(request.getTimeoutMs()).isEqualTo(15000); assertThat(request.getMaxRows()).isEqualTo(200);
+        assertThat(request.getConversationId()).isEqualTo(id); assertThat(request.getConnectionId()).isEqualTo(connectionId);
+        assertThat(request.getCatalog()).isEqualTo("fixture_db");
+        var tool=queryTool(body); assertThat(tool.path("error").asBoolean()).isFalse();
+        var result=JSON.readTree(tool.path("result").asText());
+        assertThat(result.path("executionId").asText()).isEqualTo(request.getExecutionId());
+        assertThat(result.path("target").path("connectionId").asLong()).isEqualTo(connectionId);
+        assertThat(result.path("success").asBoolean()).isTrue();
+        assertThat(result.path("statementState").asText()).isEqualTo("EXECUTED");
+        assertThat(result.path("result").path("rows").get(0).get(0).asInt()).isEqualTo(7);
+        assertThat(body).contains("query-result:false:","SUCCEEDED");
+        assertThat(blocks(body).stream().filter(b -> b.path("done").asBoolean()).count()).isEqualTo(1);
+    }
+
+    @Test void unsafeQueriesAndMalformedArgumentsNeverReachExecution() throws Exception {
+        long id=session(true); clearInvocations(SQL);
+        for(String query:List.of("DELETE FROM safe_table","CREATE TABLE x(id INT)","SELECT 1; SELECT 2",
+                "SELECT * FROM safe_table FOR UPDATE","SELECT SLEEP(1)","SELECT seq.NEXTVAL FROM DUAL")) {
+            var tool=queryTool(piTurn(id,"query-json:"+JSON.writeValueAsString(Map.of("query",query)),null));
+            assertThat(tool.path("error").asBoolean()).isTrue();
+            assertThat(tool.path("result").asText()).contains("LOCAL_FEATURE_NOT_SUPPORTED");
+        }
+        for(Object invalid:List.of("not-an-id",1.5,0,9007199254740992L)) {
+            var tool=queryTool(piTurn(id,"query-json:"+JSON.writeValueAsString(Map.of("query","SELECT 1","connectionId",invalid)),null));
+            assertThat(tool.path("error").asBoolean()).isTrue();
+            assertThat(tool.path("result").asText()).contains("LOCAL_REQUEST_INVALID");
+        }
+        for(Object invalid:List.of(Map.of("query",7),Map.of("query","SELECT 1","extra","ignored"),List.of("SELECT 1"))) {
+            var tool=queryTool(piTurn(id,"query-json:"+JSON.writeValueAsString(invalid),null));
+            assertThat(tool.path("result").asText()).contains("LOCAL_REQUEST_INVALID");
+        }
+        verify(SQL,never()).executeSql(any());
+    }
+
+    @Test void queryWithoutAConnectionIsRejectedWithoutExecution() throws Exception {
+        long id=session(false); clearInvocations(SQL);
+        var tool=queryTool(piTurn(id,"query-json:{\"query\":\"SELECT 1\"}",null));
+        assertThat(tool.path("error").asBoolean()).isTrue();
+        assertThat(tool.path("result").asText()).contains("LOCAL_SCOPE_FORBIDDEN");
+        verify(SQL,never()).executeSql(any());
+    }
+
+    @Test void referencedConnectionAndSchemaOverrideTheQueryDefault() throws Exception {
+        var created=call("POST","/api/connections/create",Map.of("name","Query archive","dbType","dm","host","example.invalid","port",5236,
+                "username","fixture","driverJarPath",root.resolve("fixture-driver.jar").toString()),true);
+        long other=JSON.readTree(created.body()).path("data").path("id").asLong();
+        long id=session(true); clearInvocations(SQL);
+        var mention=Map.<String,Object>of("token","@orders","connectionId",other,"schemaName","ARCHIVE","objectType","TABLE","objectName","orders");
+        var tool=queryTool(piTurn(id,"query-mention @orders",List.of(mention)));
+        assertThat(tool.path("error").asBoolean()).isFalse();
+        var captured=org.mockito.ArgumentCaptor.forClass(AgentExecuteSqlRequest.class); verify(SQL).executeSql(captured.capture());
+        assertThat(captured.getValue().getConnectionId()).isEqualTo(other);
+        assertThat(captured.getValue().getCatalog()).isNull(); assertThat(captured.getValue().getSchema()).isEqualTo("ARCHIVE");
+    }
+
+    @Test void queryTimeoutIsAToolErrorAndRetainsUnknownTransactionState() throws Exception {
+        var tool=queryTool(piTurn(session(true),"query-json:{\"query\":\"SELECT 1 /* timeout-query */\"}",null));
+        assertThat(tool.path("error").asBoolean()).isTrue();
+        var result=JSON.readTree(tool.path("result").asText());
+        assertThat(result.path("success").asBoolean()).isFalse();
+        assertThat(result.path("statementState").asText()).isEqualTo("TIMED_OUT");
+        assertThat(result.path("transactionOutcome").asText()).isEqualTo("UNKNOWN");
+    }
+
+    @Test void changedConnectionVersionPreventsTheQueryFromExecuting() throws Exception {
+        var input=new LinkedHashMap<String,Object>(Map.of("name","Versioned query db","dbType","mysql","host","example.invalid","port",3306,
+                "username","fixture","driverJarPath",root.resolve("fixture-driver.jar").toString()));
+        var created=JSON.readTree(call("POST","/api/connections/create",input,true).body()).path("data");
+        long connection=created.path("id").asLong();
+        long id=JSON.readTree(call("POST","/api/local/conversations",Map.of("connectionId",connection,"catalogName","fixture_db"),true).body())
+                .path("data").path("conversationId").asLong();
+        input.put("connectionId",connection); input.put("expectedVersion",created.path("version").asLong()); input.put("name","Changed query db");
+        call("PUT","/api/connections",input,true); clearInvocations(SQL);
+        var tool=queryTool(piTurn(id,"query-json:{\"query\":\"SELECT 1\"}",null));
+        assertThat(tool.path("error").asBoolean()).isTrue();
+        assertThat(tool.path("result").asText()).contains("CONNECTION_REVISION_CONFLICT");
+        verify(SQL,never()).executeSql(any());
+    }
+
+    @Test void databaseAndContentTruncationStayVisibleWithExecutionIdentity() throws Exception {
+        long id=session(true);
+        for(String marker:List.of("truncated-query","large-query")) {
+            var tool=queryTool(piTurn(id,"query-json:"+JSON.writeValueAsString(Map.of("query","SELECT 1 /* "+marker+" */")),null));
+            String text=tool.path("result").asText(); assertThat(text.length()).isLessThanOrEqualTo(12000);
+            var result=JSON.readTree(text);
+            assertThat(result.path("success").asBoolean()).isTrue(); assertThat(result.path("truncated").asBoolean()).isTrue();
+            assertThat(result.path("executionId").asText()).isNotBlank();
+            assertThat(result.path("target").path("connectionId").asLong()).isEqualTo(connectionId);
+            assertThat(result.path("statementState").asText()).isEqualTo("EXECUTED");
+        }
+    }
+
+    @Test void queryCancellationReachesTheSqlExecutionAndDropsItsLateResult() throws Exception {
+        long id=session(true); clearInvocations(SQL);
+        QUERY_STARTED.set(new CountDownLatch(1)); QUERY_RELEASE.set(new CountDownLatch(1));
+        var pending=CompletableFuture.supplyAsync(() -> {
+            try { return piTurn(id,"query-json:{\"query\":\"SELECT 1 /* wait-query */\"}",null); }
+            catch(Exception e) { throw new RuntimeException(e); }
+        });
+        try {
+            assertThat(QUERY_STARTED.get().await(10,TimeUnit.SECONDS)).isTrue();
+            call("POST","/api/local/conversations/"+id+"/cancel",null,true);
+            String body=pending.get(10,TimeUnit.SECONDS);
+            assertThat(body).contains("CANCELLED").doesNotContain("query-result:false:");
+            verify(SQL,timeout(3000)).cancelExecution(eq(new DbContext(connectionId,"fixture_db",null)),anyString());
+            assertThat(blocks(body).stream().filter(b -> b.path("done").asBoolean()).count()).isEqualTo(1);
+        } finally { QUERY_RELEASE.get().countDown(); }
+    }
+
+    @Test void workerCrashDuringQueryCancelsSqlAndTheNextTurnRebuildsTheWorker() throws Exception {
+        long id=session(true); clearInvocations(SQL);
+        QUERY_STARTED.set(new CountDownLatch(1)); QUERY_RELEASE.set(new CountDownLatch(1));
+        try {
+            String body=piTurn(id,"query-json:{\"query\":\"SELECT 1 /* wait-query crash-query */\"}",null);
+            assertThat(QUERY_STARTED.get().getCount()).isZero();
+            assertThat(body).contains("FAILED","PI_WORKER_EXIT").doesNotContain("query-result:false:");
+            assertThat(QUERY_RELEASE.get().getCount()).isZero();
+            verify(SQL).cancelExecution(eq(new DbContext(connectionId,"fixture_db",null)),anyString());
+            assertThat(piTurn(id,"hello after query crash",null)).contains("pong-turn1","SUCCEEDED");
+        } finally { QUERY_RELEASE.get().countDown(); }
     }
 
     @Test void capabilityIsReadyAndCredentialNeverLeaks() throws Exception {
@@ -120,6 +454,33 @@ class LocalPiChatHttpTest {
         assertThat(body).contains("pong-turn1","SUCCEEDED","engine");
         assertThat(body).contains("statistics").contains("modelCalls");
         assertThat(body).doesNotContain("FIXTURE_SECRET_NEVER_PRINT");
+    }
+
+    @Test void unsupportedModelIsRejectedBeforeStartingTheWorker() throws Exception {
+        var setup=new LinkedHashMap<String,Object>();
+        setup.put("name","Unsupported Pi model"); setup.put("provider","CUSTOM"); setup.put("apiStyle","OPENAI_RESPONSES");
+        setup.put("endpoint","https://fixture.example.invalid/v1/"); setup.put("compatibilityProfile","openai-responses-v1");
+        setup.put("apiKey","FIXTURE_SECRET_NEVER_PRINT"); setup.put("modelId","responses-fixture"); setup.put("capabilityProfile","responses-tools-v1");
+        setup.put("defaultOptions",Map.of("thinkingMode","DISABLED","maxOutputTokens",2048));
+        setup.put("maxContextTokens",32768); setup.put("memoryThreshold",4000);
+        setup.put("enabled",true); setup.put("chatVisible",true); setup.put("makeDefault",false);
+        var saved=call("POST","/api/ai/model-setups",setup,true);
+        String unsupportedId=JSON.readTree(saved.body()).path("data").path("model").path("id").asText();
+        long id=session(false);
+        var rejected=call("POST","/api/local/pi/chat/stream",Map.of("conversationId",id,"message","hello","modelConfigId",unsupportedId),false);
+        assertThat(rejected.statusCode()).isEqualTo(409);
+        assertThat(rejected.body()).contains("PI_UNSUPPORTED_API_STYLE").doesNotContain("FIXTURE_SECRET_NEVER_PRINT");
+        assertThat(piTurn(id,"hello with compatible model",null)).contains("pong-turn1","SUCCEEDED");
+        var binding=JSON.readTree(call("GET","/api/ai/model-bindings/EXPLORER",null,true).body()).path("data");
+        call("PUT","/api/ai/model-bindings/EXPLORER",Map.of("expectedVersion",binding.path("version").asLong(),"modelConfigId",unsupportedId),true);
+        try {
+            clearInvocations(TABLES);
+            String body=piTurn(session(true),exploration("find tables",5),null);
+            assertThat(explorerResult(body).path("taskResults").get(0).path("status").asText()).isEqualTo("ERROR");
+            assertThat(body).contains("PI_UNSUPPORTED_API_STYLE");verifyNoInteractions(TABLES);
+        } finally {
+            call("PUT","/api/ai/model-bindings/EXPLORER",Map.of("expectedVersion",binding.path("version").asLong()+1,"modelConfigId",binding.path("modelConfigId").asText()),true);
+        }
     }
 
     @Test void mentionIdentityReachesDescribeTableWithFullTarget() throws Exception {
@@ -158,7 +519,7 @@ class LocalPiChatHttpTest {
     }
 
     @Test void unknownToolReturnsErrorToWorkerAndRunCompletes() throws Exception {
-        long id=session(true);
+        long id=session(true); clearInvocations(TABLES);
         String body=piTurn(id,"fail-tool now",null);
         assertThat(body).contains("TOOL_RESULT","LOCAL_REQUEST_INVALID","tool-error-seen:true","SUCCEEDED");
         verify(TABLES,never()).getTables(any());
@@ -167,6 +528,24 @@ class LocalPiChatHttpTest {
     @Test void multiTurnReusesTheSameWorkerSession() throws Exception {
         long id=session(false);
         assertThat(piTurn(id,"first",null)).contains("pong-turn1","SUCCEEDED");
+        assertThat(piTurn(id,"second",null)).contains("pong-turn2","SUCCEEDED");
+    }
+
+    @Test void piCompactionIsRejectedWithoutChangingWorkerHistory() throws Exception {
+        long id=session(false);
+        assertThat(piTurn(id,"first",null)).contains("pong-turn1","SUCCEEDED");
+        var compact=call("POST","/api/local/conversations/"+id+"/compact",null,false);
+        assertThat(compact.statusCode()).isEqualTo(409);
+        assertThat(compact.body()).contains("PI_COMPACTION_NOT_SUPPORTED").doesNotContain("\"compacted\":false");
+        assertThat(piTurn(id,"second",null)).contains("pong-turn2","SUCCEEDED");
+    }
+
+    @Test void piConversationCannotBeContinuedThroughJavaEntry() throws Exception {
+        long id=session(false);
+        assertThat(piTurn(id,"first",null)).contains("pong-turn1","SUCCEEDED");
+        var javaTurn=call("POST","/api/local/chat/stream",Map.of("conversationId",id,"message","wrong engine","modelConfigId",modelId),false);
+        assertThat(javaTurn.statusCode()).isEqualTo(409);
+        assertThat(javaTurn.body()).contains("LOCAL_SESSION_ENGINE_MISMATCH");
         assertThat(piTurn(id,"second",null)).contains("pong-turn2","SUCCEEDED");
     }
 

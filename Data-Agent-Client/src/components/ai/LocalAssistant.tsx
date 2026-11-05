@@ -1,27 +1,50 @@
-import { useEffect, useRef, useState, useMemo, type Dispatch, type SetStateAction } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '../ui/Button';
 import { AIAssistantHeader } from './AIAssistantHeader';
 import { AIAssistantContent } from './AIAssistantContent';
 import { AIAssistantProvider, type AIAssistantContextValue } from './AIAssistantContext';
 import { ChatInput } from './ChatInput';
-import { DefaultTargetControl } from './DefaultTargetControl';
-import { mentionsInText, snapshotChatRequest } from '../../lib/chatTarget';
+import { mentionsInText, snapshotChatRequest, targetLabel } from '../../lib/chatTarget';
 import { MessageRole, type ChatContext, type ChatUserMention, type ChatResponseBlock } from '../../types/chat';
 import { localAssistantService as api, type LocalWriteView } from '../../services/localAssistant.service';
 import { useRuntimeStore } from '../../store/runtimeStore';
+import { useTabStore } from '../../store/tabStore';
+import { useWorkspaceStore } from '../../store/workspaceStore';
+import type { TableTabMetadata } from '../../types/tab';
 import { createModelManagementService } from '../../services/modelManagement.service';
-import type { ManagedModel, ModelConnection } from '../../types/modelManagement';
+import type { ModelOption } from '../../types/ai';
 
 interface Message { role: 'user' | 'assistant'; text: string; blocks?: ChatResponseBlock[]; userMentions?: ChatUserMention[] }
+
+// Keep aligned with LocalPiChatService.SUPPORTED and pi-worker/src/model.js.
+const PI_API_STYLES = new Set<string>(['OPENAI_CHAT_COMPLETIONS', 'ANTHROPIC_MESSAGES']);
 
 /** Mounted only in local mode; no history loader, preferences persistence, account hook or legacy permission grants. */
 export function LocalAssistant({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation(); const tr = (key: string) => t(`local_assistant.${key}`);
   // The server advertises the experimental Pi engine only when it is enabled and ready; Java remains the default.
-  const engine: 'java' | 'pi' = useRuntimeStore(s => s.capabilities?.features.piAssistant?.state === 'READY') ? 'pi' : 'java';
-  const [models, setModels] = useState<ManagedModel[]>([]); const [modelConnections, setModelConnections] = useState<ModelConnection[]>([]);
-  const [model, setModel] = useState(''); const [chatContext, updateChatContext] = useState<ChatContext>({});
+  const preferredEngine = useRuntimeStore(s => s.capabilities?.features.piAssistant?.state === 'READY') ? 'pi' : 'java';
+  const [sessionEngine, setSessionEngine] = useState<'java' | 'pi' | null>(null);
+  const engine = sessionEngine ?? preferredEngine;
+  const [models, setModels] = useState<ModelOption[]>([]);
+  const [model, setModel] = useState('');
+  const activeTab = useTabStore(s => s.tabs.find(tab => tab.id === s.activeTabId));
+  const dbTypes = useWorkspaceStore(s => s.supportedDbTypes);
+  const metadata = activeTab?.type === 'file' || activeTab?.type === 'table' ? activeTab.metadata as TableTabMetadata | undefined : undefined;
+  const dbType = dbTypes.find(type => type.code.toLowerCase() === metadata?.dbType?.toLowerCase());
+  // Table tabs also keep a display databaseName that can actually be a schema (e.g. DM).
+  const catalog = activeTab?.type === 'table' ? metadata?.catalog : metadata?.databaseName ?? metadata?.catalog;
+  const schema = activeTab?.type === 'table' ? metadata?.schema ?? metadata?.schemaName : metadata?.schemaName;
+  const activeTarget: ChatContext = metadata?.connectionId ? {
+    connectionId: metadata.connectionId,
+    catalogName: dbType?.supportDatabase === false ? undefined : catalog || undefined,
+    schemaName: dbType?.supportSchema === false ? undefined : schema || undefined,
+  } : {};
+  const [sessionTarget, setSessionTarget] = useState<{ target: ChatContext; connectionName?: string } | null>(null);
+  const chatContext = sessionTarget?.target ?? activeTarget;
+  const connectionName = sessionTarget ? sessionTarget.connectionName : metadata?.connectionName;
+  const scopeLabel = targetLabel(chatContext, connectionName);
   const [userMentions, setUserMentions] = useState<ChatUserMention[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [input, setInput] = useState(''); const [messages, setMessages] = useState<Message[]>([]);
@@ -29,17 +52,21 @@ export function LocalAssistant({ onClose }: { onClose: () => void }) {
   const [backendRunning, setBackendRunning] = useState(false);
   const [writes, setWrites] = useState<LocalWriteView[]>([]);
   const [statistics, setStatistics] = useState<{ modelCalls: number; toolCalls: number; inputTokens: number; outputTokens: number; usageComplete: boolean }>();
+  const selectedModel = models.find(item => item.modelName === model);
+  const modelError = engine !== 'pi' || !model ? '' : !selectedModel?.apiStyle ? 'MODEL_CONFIG_UNAVAILABLE'
+    : PI_API_STYLES.has(selectedModel.apiStyle) ? '' : 'PI_UNSUPPORTED_API_STYLE';
+  const visibleError = modelError || error;
   useEffect(() => { setUserMentions(previous => mentionsInText(input, previous)); }, [input]);
   const writeRequest = useRef(0);
   const session = useRef<number | null>(null); const abort = useRef<AbortController>(); const generation = useRef(0); const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
     const management = createModelManagementService();
-    void Promise.all([management.models(), management.bindings(), management.connections()]).then(([items, bindings, dbs]) => {
+    // The chat availability API includes authorized Qwen variants; saved configurations alone do not.
+    void management.chatModels().then(items => {
       if (!mounted.current) return;
-      const available = items.filter(m => m.available && m.chatVisible && !m.taskPreset);
-      setModels(available); setModelConnections(dbs);
-      setModel(bindings.find(b => b.purpose === 'MAIN_CHAT')?.modelConfigId ?? available[0]?.id ?? '');
+      setModels(items);
+      setModel(items.find(item => item.defaultModel)?.modelName ?? items[0]?.modelName ?? '');
     }).catch(() => { if (mounted.current) setError('MODEL_MANAGEMENT_UNAVAILABLE'); });
     return () => {
       mounted.current = false; generation.current++; abort.current?.abort();
@@ -76,24 +103,30 @@ export function LocalAssistant({ onClose }: { onClose: () => void }) {
       if (current()) { setRunning(false); await refreshWrites().catch(() => {}); }
     }
   };
-  const reset = async (target: ChatContext = chatContext) => {
-    updateChatContext({ ...target });
+  const reset = async () => {
+    setSessionTarget(null);
     generation.current++; writeRequest.current++; abort.current?.abort();
     const previous = session.current; session.current = null;
+    setSessionEngine(null);
     setMessages([]); setInput(''); setUserMentions([]); setWrites([]); setStatistics(undefined); setError(''); setStatus(''); setRunning(false); setBackendRunning(false);
     if (previous !== null) await api.close(previous).catch(() => {});
   };
   const submit = async (override?: string) => { if (running || unresolved || !model || !(override ?? input).trim()) return;
     const text = (override ?? input).trim();
+    if (engine === 'pi' && text === '/compact') { setError('PI_COMPACTION_NOT_SUPPORTED'); return; }
+    if (modelError) return;
     const snapshot = snapshotChatRequest({ userMentions: mentionsInText(text,userMentions) }, chatContext, text);
     setUserMentions([]); setInput(''); setRunning(true); setBackendRunning(false); setError(''); setStatus('RUNNING');
     const version = generation.current;
     const current = () => mounted.current && version === generation.current;
     try {
       if (session.current === null) {
+        // Freeze at submission, including while creation is pending; tab navigation cannot redirect this conversation.
+        setSessionTarget({ target: { ...snapshot.defaultTarget }, connectionName });
         const created = await api.create(snapshot.defaultTarget ?? {});
         if (!current()) { await api.close(created.conversationId); return; }
         session.current = created.conversationId;
+        setSessionEngine(engine);
       }
       setMessages(previous => [...previous, { role: 'user', text, userMentions: snapshot.userMentions }, { role: 'assistant', text: '', blocks: [] }]);
       const controller = new AbortController(); abort.current = controller;
@@ -104,7 +137,7 @@ export function LocalAssistant({ onClose }: { onClose: () => void }) {
           setStatus(metadata.status ?? 'FAILED'); setStatistics(metadata.statistics); if (metadata.errorCode && metadata.status !== 'CANCELLED') setError(metadata.errorCode);
         } else if (block.type === 'STATUS' && block.data === 'RUNNING') {
           setBackendRunning(true);
-        } else if (block.type === 'TEXT' || block.type === 'TOOL_CALL' || block.type === 'TOOL_RESULT') {
+        } else if (block.type === 'TEXT' || block.type === 'TOOL_CALL' || block.type === 'TOOL_RESULT' || block.type?.startsWith('SUB_AGENT_')) {
           setMessages(previous => previous.map((item, index) => index !== previous.length - 1 ? item : {
             ...item, text: block.type === 'TEXT' ? item.text + (block.data ?? '') : item.text,
             blocks: [...(item.blocks ?? []), block],
@@ -112,26 +145,20 @@ export function LocalAssistant({ onClose }: { onClose: () => void }) {
         }
       }
     } catch (e) {
-      if (current()) { setError(e instanceof Error && /^[A-Z_]+$/.test(e.message) ? e.message : 'LOCAL_STREAM_FAILED'); setStatus('FAILED'); }
+      if (current()) {
+        if (session.current === null) setSessionTarget(null);
+        setError(e instanceof Error && /^[A-Z_]+$/.test(e.message) ? e.message : 'LOCAL_STREAM_FAILED'); setStatus('FAILED');
+      }
     } finally { if (current()) { setRunning(false); setBackendRunning(false); abort.current = undefined; await refreshWrites().catch(() => setError('LOCAL_WRITE_RESPONSE_UNCONFIRMED')); } }
   };
   const compact = async () => {
+    if (engine === 'pi') { setError('PI_COMPACTION_NOT_SUPPORTED'); return; }
     if (session.current === null || running || unresolved) return;
     const version = generation.current; const current = () => mounted.current && version === generation.current;
     setRunning(true); setError(''); setStatus('COMPACTING');
     try { const result = await api.compact(session.current); if (current()) setStatus(result.compacted ? 'COMPACTED' : 'NO_COMPACTION'); }
     catch { if (current()) { setError('LOCAL_COMPACTION_FAILED'); setStatus('FAILED'); } }
     finally { if (current()) setRunning(false); }
-  };
-  const changeTarget = async (target: ChatContext) => {
-    const id=session.current, version=generation.current;
-    if(running && id===null) throw new Error('LOCAL_SESSION_BUSY');
-    const saved=id===null?{...target}:await api.updateDefaultTarget(id,{...target});
-    if(mounted.current && version===generation.current && session.current===id) updateChatContext(saved);
-  };
-  const setChatContext: Dispatch<SetStateAction<ChatContext>> = value => {
-    const target=typeof value==='function'?value(chatContext):value;
-    void changeTarget(target).catch(() => setError('LOCAL_TARGET_UPDATE_FAILED'));
   };
   const stop = () => {
     if (session.current === null || (!backendRunning && !unresolved)) return;
@@ -141,26 +168,27 @@ export function LocalAssistant({ onClose }: { onClose: () => void }) {
       if (mounted.current && version === generation.current && latest && latest.status !== 'EXECUTING' && latest.status !== 'PENDING') setStatus(latest.status);
     }).catch(() => { if (mounted.current && version === generation.current) setError('LOCAL_STREAM_FAILED'); });
   };
-  const modelOptions = useMemo(() => models.map(m => ({ modelName: m.id, modelConfigId: m.id, modelId: m.modelId, name: m.name,
-    provider: modelConnections.find(c => c.id === m.connectionId)?.provider, supportThinking: false,
-    memoryThreshold: m.memoryThreshold, maxContextTokens: m.maxContextTokens })), [models, modelConnections]);
   const displayMessages = useMemo(() => messages.map((m, i) => ({ id: String(i), role: m.role === 'user' ? MessageRole.USER : MessageRole.ASSISTANT,
     content: m.text, blocks: m.blocks, userMentions: m.userMentions, timestamp: new Date(0) })), [messages]);
   const context: AIAssistantContextValue = {
     input, setInput, onSend: () => void submit(), onStop: stop,
     submitMessage: async text => { await submit(text); }, isLoading: running || unresolved,
     conversationId: session.current, conversationTokenCount: null,
-    modelState: { model, setModel: value => { if (!running) setModel(value); }, modelOptions, setThinkingMode: () => {} },
+    modelState: { model, setModel: value => { if (!running) setModel(value); }, modelOptions: models },
     agentState: { agent: 'Agent', setAgent: () => {}, availableAgents: ['Agent'] },
-    chatContextState: { chatContext, setChatContext }, mentionState: { userMentions, setUserMentions },
+    chatContextState: { chatContext }, mentionState: { userMentions, setUserMentions },
     onCommand: command => { if (command === 'new') void reset(); else if (command === 'compact') void compact(); },
-    supportedCommands: ['new', 'compact'], canSend: !running && !unresolved && !!model && !!input.trim(),
+    supportedCommands: engine === 'pi' ? ['new'] : ['new', 'compact'], canSend: !running && !unresolved && !!model && !modelError && !!input.trim(),
   };
   return <AIAssistantProvider value={context}>
-    <div className="flex h-full flex-col overflow-hidden bg-transparent" data-local-assistant title={tr('ephemeral')}>
+    <div className="flex h-full flex-col overflow-hidden bg-transparent" data-local-assistant title={tr(engine === 'pi' ? 'ephemeral_pi' : 'ephemeral')}>
       <AIAssistantHeader currentConversationId={session.current}
         conversationTabs={[{ id: session.current, titleOverride: null, titleCandidate: messages.find(m => m.role === 'user')?.text ?? null, messageCount: messages.length, createdAt: 0, lastTouchedAt: 0 }]}
         onSelectTab={() => {}} onCloseTab={() => void reset()} onNewChat={() => void reset()} onClosePanel={onClose} />
+      {engine === 'pi' && <div role="note" aria-label={tr('engine_pi')} className="shrink-0 border-b theme-border px-3 py-2">
+        <p className="text-xs font-medium theme-text-primary">{tr('engine_pi')}</p>
+        <p className="mt-1 text-[11px] leading-5 break-words theme-text-secondary">{tr('pi_capabilities')}</p>
+      </div>}
       <AIAssistantContent messages={displayMessages} messagesEndRef={messagesEndRef} isLoading={running} isWaiting={false}
         waitingPromptMode="default" queue={[]} onRemoveFromQueue={() => {}} trailingContent={<>
           {writes.map(view => <article key={view.proposal.proposalId} data-local-write={view.status} className="mb-2 flex flex-col gap-3 rounded-lg border theme-border theme-bg-main p-4 shadow-sm text-xs">
@@ -179,9 +207,11 @@ export function LocalAssistant({ onClose }: { onClose: () => void }) {
             <button className="text-left text-[11px] theme-text-secondary hover:underline" onClick={() => void refreshWrites().catch(() => setError('LOCAL_WRITE_RESPONSE_UNCONFIRMED'))}>{tr('refresh_writes')}</button>
           </article>)}
         </>} />
-      {error && <p role="alert" className="px-3 py-2 text-xs theme-text-error">{tr(`errors.${error}`) === `local_assistant.errors.${error}` ? tr('failed') : tr(`errors.${error}`)}</p>}
-      {status && <p role="status" data-engine={engine} className="px-3 pt-1 text-[10px] theme-text-secondary" title={statistics ? `${tr('calls')}: ${statistics.modelCalls} · ${tr('tools')}: ${statistics.toolCalls} · ${statistics.usageComplete ? statistics.inputTokens + statistics.outputTokens : tr('usage_partial')}` : undefined}>{tr(`status.${status}`)}{engine === 'pi' && ` · ${tr('engine_pi')}`}</p>}
-      <DefaultTargetControl target={chatContext} ready loadError={false} onChange={changeTarget} onNew={target => void reset(target)} />
+      {visibleError && <p role="alert" className="px-3 py-2 text-xs theme-text-error">{tr(`errors.${visibleError}`) === `local_assistant.errors.${visibleError}` ? tr('failed') : tr(`errors.${visibleError}`)}</p>}
+      {status && status !== 'SUCCEEDED' && <p role="status" data-engine={engine} className="px-3 pt-1 text-[10px] theme-text-secondary" title={statistics ? `${tr('calls')}: ${statistics.modelCalls} · ${tr('tools')}: ${statistics.toolCalls} · ${statistics.usageComplete ? statistics.inputTokens + statistics.outputTokens : tr('usage_partial')}` : undefined}>{tr(`status.${status}`)}</p>}
+      {scopeLabel && <div className="shrink-0 px-3 pt-1" data-chat-scope>
+        <span className="inline-block max-w-full truncate rounded theme-bg-panel px-2 py-0.5 text-[10px] theme-text-secondary" title={scopeLabel} aria-label={tr('connection')}>{scopeLabel}</span>
+      </div>}
       <ChatInput />
     </div>
   </AIAssistantProvider>;

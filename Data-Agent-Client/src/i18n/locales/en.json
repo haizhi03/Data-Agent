@@ -1401,7 +1401,10 @@
       "CONNECTION_REVISION_CONFLICT": "Connection changed. Start a new chat.",
       "LOCAL_STREAM_FAILED": "Connection interrupted without confirmed completion. Check the service and start a new chat.",
       "LOCAL_COMPACTION_FAILED": "Compaction failed. Original context retained.",
+      "PI_COMPACTION_NOT_SUPPORTED": "Pi conversations do not support compaction yet. Start a new chat.",
+      "LOCAL_SESSION_ENGINE_MISMATCH": "This conversation has a fixed engine. Start a new chat.",
       "MODEL_CONFIG_UNAVAILABLE": "Model unavailable. Check model settings.",
+      "MODEL_MANAGEMENT_UNAVAILABLE": "Could not load available models. Check the local service and retry.",
       "AGENT_BUDGET_EXCEEDED": "Run limit reached. Narrow the request.",
       "LOCAL_WRITE_RESPONSE_UNCONFIRMED": "Write response unconfirmed. Refresh status; do not replay the operation.",
       "WRITE_APPROVAL_REQUIRED": "Approve or reject the pending write first.",
@@ -1411,7 +1414,7 @@
       "PI_WORKER_START_FAILED": "Pi worker failed to start; Node 22+ is required.",
       "PI_WORKER_EXIT": "The Pi worker exited unexpectedly; this run failed. You can retry.",
       "PI_PROTOCOL_ERROR": "Pi worker protocol error; this run failed.",
-      "PI_UNSUPPORTED_API_STYLE": "The experimental Pi entry does not support this model API style yet.",
+      "PI_UNSUPPORTED_API_STYLE": "Pi does not support this model's API style. Choose a model using OpenAI Chat Completions or Anthropic Messages.",
       "PI_SESSION_BUSY": "A Pi run is still active in this conversation.",
       "PI_MODEL_ERROR": "The model call failed; check the model configuration or retry later.",
       "PI_DISABLED": "The experimental Pi entry is disabled."
@@ -1428,6 +1431,8 @@
     "calls": "Model calls",
     "tools": "Tool calls",
     "usage_partial": "Complete usage unavailable",
-    "engine_pi": "Pi engine (experimental)"
+    "engine_pi": "Experimental Pi engine · Read-only queries",
+    "pi_capabilities": "Inspect table structure and run restricted read-only queries (15-second timeout, up to 200 rows). Writes and conversation compaction are not supported yet.",
+    "ephemeral_pi": "Chats stay in memory and clear when you close the panel."
   }
 }

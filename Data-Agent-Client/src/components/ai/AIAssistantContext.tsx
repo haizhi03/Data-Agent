@@ -9,7 +9,7 @@ export interface ModelState {
   setModel: (model: string) => void;
   modelOptions: ModelOption[];
   thinkingMode?: ThinkingMode;
-  setThinkingMode: (mode: ThinkingMode) => void;
+  setThinkingMode?: (mode: ThinkingMode) => void;
 }
 
 export interface AgentState {
@@ -20,7 +20,6 @@ export interface AgentState {
 
 export interface ChatContextState {
   chatContext: ChatContext;
-  setChatContext: React.Dispatch<React.SetStateAction<ChatContext>>;
 }
 
 export interface MentionState {

@@ -10,17 +10,22 @@ import { logDiagnostic, MAX_RUN_TEXT_CHARS, MAX_TOOL_RESULT_CHARS } from './prot
 
 const TOOL_DESCRIPTIONS = {
   list_tables:
-    'List tables in a bounded scope. Omit target fields to use the conversation default target; ' +
+    'List tables in one known database/schema. Discover missing namespaces with list_namespaces first. Omit target fields to use the conversation default target; ' +
     'explicit connection/catalog/schema select another validated target. The result includes the ' +
     'resolved target identity and a truncated flag; when truncated is true you have NOT seen all tables.',
   describe_table:
     'Read column metadata (type, comment, primary-key flag) for one table. Use the full identity of an ' +
     'explicit reference; only unspecified target fields fall back to the conversation default target.',
+  query_database:
+    'Execute one supported read-only SELECT/WITH through the Java host. Writes, DDL, batches, locks, ' +
+    'sequences, and unknown functions are forbidden. Use the complete target identity from the turn ' +
+    'or reference. Limited to 15 seconds and 200 rows. Check success, execution states and truncated; ' +
+    'a partial result cannot establish a full-dataset conclusion. Never retry a write through this tool.',
 };
 
 const targetFields = {
   connectionId: Type.Optional(
-    Type.Number({ description: 'Connection ID from the turn context or an explicit reference.' }),
+    Type.Number({ description: 'Connection ID from list_connections, the turn context or an explicit reference.' }),
   ),
   catalogName: Type.Optional(Type.String({ description: 'Catalog/database name, when applicable.' })),
   schemaName: Type.Optional(Type.String({ description: 'Schema name, when applicable.' })),
@@ -77,6 +82,12 @@ export class PiSession {
       finished: false,
     };
     this.activeRun = run;
+    run.modelRequests = 0;
+    run.toolRequests = 0;
+    run.maxModelCalls = msg.limits?.maxModelCalls ?? 16;
+    run.maxToolCalls = msg.limits?.maxToolCalls ?? 32;
+    run.role = msg.role ?? 'assistant';
+    this.endpoint = endpoint;
     this.apiKey = msg.apiKey;
     try {
       if (!this.agent) {
@@ -84,9 +95,16 @@ export class PiSession {
           initialState: {
             systemPrompt: msg.systemPrompt,
             model: endpoint.model,
-            tools: this.#buildTools(),
+            tools: this.#buildTools(run.role),
           },
-          streamFn: (model, context, options) => endpoint.streams.streamSimple(model, context, options),
+          streamFn: (model, context, options) => {
+            const active = this.activeRun;
+            if (!active || active.budgetExceeded || ++active.modelRequests > active.maxModelCalls) {
+              if (active) active.budgetExceeded = true;
+              throw new Error('AGENT_BUDGET_EXCEEDED');
+            }
+            return this.endpoint.streams.streamSimple(model, context, options);
+          },
           getApiKey: () => this.apiKey,
           sessionId: this.sessionId,
           identity: { attribution: { name: 'data-agent-local-pi' } },
@@ -94,6 +112,7 @@ export class PiSession {
         this.agent.subscribe((event) => this.#onEvent(event));
       } else {
         this.agent.state.model = endpoint.model;
+        this.agent.state.tools = this.#buildTools(run.role);
       }
       await this.agent.prompt(msg.message);
       this.#finish(run, 'SUCCEEDED', null);
@@ -137,12 +156,17 @@ export class PiSession {
     if (this.activeRun) this.cancel(this.activeRun.runId);
   }
 
-  #buildTools() {
+  #buildTools(role) {
     const execute = (name) => (toolCallId, params, signal) =>
       new Promise((resolve, reject) => {
         const run = this.activeRun;
         if (!run) {
           reject(new Error('no active run'));
+          return;
+        }
+        if (++run.toolRequests > run.maxToolCalls) {
+          run.budgetExceeded = true;
+          reject(new Error('AGENT_BUDGET_EXCEEDED'));
           return;
         }
         if (signal) {
@@ -161,7 +185,7 @@ export class PiSession {
           arguments: JSON.stringify(params ?? {}),
         });
       });
-    return [
+    const tools = [
       {
         name: 'list_tables',
         label: 'List tables',
@@ -179,7 +203,47 @@ export class PiSession {
         }),
         execute: execute('describe_table'),
       },
+      {
+        name: 'query_database',
+        label: 'Read-only query',
+        description: TOOL_DESCRIPTIONS.query_database,
+        parameters: Type.Object({
+          query: Type.String({ description: 'One read-only SELECT/WITH statement.', minLength: 1, maxLength: 65536 }),
+          ...targetFields,
+        }),
+        execute: execute('query_database'),
+      },
     ];
+    if (role !== 'explorer') tools.push({
+      name: 'list_connections',
+      label: 'List data sources',
+      description: 'List available data sources with connectionId, name and dbType. No target is required and no database is opened. ' +
+        'When no connection is specified, discover sources first. Use a unique or user-named source; ask by name if ambiguous.',
+      parameters: Type.Object({}),
+      execute: execute('list_connections'),
+    }, {
+      name: 'list_namespaces',
+      label: 'List databases and schemas',
+      description: 'Discover namespaces on one connection. With no catalog, lists catalogs if supported; otherwise lists schemas. ' +
+        'Supply a chosen catalog to discover its schemas. Check supportsCatalog, supportsSchema and truncated. Do not guess names.',
+      parameters: Type.Object({ ...targetFields }),
+      execute: execute('list_namespaces'),
+    }, {
+      name: 'callingExplorerSubAgent',
+      label: 'Explorer',
+      description: 'Delegate up to two focused database discovery tasks to independent Pi Explorer agents. ' +
+        'Each task has a fixed connection and optional catalog/schema. Returns taskResults with status, summaryText and verified objects. ' +
+        'Use for multi-table discovery; do not delegate writes or broad scans of every connection.',
+      parameters: Type.Object({ tasks: Type.Array(Type.Object({
+        connectionId: Type.Number({ minimum: 1 }),
+        catalogName: Type.Optional(Type.String()), schemaName: Type.Optional(Type.String()),
+        instruction: Type.String({ minLength: 1, maxLength: 4000 }),
+        context: Type.Optional(Type.String({ maxLength: 4000 })),
+        timeoutSeconds: Type.Optional(Type.Integer({ minimum: 1, maximum: 45 })),
+      }), { minItems: 1, maxItems: 2 }) }),
+      execute: execute('callingExplorerSubAgent'),
+    });
+    return tools;
   }
 
   #onEvent(event) {
@@ -241,6 +305,7 @@ export class PiSession {
 
   #finish(run, status, errorCode) {
     if (!this.activeRun || this.activeRun.runId !== run.runId || run.finished) return;
+    if (run.budgetExceeded && status !== 'CANCELLED') { status = 'FAILED'; errorCode = 'AGENT_BUDGET_EXCEEDED'; }
     run.finished = true;
     for (const pending of run.pendingTools.values()) pending.reject(new Error('run finished'));
     run.pendingTools.clear();

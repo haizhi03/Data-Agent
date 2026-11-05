@@ -56,8 +56,9 @@ export function initializeRuntime(): Promise<void> {
         throw new Error('Invalid capability contract');
       }
       const features = {} as RuntimeCapabilities['features'];
-      for (const name of ['databaseWorkbench', 'aiAssistant', 'knowledgeMemory', 'skills'] as const) {
+      for (const name of ['databaseWorkbench', 'aiAssistant', 'knowledgeMemory', 'skills', 'piAssistant'] as const) {
         const feature = capabilities.features[name];
+        if (name === 'piAssistant' && feature === undefined) continue;
         if (!feature || !['READY', 'NOT_IMPLEMENTED', 'UNCONFIGURED', 'UNAVAILABLE'].includes(feature.state)
           || (feature.state === 'READY' ? feature.reasonCode !== null : typeof feature.reasonCode !== 'string')) {
           throw new Error('Invalid feature contract');

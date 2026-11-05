@@ -43,6 +43,8 @@ class LocalAssistantHttpTest {
     static final AtomicReference<CountDownLatch> waiting=new AtomicReference<>(new CountDownLatch(1));
     static final AtomicReference<ChatRequest> lastRequest=new AtomicReference<>();
     static final TableService TABLES=mock(TableService.class);
+    static final edu.zsc.ai.domain.service.db.DatabaseService DATABASES=mock(edu.zsc.ai.domain.service.db.DatabaseService.class);
+    static final edu.zsc.ai.domain.service.db.SchemaService SCHEMAS=mock(edu.zsc.ai.domain.service.db.SchemaService.class);
     static final SqlExecutionServiceImpl SQL=mock(SqlExecutionServiceImpl.class);
 
     static final LocalWriteExecutor WRITES=mock(LocalWriteExecutor.class);
@@ -50,6 +52,12 @@ class LocalAssistantHttpTest {
     static final AtomicReference<CountDownLatch> writeStarted=new AtomicReference<>(new CountDownLatch(1));
     static final AtomicReference<CountDownLatch> writeRelease=new AtomicReference<>(new CountDownLatch(1));
     @Configuration(proxyBeanMethods=false) static class Fixture {
+        @Bean @Primary edu.zsc.ai.domain.service.db.DatabaseService fixtureDatabases() {
+            when(DATABASES.getDatabases(any())).thenReturn(List.of("fixture_db")); return DATABASES;
+        }
+        @Bean @Primary edu.zsc.ai.domain.service.db.SchemaService fixtureSchemas() {
+            when(SCHEMAS.listSchemas(any(),any())).thenReturn(List.of("APP")); return SCHEMAS;
+        }
         @Bean @Primary LocalWriteExecutor fixtureWrites() {
             when(WRITES.execute(any())).thenAnswer(invocation -> {
                 LocalWriteProposal.Operation operation=invocation.getArgument(0);writeCalls.incrementAndGet();
@@ -98,6 +106,10 @@ class LocalAssistantHttpTest {
                             }
                             String name=text.equals("tool")?"list_tables":text.equals("unknown")?"delete_everything":null;
                             String arguments="{}";
+                            if (text.equals("sources")) name="list_connections";
+                            for(String tool:List.of("list_namespaces","list_tables")) if(text.startsWith(tool+":")) {
+                                name=tool;arguments=text.substring(tool.length()+1);
+                            }
                             if (text.equals("query") || text.equals("write")) {
                                 name="query_database"; arguments=text.equals("query")?"{\"query\":\"SELECT COUNT(*) FROM safe_table\"}":"{\"query\":\"DELETE FROM safe_table\"}";
                             }
@@ -160,6 +172,49 @@ class LocalAssistantHttpTest {
                 "username","fixture","driverJarPath",root.resolve("fixture-driver.jar").toString()),true);
         assertThat(created.statusCode()).isEqualTo(200);return JSON.readTree(created.body()).path("data").path("id").asLong();
     }
+    @Test void localChatModelEndpointExposesAndRunsAllFourQwenChoicesWithoutChangingDefaults() throws Exception {
+        var setup = new LinkedHashMap<String,Object>();
+        setup.put("name", "Qwen chat choices"); setup.put("provider", "QWEN");
+        setup.put("apiStyle", "OPENAI_CHAT_COMPLETIONS"); setup.put("compatibilityProfile", "qwen-chat-v1");
+        setup.put("endpoint", "https://fixture.example.invalid/v1/"); setup.put("apiKey", "QWEN_FIXTURE_SECRET_NEVER_PRINT");
+        setup.put("modelId", "qwen3.8-max"); setup.put("makeDefault", false);
+        var saved = call("POST", "/api/ai/model-setups", setup, true);
+        assertThat(saved.statusCode()).isEqualTo(200);
+        var bindings = call("GET", "/api/ai/model-bindings", null, true).body();
+        Path modelFile = root.resolve("models/PERSONAL/1/models.json");
+        String before = Files.readString(modelFile);
+
+        // Use the real local composition and browser-origin transport, not a standalone controller.
+        var response = HTTP.send(HttpRequest.newBuilder(URI.create(base + "/api/ai/models"))
+                .header("Origin", "http://127.0.0.1:5174").GET().build(), HttpResponse.BodyHandlers.ofString());
+        assertThat(response.statusCode()).isEqualTo(200);
+        var all = JSON.readTree(response.body()).path("data");
+        var qwen = new ArrayList<JsonNode>();
+        all.forEach(option -> { if (option.path("provider").asText().equals("QWEN")) qwen.add(option); });
+        assertThat(qwen).extracting(option -> option.path("modelId").asText())
+                .containsExactly("qwen3.8-max", "qwen3.6-flash", "qwen-plus", "qwen3.5-plus");
+        assertThat(response.body()).doesNotContain("QWEN_FIXTURE_SECRET_NEVER_PRINT", "credentialRef", "encryptedPayload", token);
+        var defaults = new ArrayList<String>();
+        all.forEach(option -> { if (option.path("defaultModel").asBoolean()) defaults.add(option.path("modelConfigId").asText()); });
+        assertThat(defaults).containsExactly(modelId);
+        long id = session(false);
+        try {
+            for (var option : qwen) {
+                String selected = option.path("modelConfigId").asText();
+                assertThat(option.path("modelName").asText()).isEqualTo(selected);
+                assertThat(option.path("apiStyle").asText()).isEqualTo("OPENAI_CHAT_COMPLETIONS");
+                assertThat(option.path("compatibilityProfile").asText()).isEqualTo("qwen-chat-v1");
+                var turn = call("POST", "/api/local/chat/stream",
+                        Map.of("conversationId", id, "message", "hello", "modelConfigId", selected), true);
+                assertThat(turn.statusCode()).isEqualTo(200);
+                assertThat(turn.body()).contains("SUCCEEDED").doesNotContain("errorCode");
+                assertThat(context.getBean(LocalConversationRegistry.class).require(id).modelConfigId).isEqualTo(selected);
+            }
+        } finally { call("DELETE", "/api/local/conversations/" + id, null, true); }
+        assertThat(call("GET", "/api/ai/model-bindings", null, true).body()).isEqualTo(bindings);
+        assertThat(Files.readString(modelFile)).isEqualTo(before);
+    }
+
     @Test void completeReferencesReachTheLocalModelAndExplicitToolTargetsWithoutChangingDefaults() throws Exception {
         long id=session(true),other=otherConnection();clearInvocations(TABLES);
         var refs=List.of(Map.of("token","@orders","connectionId",connectionId,"connectionName","spoof","catalogName","fixture_db","objectType","TABLE","objectName","orders"),
@@ -227,6 +282,22 @@ class LocalAssistantHttpTest {
         verify(TABLES).getTables(new edu.zsc.ai.domain.model.context.DbContext(connectionId,"fixture_db",null));
         assertThat(turn(id,"write").body()).contains("LOCAL_FEATURE_NOT_SUPPORTED"); verifyNoInteractions(SQL);
         assertThat(turn(id,"query").body()).contains("ROW_COUNT"); verify(SQL).executeSql(argThat(r -> r.getConnectionId()==connectionId && "fixture_db".equals(r.getCatalog())));
+    }
+    @Test void unscopedChatCanDiscoverSourcesAndNamespacesThenReadAnExplicitTarget() throws Exception {
+        long id=session(false);clearInvocations(TABLES,SQL,DATABASES,SCHEMAS);
+        try {
+            var sources=turn(id,"sources");
+            assertThat(sources.body()).contains("list_connections","Fixture db","SUCCEEDED")
+                    .doesNotContain("example.invalid","fixture-driver.jar","FIXTURE_SECRET_NEVER_PRINT","credentialConfigured");
+            verifyNoInteractions(TABLES,SQL,DATABASES,SCHEMAS);
+            String target=JSON.writeValueAsString(Map.of("connectionId",connectionId));
+            assertThat(turn(id,"list_namespaces:"+target).body()).contains("fixture_db","SUCCEEDED");
+            verify(DATABASES).getDatabases(connectionId);
+            assertThat(turn(id,"list_tables:"+JSON.writeValueAsString(Map.of("connectionId",connectionId,"catalogName","fixture_db"))).body())
+                    .contains("safe_table","SUCCEEDED");
+            verify(TABLES).getTables(new edu.zsc.ai.domain.model.context.DbContext(connectionId,"fixture_db",null));
+            assertThat(JSON.readTree(call("GET","/api/local/conversations/"+id,null,true).body()).path("data").path("defaultTarget").path("connectionId").isNull()).isTrue();
+        } finally {call("DELETE","/api/local/conversations/"+id,null,true);}
     }
     @Test void unknownToolsCannotReachAnExecutor() throws Exception {
         clearInvocations(SQL,TABLES); assertThat(turn(session(true),"unknown").body()).contains("TOOL_FORBIDDEN","FAILED"); verifyNoInteractions(SQL,TABLES);

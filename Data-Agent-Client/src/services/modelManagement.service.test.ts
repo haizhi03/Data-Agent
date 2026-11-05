@@ -17,6 +17,8 @@ describe('local model management requests and credentials', () => {
     expect(http.get).toHaveBeenCalledWith('/ai/model-connections');
     await api.specifications();
     expect(http.get).toHaveBeenLastCalledWith('/ai/model-specifications');
+    await api.chatModels();
+    expect(http.get).toHaveBeenLastCalledWith('/ai/models');
   });
   it('uses explicit credential actions and optimistic versions without placeholder keys', async () => {
     const api = createModelManagementService();

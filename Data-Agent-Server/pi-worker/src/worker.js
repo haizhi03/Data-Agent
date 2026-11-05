@@ -45,6 +45,11 @@ function validateStart(msg) {
   if (typeof msg.message !== 'string' || !msg.message || msg.message.length > 128000) return 'message invalid';
   if (typeof msg.apiKey !== 'string' || !msg.apiKey) return 'apiKey required';
   if (typeof msg.model !== 'object' || msg.model === null) return 'model required';
+  if (msg.role !== undefined && !['assistant', 'explorer'].includes(msg.role)) return 'role invalid';
+  for (const [key, maximum] of [['maxModelCalls', 16], ['maxToolCalls', 32]]) {
+    const value = msg.limits?.[key];
+    if (value !== undefined && (!Number.isInteger(value) || value < 1 || value > maximum)) return 'limits invalid';
+  }
   return null;
 }
 
