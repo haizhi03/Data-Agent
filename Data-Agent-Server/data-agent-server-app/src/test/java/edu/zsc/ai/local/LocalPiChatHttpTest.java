@@ -47,12 +47,17 @@ class LocalPiChatHttpTest {
     static final edu.zsc.ai.domain.service.db.DatabaseService DATABASES=mock(edu.zsc.ai.domain.service.db.DatabaseService.class);
     static final edu.zsc.ai.domain.service.db.SchemaService SCHEMAS=mock(edu.zsc.ai.domain.service.db.SchemaService.class);
     static final ColumnService COLUMNS=mock(ColumnService.class);
+    static final LocalForeignKeyReader FOREIGN_KEYS=mock(LocalForeignKeyReader.class);
     static final SqlExecutionServiceImpl SQL=mock(SqlExecutionServiceImpl.class);
     static final AtomicReference<CountDownLatch> QUERY_STARTED=new AtomicReference<>(new CountDownLatch(1));
     static final AtomicReference<CountDownLatch> QUERY_RELEASE=new AtomicReference<>(new CountDownLatch(1));
     static final List<Long> createdSessions=new CopyOnWriteArrayList<>();
 
     @Configuration(proxyBeanMethods=false) static class Fixture {
+        @Bean @Primary LocalForeignKeyReader fixtureForeignKeys() {
+            when(FOREIGN_KEYS.read(any(),any())).thenReturn(Map.of("available",true,"keys",List.of(),"truncated",false));
+            return FOREIGN_KEYS;
+        }
         @Bean @Primary edu.zsc.ai.domain.service.db.DatabaseService fixtureDatabases() {
             when(DATABASES.getDatabases(any())).thenReturn(List.of("fixture_db")); return DATABASES;
         }
@@ -223,11 +228,57 @@ class LocalPiChatHttpTest {
         }
         throw new AssertionError("Explorer result missing");
     }
+
+    @Test void batchStructuresAreHostVerifiedAndDoNotExecuteSql() throws Exception {
+        long id=session(true);clearInvocations(COLUMNS,FOREIGN_KEYS,SQL);
+        String task="explore-json:"+JSON.writeValueAsString(Map.of("tasks",List.of(
+                Map.of("connectionId",connectionId,"catalogName","fixture_db","instruction","batch-read","mode","schema"))));
+        var result=explorerResult(piTurn(id,task,null)).path("taskResults").get(0);
+        assertThat(result.path("status").asText()).isEqualTo("SUCCESS");
+        assertThat(result.path("structures").size()).isEqualTo(2);
+        for(var structure:result.path("structures")) {
+            assertThat(structure.path("target").path("catalogName").asText()).isEqualTo("fixture_db");
+            assertThat(structure.path("columns").get(0).path("name").asText()).isEqualTo("id");
+            assertThat(structure.path("columns").get(0).path("primaryKey").asBoolean()).isTrue();
+            assertThat(structure.path("foreignKeys").path("available").asBoolean()).isTrue();
+        }
+        verify(COLUMNS).listColumns(new DbContext(connectionId,"fixture_db",null),"safe_table");
+        verify(COLUMNS).listColumns(new DbContext(connectionId,"fixture_db",null),"second_table");
+        verifyNoInteractions(SQL);
+    }
+
+    @Test void batchMetadataValidatesAllNamesBeforeReadingAnything() throws Exception {
+        for(var names:List.of(List.of("safe_table","bad.table"),List.of("safe_table","safe_table"),
+                List.of("a","b","c","d","e"),List.of())) {
+            clearInvocations(COLUMNS,FOREIGN_KEYS,SQL);
+            String body=piTurn(session(true),"batch-json:"+JSON.writeValueAsString(Map.of("tableNames",names)),null);
+            assertThat(body).contains("LOCAL_REQUEST_INVALID");
+            verifyNoInteractions(COLUMNS,FOREIGN_KEYS,SQL);
+        }
+    }
+
+    @Test void schemaProfileRejectsAWorkerAttemptToQueryBusinessData() throws Exception {
+        clearInvocations(SQL);
+        String task="explore-json:"+JSON.writeValueAsString(Map.of("tasks",List.of(
+                Map.of("connectionId",connectionId,"catalogName","fixture_db","instruction","query","mode","schema"))));
+        var result=explorerResult(piTurn(session(true),task,null)).path("taskResults").get(0);
+        assertThat(result.path("status").asText()).isEqualTo("ERROR");
+        assertThat(result.path("errorMessage").asText()).isEqualTo("LOCAL_SCOPE_FORBIDDEN");
+        verifyNoInteractions(SQL);
+    }
+
+    @Test void anEmptyColumnResultCannotBecomeVerifiedTableEvidence() throws Exception {
+        when(COLUMNS.listColumns(any(),eq("missing_table"))).thenReturn(List.of());
+        clearInvocations(COLUMNS,FOREIGN_KEYS,SQL);
+        String body=piTurn(session(true),"batch-json:{\"tableNames\":[\"missing_table\"]}",null);
+        assertThat(body).contains("LOCAL_TABLE_METADATA_UNAVAILABLE");
+        verifyNoInteractions(FOREIGN_KEYS,SQL);
+    }
     static String exploration(String instruction,int timeout) throws Exception {
         return "explore-json:"+JSON.writeValueAsString(Map.of("tasks",List.of(Map.of("connectionId",connectionId,"instruction",instruction,"timeoutSeconds",timeout))));
     }
 
-    @Test void piExplorerUsesItsOwnModelAndIsolatedTasksThenReturnsVerifiedStructuredResults() throws Exception {
+    @Test void piExplorerUsesItsOwnModelAndIsolatedTasksThenReturnsVerifiedStructuredResults(CapturedOutput output) throws Exception {
         long id=session(true);clearInvocations(TABLES);
         String task="explore-json:"+JSON.writeValueAsString(Map.of("tasks",List.of(
                 Map.of("connectionId",connectionId,"catalogName","first_db","instruction","find first table"),
@@ -249,6 +300,10 @@ class LocalPiChatHttpTest {
         assertThat(events.stream().filter(event->event.path("type").asText().equals("SUB_AGENT_COMPLETE"))).hasSize(2);
         assertThat(events.stream().filter(event->event.path("type").asText().equals("TOOL_RESULT") && event.hasNonNull("parentToolCallId"))).hasSize(2);
         assertThat(body).contains("SUCCEEDED").doesNotContain("FIXTURE_SECRET_NEVER_PRINT");
+        assertThat(output).contains("Pi chat started:","Pi tool started:","tool=callingExplorerSubAgent",
+                "Pi Explorer started:","Pi Explorer model selected:","Pi Explorer tool finished:",
+                "Pi Explorer finished:","Pi chat finished:","elapsedMs=");
+        assertThat(output).doesNotContain("FIXTURE_SECRET_NEVER_PRINT","instruction=find first table");
         assertThat(JSON.readTree(events.getLast().path("data").asText()).path("statistics").path("modelCalls").asInt()).isEqualTo(3);
     }
 
@@ -266,6 +321,23 @@ class LocalPiChatHttpTest {
         String body=piTurn(session(true),exploration("invent-object",5),null);
         assertThat(explorerResult(body).path("taskResults").get(0).path("status").asText()).isEqualTo("ERROR");
         assertThat(body).contains("PI_EXPLORER_RESULT_INVALID");
+    }
+
+    @Test void piExplorerReturnsHostVerifiedQueryExecutionEvidence() throws Exception {
+        clearInvocations(SQL);
+        String body=piTurn(session(true),exploration("query",5),null);
+        var task=explorerResult(body).path("taskResults").get(0);
+        assertThat(task.path("status").asText()).isEqualTo("SUCCESS");
+        assertThat(task.path("executions").size()).as(body).isEqualTo(1);
+        var execution=task.path("executions").get(0);
+        var captured=org.mockito.ArgumentCaptor.forClass(AgentExecuteSqlRequest.class);verify(SQL).executeSql(captured.capture());
+        assertThat(execution.path("executionId").asText()).isEqualTo(captured.getValue().getExecutionId());
+        assertThat(execution.path("target").path("connectionId").asLong()).isEqualTo(connectionId);
+        assertThat(execution.path("target").path("catalog").asText()).isEqualTo("fixture_db");
+        assertThat(execution.path("success").asBoolean()).isTrue();
+        assertThat(execution.path("statementState").asText()).isEqualTo("EXECUTED");
+        assertThat(execution.path("truncated").asBoolean()).isFalse();
+        assertThat(blocks(body).stream().filter(block->block.path("done").asBoolean())).hasSize(1);
     }
 
     @Test void aChildWorkerCrashIsReportedToTheParentWithoutChangingEngines() throws Exception {
@@ -454,6 +526,20 @@ class LocalPiChatHttpTest {
         assertThat(body).contains("pong-turn1","SUCCEEDED","engine");
         assertThat(body).contains("statistics").contains("modelCalls");
         assertThat(body).doesNotContain("FIXTURE_SECRET_NEVER_PRINT");
+    }
+
+    @Test void nonJsonWorkerOutputFailsTheRunWithoutASecondDone() throws Exception {
+        long id=session(false);
+        String body=piTurn(id,"invalid-stdout",null);
+        assertThat(body).contains("FAILED","PI_PROTOCOL_ERROR");
+        assertThat(blocks(body).stream().filter(block->block.path("done").asBoolean())).hasSize(1);
+        assertThat(piTurn(id,"hello after protocol noise",null)).contains("pong-turn1","SUCCEEDED");
+    }
+
+    @Test void workerStderrCannotCopyCredentialsIntoApplicationLogs(CapturedOutput output) throws Exception {
+        String body=piTurn(session(false),"stderr-secret",null);
+        assertThat(body).contains("SUCCEEDED").doesNotContain("FIXTURE_SECRET_NEVER_PRINT");
+        assertThat(output).doesNotContain("FIXTURE_SECRET_NEVER_PRINT");
     }
 
     @Test void unsupportedModelIsRejectedBeforeStartingTheWorker() throws Exception {

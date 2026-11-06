@@ -17,15 +17,13 @@ const modelApi=vi.hoisted(()=>({chatModels:vi.fn()}));
 
 const fixture=vi.hoisted(() => ({
   modelApiStyle:'OPENAI_CHAT_COMPLETIONS', missingModelConnection:false,
-  workspace:{supportedDbTypes:[{code:'mysql',supportDatabase:true,supportSchema:false},{code:'dm',supportDatabase:false,supportSchema:true}]},
+  workspace:{assistantEngine:'auto',supportedDbTypes:[{code:'mysql',supportDatabase:true,supportSchema:false},{code:'dm',supportDatabase:false,supportSchema:true}]},
   t:(key:string) => ({'ai.default_target':'默认目标','ai.target_unspecified':'未指定','ai.target_change':'设置默认目标','ai.target_apply':'应用到当前会话',
     'ai.target_new_chat':'以此目标新建会话','ai.target_cancel':'取消','ai.mention_data_source':'连接','ai.mention_database':'数据库','ai.mention_schema':'Schema',
     'local_assistant.errors.PI_COMPACTION_NOT_SUPPORTED':'Pi 会话暂不支持压缩，请新建对话。',
     'local_assistant.errors.PI_UNSUPPORTED_API_STYLE':'当前模型的接口不受 Pi 支持，请选择使用 OpenAI Chat Completions 或 Anthropic Messages 接口的模型。',
     'local_assistant.errors.MODEL_CONFIG_UNAVAILABLE':'模型配置不可用，请检查模型设置。',
     'local_assistant.errors.MODEL_MANAGEMENT_UNAVAILABLE':'可用模型列表加载失败，请检查本地服务后重试。',
-    'local_assistant.engine_pi':'Pi 实验引擎 · 只读查询',
-    'local_assistant.pi_capabilities':'可查看表结构并执行受限只读查询（限时15秒、最多返回200行）；暂不支持写入或压缩对话。',
     'local_assistant.ephemeral_pi':'对话仅在内存中，关闭面板后清空。'}[key]??key),
 }));
 vi.mock('react-i18next',()=>({useTranslation:()=>({t:fixture.t})}));
@@ -64,6 +62,7 @@ beforeEach(()=>{
   vi.clearAllMocks();
   useTabStore.setState({tabs:[],activeTabId:null});
   fixture.modelApiStyle='OPENAI_CHAT_COMPLETIONS'; fixture.missingModelConnection=false;
+  fixture.workspace.assistantEngine='auto';
   modelApi.chatModels.mockImplementation(async()=>[
     {modelName:'model',modelConfigId:'model',name:'默认模型',defaultModel:true,
       apiStyle:fixture.missingModelConnection?undefined:fixture.modelApiStyle},
@@ -224,6 +223,21 @@ describe('Pi model API compatibility',()=>{
 });
 
 describe('local conversation engines and compaction',()=>{
+  it.each(['java','pi'] as const)('uses the manually selected %s engine for a new conversation',async selected=>{
+    piReady(true);fixture.workspace.assistantEngine=selected;
+    render(<LocalAssistant onClose={()=>{}}/>,{wrapper});
+    await send('hello');
+    await waitFor(()=>expect(api.chat).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(api.chat).mock.calls[0][5]).toBe(selected);
+    expect(screen.queryByRole('note')).toBeNull();
+  });
+  it('falls back to Java when the saved Pi preference is unavailable',async()=>{
+    fixture.workspace.assistantEngine='pi';
+    render(<LocalAssistant onClose={()=>{}}/>,{wrapper});
+    await send('hello');
+    await waitFor(()=>expect(api.chat).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(api.chat).mock.calls[0][5]).toBe('java');
+  });
   it('retains Explorer lifecycle and nested tool events in the assistant response',async()=>{
     piReady(true);
     const events=([
@@ -242,9 +256,7 @@ describe('local conversation engines and compaction',()=>{
     piReady(true);
     render(<LocalAssistant onClose={()=>{}}/>,{wrapper});
     await waitFor(()=>expect((screen.getByLabelText('模型') as HTMLSelectElement).value).toBe('model'));
-    const scope=screen.getByRole('note',{name:'Pi 实验引擎 · 只读查询'});
-    expect(scope.textContent).toContain('受限只读查询（限时15秒、最多返回200行）');
-    expect(scope.textContent).toContain('暂不支持写入或压缩对话');
+    expect(screen.queryByRole('note')).toBeNull();
     expect(screen.getByTitle('对话仅在内存中，关闭面板后清空。')).toBeTruthy();
     expect(screen.getByTestId('commands').textContent).toBe('["new"]');
     expect(screen.queryByText('压缩上下文')).toBeNull();
@@ -274,7 +286,7 @@ describe('local conversation engines and compaction',()=>{
     await waitFor(()=>expect(api.chat).toHaveBeenCalledTimes(1));
     piReady(!initial);
     expect(screen.getByTestId('commands').textContent).toBe(initial?'["new"]':'["new","compact"]');
-    expect(screen.queryByRole('note') !== null).toBe(initial);
+    expect(screen.queryByRole('note')).toBeNull();
     await send('second');
     await waitFor(()=>expect(api.chat).toHaveBeenCalledTimes(2));
     expect(vi.mocked(api.chat).mock.calls.map(call=>call[5])).toEqual([initial?'pi':'java',initial?'pi':'java']);
@@ -283,7 +295,7 @@ describe('local conversation engines and compaction',()=>{
     await send('new chat');
     await waitFor(()=>expect(api.chat).toHaveBeenCalledTimes(3));
     expect(vi.mocked(api.chat).mock.calls[2][5]).toBe(initial?'java':'pi');
-    expect(screen.queryByRole('note') !== null).toBe(!initial);
+    expect(screen.queryByRole('note')).toBeNull();
     expect(api.close).toHaveBeenCalledWith(7);
   });
 });

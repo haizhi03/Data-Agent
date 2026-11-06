@@ -8,6 +8,7 @@ import { SettingsModalFooter } from './SettingsModalFooter';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Settings2 } from 'lucide-react';
+import { AssistantEngineSection } from './AssistantEngineSection';
 
 export function SettingsModal() {
   const navigate = useNavigate();
@@ -35,6 +36,7 @@ export function SettingsModal() {
           </button>}
           <LanguageSection />
           <AppearanceSection />
+          <AssistantEngineSection />
 
           <QueryBehaviorSection
             resultBehavior={resultBehavior}

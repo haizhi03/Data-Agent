@@ -138,7 +138,7 @@ class LocalAssistantHttpTest {
         Files.createDirectories(Path.of("target"));
         Files.writeString(Path.of("target/vc05-test-classpath.txt"),System.getProperty("surefire.test.class.path",System.getProperty("java.class.path")));
         context=(ServletWebServerApplicationContext)new SpringApplicationBuilder(DataAgentApplication.class,Fixture.class).run(
-                "--app.runtime.mode=local","--server.port=0","--spring.main.banner-mode=off","--app.local.data-directory="+root);
+                "--app.runtime.mode=local","--server.port=0","--spring.main.banner-mode=off","--app.local.pi.enabled=false","--app.local.data-directory="+root);
         base="http://127.0.0.1:"+context.getWebServer().getPort(); var identity=context.getBean(LocalRuntimeIdentity.class);
         token=identity.transportTokenForHost(); runtime=identity.runtimeInstanceId().toString();
         var setup=new LinkedHashMap<String,Object>();
@@ -247,7 +247,7 @@ class LocalAssistantHttpTest {
         var target=JSON.readTree(call("GET","/api/local/conversations/"+id,null,true).body()).path("data").path("defaultTarget");
         assertThat(target.path("schemaName").asText()).isEqualTo("ARCHIVE");assertThat(target.path("catalogName").isNull()).isTrue();
     }
-    @Test void piEntryIsDisabledByDefault() throws Exception {
+    @Test void piEntryRejectsRequestsWhenDisabled() throws Exception {
         long id=session(true);
         var response=call("POST","/api/local/pi/chat/stream",Map.of("conversationId",id,"message","hi","modelConfigId",modelId),true);
         assertThat(response.statusCode()).isEqualTo(409);

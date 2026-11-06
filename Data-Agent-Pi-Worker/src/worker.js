@@ -46,6 +46,7 @@ function validateStart(msg) {
   if (typeof msg.apiKey !== 'string' || !msg.apiKey) return 'apiKey required';
   if (typeof msg.model !== 'object' || msg.model === null) return 'model required';
   if (msg.role !== undefined && !['assistant', 'explorer'].includes(msg.role)) return 'role invalid';
+  if (msg.toolProfile !== undefined && !['general', 'schema'].includes(msg.toolProfile)) return 'toolProfile invalid';
   for (const [key, maximum] of [['maxModelCalls', 16], ['maxToolCalls', 32]]) {
     const value = msg.limits?.[key];
     if (value !== undefined && (!Number.isInteger(value) || value < 1 || value > maximum)) return 'limits invalid';

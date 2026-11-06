@@ -37,9 +37,11 @@ function onStart(msg) {
     explorerRuns.set(runId, { ...task, modelId: msg.model.modelId });
     if (task.instruction === 'wait') return;
     const args = task.instruction.startsWith('escape:') ? JSON.parse(task.instruction.slice(7)) : {};
-    const query = task.instruction === 'wait-query';
-    if (query) args.query = 'SELECT COUNT(*) FROM safe_table /* wait-query */';
-    send({ type: 'tool_call', runId, toolCallId: 'child_read', name: query ? 'query_database' : 'list_tables', arguments: JSON.stringify(args) });
+    const query = task.instruction === 'wait-query' || task.instruction === 'query';
+    if (task.instruction === 'wait-query') args.query = 'SELECT COUNT(*) FROM safe_table /* wait-query */';
+    else if (query) args.query = 'SELECT COUNT(*) FROM safe_table';
+    if (task.instruction === 'batch-read') args.tableNames = ['safe_table', 'second_table'];
+    send({ type: 'tool_call', runId, toolCallId: 'child_read', name: task.instruction === 'batch-read' ? 'describe_tables' : query ? 'query_database' : 'list_tables', arguments: JSON.stringify(args) });
     return;
   }
   const encoded = msg.message ?? '';
@@ -56,6 +58,11 @@ function onStart(msg) {
     }
   }
 
+  if (text.startsWith('batch-json:')) {
+    pendingRuns.set(runId, sessionId);
+    send({ type: 'tool_call', runId, toolCallId: 'call_batch', name: 'describe_tables', arguments: text.slice('batch-json:'.length) });
+    return;
+  }
   if (text.startsWith('explore-json:')) {
     pendingRuns.set(runId, sessionId);
     send({ type: 'tool_call', runId, toolCallId: 'call_explorer', name: 'callingExplorerSubAgent', arguments: text.slice('explore-json:'.length) });
@@ -64,6 +71,13 @@ function onStart(msg) {
 
   if (text.includes('crash-now')) {
     process.exit(2);
+  }
+  if (text.includes('invalid-stdout')) {
+    process.stdout.write('worker protocol noise\n');
+    return;
+  }
+  if (text.includes('stderr-secret')) {
+    process.stderr.write(`provider diagnostic with credential ${msg.apiKey}\n`);
   }
   if (text.includes('wait-for-cancel')) {
     pendingRuns.set(runId, sessionId);
@@ -109,7 +123,8 @@ function onToolResult(msg) {
   if (explorerRuns.has(msg.runId)) {
     const task = explorerRuns.get(msg.runId); explorerRuns.delete(msg.runId);
     const value = JSON.parse(msg.result);
-    const name = task.instruction === 'invent-object' ? 'invented_table' : value.tables?.[0];
+    const first = value.tables?.[0];
+    const name = task.instruction === 'invent-object' ? 'invented_table' : typeof first === 'object' ? first.table : first;
     send({ type: 'text_delta', runId: msg.runId, delta: JSON.stringify({ summaryText: `Explorer model=${task.modelId}; error=${msg.isError}; result=${msg.result}`,
       objects: name ? [{ objectName: name, objectType: 'TABLE', objectDdl: null, relevanceScore: 90 }] : [] }) });
     finish(msg.runId, 'SUCCEEDED'); return;

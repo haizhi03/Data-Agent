@@ -38,7 +38,7 @@ Pi 固定提示更新为「Pi 实验引擎 · 只读查询」，说明 15 秒 / 
 使用本机 Node 22.23.2 / JDK 21.0.13.0.2。未调用真实厂商或业务数据库，未验收 Windows、桌面安装包或 Anthropic 实际服务。
 
 ```sh
-cd Data-Agent-Server/pi-worker
+cd Data-Agent-Pi-Worker
 npm test
 ```
 

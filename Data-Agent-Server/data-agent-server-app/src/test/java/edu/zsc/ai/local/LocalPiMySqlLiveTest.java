@@ -37,11 +37,11 @@ class LocalPiMySqlLiveTest {
                 "Set DATA_AGENT_PI_LOCAL_DIRECTORY to the existing encrypted local directory")).toAbsolutePath();
         assertThat(directory.resolve("connections.json")).isRegularFile();
         originalFiles=fingerprints();
-        Path worker=Path.of("../pi-worker/src/worker.js").toAbsolutePath().normalize();
+        Path worker=new LocalPiProperties(true,null,null,0,0,0).resolveWorkerScript();
         assertThat(worker).isRegularFile();
         context=(ServletWebServerApplicationContext)new SpringApplicationBuilder(DataAgentApplication.class).run(
                 "--server.port=0","--spring.main.banner-mode=off","--app.local.data-directory="+directory,
-                "--app.local.pi.enabled=true","--app.local.pi.worker-script="+worker,
+                "--app.local.pi.enabled=true",
                 "--logging.config=classpath:local-runtime-logback.xml");
         var identity=context.getBean(LocalRuntimeIdentity.class);
         base="http://127.0.0.1:"+context.getWebServer().getPort();
@@ -86,6 +86,8 @@ class LocalPiMySqlLiveTest {
             String report="pi-mysql-live-summary.json";
             if(explorerOnly)report=evidence.stream().anyMatch(item->item.get("scenario").equals("pi-explorer-query"))
                     ?"pi-explorer-query-cancel-live-summary.json":"pi-explorer-mysql-live-summary.json";
+            if(evidence.stream().anyMatch(item->item.get("scenario").equals("pi-explorer-natural")))
+                report="pi-explorer-natural-live-summary.json";
             if(!evidence.isEmpty() && evidence.stream().allMatch(item->item.get("scenario").toString().startsWith("discovery-")))
                 report="pi-discovery-mysql-live-summary.json";
             Files.writeString(Path.of("target",report),JSON.writerWithDefaultPrettyPrinter().writeValueAsString(summary));
@@ -165,6 +167,16 @@ class LocalPiMySqlLiveTest {
         record.put("validated",false);
         record.put("scenario",name); record.put("status",done.path("status").asText()); record.put("elapsedMs",(System.nanoTime()-started)/1_000_000);
         record.put("statistics",done.path("statistics"));
+        var trace=new ArrayList<Map<String,Object>>();
+        for(var block:blocks)if(block.path("type").asText().equals("TOOL_CALL")) {
+            var tool=JSON.readTree(block.path("data").asText());
+            var item=new LinkedHashMap<String,Object>();item.put("tool",tool.path("toolName").asText());
+            item.put("nested",block.hasNonNull("parentToolCallId"));
+            var args=JSON.readTree(tool.path("arguments").asText("{}"));
+            for(String field:List.of("tableName","tableNames","tasks"))if(args.has(field))item.put(field,args.get(field));
+            trace.add(item);
+        }
+        record.put("toolTrace",trace);
         var sqls=new ArrayList<String>();
         for(var block:blocks) if(block.path("type").asText().equals("TOOL_CALL")) {
             var tool=JSON.readTree(block.path("data").asText());
@@ -291,7 +303,55 @@ class LocalPiMySqlLiveTest {
         evidence.getLast().put("taskStatus",result.path("status").asText());evidence.getLast().put("validated",true);
     }
 
-    @Test @Order(7) void piExplorerCountsRealUsersThroughTheSharedReadOnlyQuery() throws Exception {
+    @Test @Order(7) void naturalMultiTableQuestionDelegatesAndKeepsExplorationFocused() throws Exception {
+        String question="帮我梳理一下 sys_demo 库里的用户和权限相关表，看看用户、角色是怎么关联的。根据实际表结构说明主键和关联字段，区分数据库已定义的外键和推测的关系，最后画一张 Mermaid ER 图。";
+        long id=call("POST","/api/local/conversations",Map.of()).path("conversationId").asLong();conversations.add(id);
+        var events=turn(id,question,"pi-explorer-natural");
+        var delegated=new ArrayList<JsonNode>();
+        var described=new HashSet<String>();
+        int nestedQueries=0;
+        for(var event:events)if(event.path("type").asText().equals("TOOL_CALL")) {
+            var tool=JSON.readTree(event.path("data").asText());
+            String name=tool.path("toolName").asText();
+            boolean nested=event.hasNonNull("parentToolCallId");
+            if(name.equals("callingExplorerSubAgent"))delegated.add(tool);
+            if(name.equals("describe_table") || name.equals("describe_tables")) {
+                assertThat(nested).as("Main assistant must delegate metadata exploration").isTrue();
+                var args=JSON.readTree(tool.path("arguments").asText());
+                if(name.equals("describe_table"))described.add(args.path("tableName").asText());
+                else for(var table:args.path("tableNames"))described.add(table.asText());
+            }
+            if(name.equals("query_database")) {
+                assertThat(nested).as("Relationship verification belongs to Explorer").isTrue();
+                nestedQueries++;
+            }
+        }
+        assertThat(delegated).hasSize(1);
+        var tasks=JSON.readTree(delegated.getFirst().path("arguments").asText()).path("tasks");
+        assertThat(tasks.size()).isEqualTo(1);
+        assertThat(tasks.get(0).path("mode").asText()).isEqualTo("schema");
+        assertThat(tasks.get(0).path("catalogName").asText()).isEqualTo("sys_demo");
+        assertThat(described).contains("sys_user","sys_role");
+        assertThat(described.size()).isLessThanOrEqualTo(4);
+        assertThat(nestedQueries).isZero();
+        var completed=events.stream().filter(event->event.path("type").asText().equals("SUB_AGENT_COMPLETE")).toList();
+        assertThat(completed).hasSize(1);
+        var completion=JSON.readTree(completed.getFirst().path("data").asText());
+        var childResult=JSON.readTree(completion.path("resultJson").asText());
+        assertThat(childResult.path("structures").size()).isBetween(2,4);
+        for(var structure:childResult.path("structures")) {
+            assertThat(structure.path("columns").isArray()).isTrue();
+            assertThat(structure.path("foreignKeys").path("available").asBoolean()).isTrue();
+        }
+        assertThat(events.stream().filter(event->event.path("type").asText().equals("SUB_AGENT_ERROR"))).isEmpty();
+        assertThat(answer(events)).contains("erDiagram");
+        evidence.getLast().put("describedTables",described);
+        evidence.getLast().put("nestedQueries",nestedQueries);
+        evidence.getLast().put("delegations",delegated.size());
+        evidence.getLast().put("validated",true);
+    }
+
+    @Test @Order(8) void piExplorerCountsRealUsersThroughTheSharedReadOnlyQuery() throws Exception {
         String question="请实际调用 callingExplorerSubAgent，派发一个任务，connectionId="+connectionId+"，catalogName=sys_demo，timeoutSeconds=45。"
                 +"任务先用describe_table确认sys_user结构，再用query_database执行SELECT COUNT(*) FROM sys_demo.sys_user，"
                 +"只查询聚合计数，最后返回含summaryText及objects的JSON；summaryText必须包含实际计数，objects的objectDdl=null。主助手据此简短回答。";
@@ -308,7 +368,7 @@ class LocalPiMySqlLiveTest {
         evidence.getLast().put("actualUsers",totalUsers);evidence.getLast().put("validated",true);
     }
 
-    @Test @Order(8) void cancellingTheParentStopsAnActiveRealPiExplorer() throws Exception {
+    @Test @Order(9) void cancellingTheParentStopsAnActiveRealPiExplorer() throws Exception {
         long id=create(),started=System.nanoTime();
         String question="请实际调用 callingExplorerSubAgent，派发一个任务，connectionId="+connectionId+"，catalogName=sys_demo，timeoutSeconds=45。"
                 +"任务先用list_tables发现sys_user，再describe_table读取字段，然后逐项解释全部字段并返回结构化JSON；不要执行SQL。";

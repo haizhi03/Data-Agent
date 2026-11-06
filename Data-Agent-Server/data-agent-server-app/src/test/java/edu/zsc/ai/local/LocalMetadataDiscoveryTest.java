@@ -13,7 +13,7 @@ class LocalMetadataDiscoveryTest {
     final DatabaseService databases=mock(DatabaseService.class);
     final SchemaService schemas=mock(SchemaService.class);
     final LocalMetadataTools tools=new LocalMetadataTools(connections,mock(ChatReferenceService.class),
-            mock(TableService.class),mock(ColumnService.class),databases,schemas);
+            mock(TableService.class),mock(ColumnService.class),databases,schemas,mock(LocalForeignKeyReader.class));
 
     @Test void anEmptyWorkspaceIsDiscoverableWithoutOpeningAnyDatabase() {
         when(connections.list()).thenReturn(List.of());

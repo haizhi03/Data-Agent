@@ -11,5 +11,8 @@ spring:
 app:
   runtime:
     mode: local
+  local:
+    pi:
+      enabled: true
   # local.data-directory defaults to ${user.home}/.data-agent/local.
   # The trusted host supplies exact allowed origins and the private stdio bootstrap.

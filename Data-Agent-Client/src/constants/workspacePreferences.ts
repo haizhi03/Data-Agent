@@ -16,6 +16,7 @@ export enum TableDblClickConsoleTargetEnum {
 export type ResultBehavior = 'multi' | 'overwrite';
 export type TableDblClickMode = 'table' | 'console';
 export type TableDblClickConsoleTarget = 'reuse' | 'new';
+export type AssistantEnginePreference = 'auto' | 'java' | 'pi';
 
 export interface PreferenceState {
   resultBehavior: ResultBehavior;
@@ -25,6 +26,7 @@ export interface PreferenceState {
   aiAutoWrite: boolean;
   aiWriteTransaction: boolean;
   aiMaxRetries: number;
+  assistantEngine: AssistantEnginePreference;
 }
 
 export const DEFAULT_PREFERENCES: PreferenceState = {
@@ -35,4 +37,5 @@ export const DEFAULT_PREFERENCES: PreferenceState = {
   aiAutoWrite: false,
   aiWriteTransaction: true,
   aiMaxRetries: 3,
+  assistantEngine: 'auto',
 };

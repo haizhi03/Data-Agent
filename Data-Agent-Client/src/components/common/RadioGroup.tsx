@@ -4,6 +4,7 @@ interface RadioOption {
   value: string;
   label: string;
   icon?: React.ReactNode;
+  disabled?: boolean;
 }
 
 interface RadioGroupProps {
@@ -20,11 +21,12 @@ export function RadioGroup({ name, value, options, onChange, variant = 'vertical
   return (
     <div className={containerClass}>
       {options.map((option) => (
-        <label key={option.value} className="flex items-center gap-2 cursor-pointer group">
+        <label key={option.value} className={cn('flex items-center gap-2 group', option.disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer')}>
           <input
             type="radio"
             name={name}
             checked={value === option.value}
+            disabled={option.disabled}
             onChange={() => onChange(option.value)}
             className="form-radio h-3.5 w-3.5 text-blue-500 bg-transparent border-theme-border focus:ring-0"
           />

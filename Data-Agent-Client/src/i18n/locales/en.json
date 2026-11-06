@@ -801,6 +801,12 @@
     "appearance": "Appearance",
     "dark": "Dark",
     "light": "Light",
+    "assistant_engine": "AI Assistant Engine",
+    "engine_auto": "Automatic (prefer Pi when available)",
+    "engine_java": "Java Agent",
+    "engine_pi": "Experimental Pi",
+    "engine_pi_unavailable": "Pi is unavailable. Enable it in the backend and finish model setup first.",
+    "engine_next_chat": "The current conversation keeps its engine; changes apply to a new conversation.",
     "query_results": "Query & Results",
     "result_tabs_behavior": "Result Tabs Behavior",
     "result_multi": "Open new Result tab for each execution",
@@ -1400,6 +1406,7 @@
       "LOCAL_SESSION_EXPIRED": "Conversation expired. Start a new chat.",
       "CONNECTION_REVISION_CONFLICT": "Connection changed. Start a new chat.",
       "LOCAL_STREAM_FAILED": "Connection interrupted without confirmed completion. Check the service and start a new chat.",
+      "LOCAL_STREAM_TIMEOUT": "No response received before the inactivity timeout. Check the backend runtime log and start a new chat.",
       "LOCAL_COMPACTION_FAILED": "Compaction failed. Original context retained.",
       "PI_COMPACTION_NOT_SUPPORTED": "Pi conversations do not support compaction yet. Start a new chat.",
       "LOCAL_SESSION_ENGINE_MISMATCH": "This conversation has a fixed engine. Start a new chat.",
@@ -1431,8 +1438,6 @@
     "calls": "Model calls",
     "tools": "Tool calls",
     "usage_partial": "Complete usage unavailable",
-    "engine_pi": "Experimental Pi engine · Read-only queries",
-    "pi_capabilities": "Inspect table structure and run restricted read-only queries (15-second timeout, up to 200 rows). Writes and conversation compaction are not supported yet.",
     "ephemeral_pi": "Chats stay in memory and clear when you close the panel."
   }
 }

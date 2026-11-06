@@ -56,7 +56,7 @@
 
 ## 5. 第一层验证（模拟模型 + 协议夹具，无真实模型费用）
 
-- `Data-Agent-Server/pi-worker`：`node --test` 12/12 通过（真实 worker 进程 + 脚本化 OpenAI 兼容夹具服务器）：文本流、工具闭环、工具失败、流式中取消、等工具结果时取消、会话忙拒绝、多轮临时会话、不支持的接口类型、厂商 HTTP 401→`PI_MODEL_ERROR`、迟到 tool_result 丢弃、坏行/超大行、stdin EOF 退出。
+- `Data-Agent-Pi-Worker`：`node --test` 12/12 通过（真实 worker 进程 + 脚本化 OpenAI 兼容夹具服务器）：文本流、工具闭环、工具失败、流式中取消、等工具结果时取消、会话忙拒绝、多轮临时会话、不支持的接口类型、厂商 HTTP 401→`PI_MODEL_ERROR`、迟到 tool_result 丢弃、坏行/超大行、stdin EOF 退出。
 - `LocalPiChatHttpTest`（真 HTTP/SSE + 真 Node 子进程跑确定性协议夹具）11/11 通过：@ 表完整身份到达 describe_table、同名表跨连接用各自身份、默认目标发现→读取、未知工具回错且运行完成、多轮复用同一 worker、等工具结果时取消→CANCELLED、worker 崩溃→FAILED/PI_WORKER_EXIT 且下一轮重启成功、终态后迟到事件被丢弃、会话忙 409、能力 READY 且不含凭证。
 - 回归：`Local*Test` 全部 178 个用例通过（含 LocalAssistantHttpTest 16 个，证明 LocalReadTools 提取后行为不变；LocalRuntimeHttpTest 契约更新为 5 个能力键）。
 - 前端：`tsc --noEmit` 通过；LocalAssistant 相关 vitest 8/8 通过；`npm run build` 通过。
@@ -91,7 +91,7 @@ java -jar data-agent-server-app-0.0.1-SNAPSHOT.jar --app.local.pi.enabled=true
 # 否则保持 Java Agent。状态行显示「Pi 引擎（实验）」。
 ```
 
-配置项：`app.local.pi.enabled`（默认 false）、`node-binary`（默认 node）、`worker-script`（默认按开发目录自动解析 `Data-Agent-Server/pi-worker/src/worker.js`）、`startup-timeout-ms`、`max-line-bytes`、`cancel-grace-seconds`。
+配置项：`app.local.pi.enabled`（默认 false）、`node-binary`（默认 node）、`worker-script`（默认按开发目录自动解析 `Data-Agent-Pi-Worker/src/worker.js`）、`startup-timeout-ms`、`max-line-bytes`、`cancel-grace-seconds`。
 
 ## 8. 未验证项与边界
 

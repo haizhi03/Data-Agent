@@ -647,6 +647,14 @@ export const I18N_KEYS = {
     DARK: 'settings.dark',
     LIGHT: 'settings.light',
 
+    // Assistant Engine
+    ASSISTANT_ENGINE: 'settings.assistant_engine',
+    ENGINE_AUTO: 'settings.engine_auto',
+    ENGINE_JAVA: 'settings.engine_java',
+    ENGINE_PI: 'settings.engine_pi',
+    ENGINE_PI_UNAVAILABLE: 'settings.engine_pi_unavailable',
+    ENGINE_NEXT_CHAT: 'settings.engine_next_chat',
+
     // Query Behavior
     QUERY_RESULTS: 'settings.query_results',
     RESULT_TABS_BEHAVIOR: 'settings.result_tabs_behavior',

@@ -17,14 +17,17 @@ import type { ModelOption } from '../../types/ai';
 
 interface Message { role: 'user' | 'assistant'; text: string; blocks?: ChatResponseBlock[]; userMentions?: ChatUserMention[] }
 
-// Keep aligned with LocalPiChatService.SUPPORTED and pi-worker/src/model.js.
+// Keep aligned with LocalPiChatService.SUPPORTED and Data-Agent-Pi-Worker/src/model.js.
 const PI_API_STYLES = new Set<string>(['OPENAI_CHAT_COMPLETIONS', 'ANTHROPIC_MESSAGES']);
 
 /** Mounted only in local mode; no history loader, preferences persistence, account hook or legacy permission grants. */
 export function LocalAssistant({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation(); const tr = (key: string) => t(`local_assistant.${key}`);
   // The server advertises the experimental Pi engine only when it is enabled and ready; Java remains the default.
-  const preferredEngine = useRuntimeStore(s => s.capabilities?.features.piAssistant?.state === 'READY') ? 'pi' : 'java';
+  const piReady = useRuntimeStore(s => s.capabilities?.features.piAssistant?.state === 'READY');
+  const assistantEngine = useWorkspaceStore(s => s.assistantEngine);
+  const preferredEngine = assistantEngine === 'java' || (assistantEngine === 'auto' && !piReady) ? 'java'
+    : piReady ? 'pi' : 'java';
   const [sessionEngine, setSessionEngine] = useState<'java' | 'pi' | null>(null);
   const engine = sessionEngine ?? preferredEngine;
   const [models, setModels] = useState<ModelOption[]>([]);
@@ -130,7 +133,7 @@ export function LocalAssistant({ onClose }: { onClose: () => void }) {
       }
       setMessages(previous => [...previous, { role: 'user', text, userMentions: snapshot.userMentions }, { role: 'assistant', text: '', blocks: [] }]);
       const controller = new AbortController(); abort.current = controller;
-      for await (const block of api.chat(session.current, text, model, AbortSignal.any([controller.signal, AbortSignal.timeout(175000)]), snapshot, engine)) {
+      for await (const block of api.chat(session.current, text, model, controller.signal, snapshot, engine)) {
         if (!current()) break;
         if (block.done) {
           const metadata = JSON.parse(block.data ?? '{}') as { status?: string; errorCode?: string; statistics?: typeof statistics };
@@ -185,10 +188,6 @@ export function LocalAssistant({ onClose }: { onClose: () => void }) {
       <AIAssistantHeader currentConversationId={session.current}
         conversationTabs={[{ id: session.current, titleOverride: null, titleCandidate: messages.find(m => m.role === 'user')?.text ?? null, messageCount: messages.length, createdAt: 0, lastTouchedAt: 0 }]}
         onSelectTab={() => {}} onCloseTab={() => void reset()} onNewChat={() => void reset()} onClosePanel={onClose} />
-      {engine === 'pi' && <div role="note" aria-label={tr('engine_pi')} className="shrink-0 border-b theme-border px-3 py-2">
-        <p className="text-xs font-medium theme-text-primary">{tr('engine_pi')}</p>
-        <p className="mt-1 text-[11px] leading-5 break-words theme-text-secondary">{tr('pi_capabilities')}</p>
-      </div>}
       <AIAssistantContent messages={displayMessages} messagesEndRef={messagesEndRef} isLoading={running} isWaiting={false}
         waitingPromptMode="default" queue={[]} onRemoveFromQueue={() => {}} trailingContent={<>
           {writes.map(view => <article key={view.proposal.proposalId} data-local-write={view.status} className="mb-2 flex flex-col gap-3 rounded-lg border theme-border theme-bg-main p-4 shadow-sm text-xs">

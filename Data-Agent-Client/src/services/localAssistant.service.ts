@@ -30,15 +30,35 @@ export const localAssistantService = {
   async *chat(conversationId: number, message: string, modelConfigId: string, signal: AbortSignal, snapshot?: Pick<ChatRequest, 'defaultTarget' | 'userMentions'>, engine?: 'java' | 'pi'): AsyncGenerator<ChatResponseBlock> {
     // The experimental Pi engine has its own endpoint; a started run never silently falls back to the other engine.
     const path = engine === 'pi' ? '/local/pi/chat/stream' : '/local/chat/stream';
-    const response = await localFetch(path, { method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
-      body: JSON.stringify({ conversationId, message, modelConfigId, ...snapshot }), signal });
-    if (!response.ok) {
-      const envelope = await response.json();
-      throw new Error(envelope.reasonCode ?? 'LOCAL_ASSISTANT_FAILED');
+    // The host uses a 150-second inactivity timeout. Active multi-step runs may
+    // legitimately take longer overall, so reset this transport guard per event.
+    const idle = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const resetIdle = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => idle.abort(), 175000);
+    };
+    resetIdle();
+    try {
+      const response = await localFetch(path, { method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+        body: JSON.stringify({ conversationId, message, modelConfigId, ...snapshot }), signal: AbortSignal.any([signal, idle.signal]) });
+      if (!response.ok) {
+        const envelope = await response.json();
+        throw new Error(envelope.reasonCode ?? 'LOCAL_ASSISTANT_FAILED');
+      }
+      let terminal = false;
+      for await (const block of parseSSEResponse(response)) {
+        resetIdle();
+        terminal ||= block.done;
+        yield block;
+      }
+      if (!terminal) throw new Error('LOCAL_STREAM_FAILED');
+    } catch (error) {
+      if (idle.signal.aborted && !signal.aborted) throw new Error('LOCAL_STREAM_TIMEOUT');
+      throw error;
+    } finally {
+      clearTimeout(timer);
     }
-    let terminal = false;
-    for await (const block of parseSSEResponse(response)) { terminal ||= block.done; yield block; }
-    if (!terminal) throw new Error('LOCAL_STREAM_FAILED');
   },
 };

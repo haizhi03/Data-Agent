@@ -29,6 +29,7 @@ export const usePreferenceStore = create<PreferenceStoreState>()(
         aiAutoWrite: state.aiAutoWrite,
         aiWriteTransaction: state.aiWriteTransaction,
         aiMaxRetries: state.aiMaxRetries,
+        assistantEngine: state.assistantEngine,
       }),
     }
   )

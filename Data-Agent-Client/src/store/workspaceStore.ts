@@ -82,6 +82,7 @@ const getAggregatedState = (): WorkspaceState => {
     aiAutoWrite: prefState.aiAutoWrite,
     aiWriteTransaction: prefState.aiWriteTransaction,
     aiMaxRetries: prefState.aiMaxRetries,
+    assistantEngine: prefState.assistantEngine,
 
     // DbType state
     supportedDbTypes: dbState.supportedDbTypes,
@@ -226,6 +227,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => {
         aiAutoWrite: prefState.aiAutoWrite,
         aiWriteTransaction: prefState.aiWriteTransaction,
         aiMaxRetries: prefState.aiMaxRetries,
+        assistantEngine: prefState.assistantEngine,
       });
     },
 
@@ -240,6 +242,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => {
         aiAutoWrite: prefState.aiAutoWrite,
         aiWriteTransaction: prefState.aiWriteTransaction,
         aiMaxRetries: prefState.aiMaxRetries,
+        assistantEngine: prefState.assistantEngine,
       });
     },
 

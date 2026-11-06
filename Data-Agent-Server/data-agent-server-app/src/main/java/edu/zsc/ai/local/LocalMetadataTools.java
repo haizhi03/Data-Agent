@@ -29,11 +29,13 @@ final class LocalMetadataTools {
     private final ColumnService columns;
     private final DatabaseService databases;
     private final SchemaService schemas;
+    private final LocalForeignKeyReader foreignKeys;
 
     LocalMetadataTools(LocalConnectionService connections, ChatReferenceService references,
-            TableService tables, ColumnService columns, DatabaseService databases, SchemaService schemas) {
+            TableService tables, ColumnService columns, DatabaseService databases, SchemaService schemas, LocalForeignKeyReader foreignKeys) {
         this.connections = connections; this.references = references; this.tables = tables; this.columns = columns;
         this.databases = databases; this.schemas = schemas;
+        this.foreignKeys = foreignKeys;
     }
 
     /** Discovery exposes identities only; no addresses, users, driver paths, properties or credentials. */
@@ -126,6 +128,35 @@ final class LocalMetadataTools {
         body.put("columns", result.stream().limit(MAX_COLUMNS).toList());
         body.put("truncated", result.size() > MAX_COLUMNS);
         return body;
+    }
+
+    Map<String,Object> describeTables(DbContext target,java.util.List<String> names,Runnable ensureActive) {
+        // Validate the whole batch before accessing any database metadata.
+        if(names==null || names.isEmpty() || names.size()>4 || names.stream().distinct().count()!=names.size()
+                || names.stream().anyMatch(name->name==null || !name.matches("[\\p{L}\\p{N}_$#]{1,128}")))
+            throw LocalRequestException.invalid();
+        requireNamespace(target);
+        var structures=new java.util.ArrayList<Map<String,Object>>();
+        for(String name:names) {
+            ensureActive.run();
+            var all=columns.listColumns(target,name);
+            if(all==null || all.isEmpty())throw new LocalRequestException(400,"LOCAL_TABLE_METADATA_UNAVAILABLE",
+                    "无法验证指定表的字段结构");
+            var compact=all.stream().limit(MAX_COLUMNS).map(column->{
+                var item=new LinkedHashMap<String,Object>();
+                item.put("name",column.name());item.put("typeName",column.typeName());
+                item.put("primaryKey",column.isPrimaryKeyPart());
+                String comment=column.remarks();
+                item.put("comment",comment==null?null:comment.substring(0,Math.min(comment.length(),200)));
+                if(comment!=null && comment.length()>200)item.put("commentTruncated",true);
+                return item;
+            }).toList();
+            ensureActive.run();
+            structures.add(Map.of("table",name,"columns",compact,"truncated",all.size()>MAX_COLUMNS,
+                    "foreignKeys",foreignKeys.read(target,name)));
+        }
+        ensureActive.run();
+        return Map.of("target",identity(target),"tables",structures,"truncated",false);
     }
 
     private void requireNamespace(DbContext target) {

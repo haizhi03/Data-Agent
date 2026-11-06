@@ -61,10 +61,10 @@ class LocalPiExplorerWorkerHttpTest {
         Path wrapper=root.resolve("fixture-node");
         Files.writeString(wrapper,"#!/bin/sh\nexport NODE_EXTRA_CA_CERTS="+quote(certificate.toString())+"\nexec "+quote(nodeBinary)+" \"$@\"\n");
         Files.setPosixFilePermissions(wrapper,java.nio.file.attribute.PosixFilePermissions.fromString("rwx------"));
-        Path worker=Path.of("../pi-worker/src/worker.js").toAbsolutePath().normalize();assertThat(worker).isRegularFile();
+        Path worker=new LocalPiProperties(true,null,null,0,0,0).resolveWorkerScript();assertThat(worker).isRegularFile();
         app=(ServletWebServerApplicationContext)new SpringApplicationBuilder(DataAgentApplication.class,Fixture.class).run(
                 "--server.port=0","--spring.main.banner-mode=off","--app.local.data-directory="+root,
-                "--app.local.pi.enabled=true","--app.local.pi.node-binary="+wrapper,"--app.local.pi.worker-script="+worker,
+                "--app.local.pi.enabled=true","--app.local.pi.node-binary="+wrapper,
                 "--app.local.model-allowed-private-hosts=127.0.0.1");
         var identity=app.getBean(LocalRuntimeIdentity.class);token=identity.transportTokenForHost();runtime=identity.runtimeInstanceId().toString();
         base="http://127.0.0.1:"+app.getWebServer().getPort();

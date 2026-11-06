@@ -16,7 +16,7 @@
 ## 验证
 
 ```sh
-cd Data-Agent-Server/pi-worker
+cd Data-Agent-Pi-Worker
 npm test
 
 cd ..

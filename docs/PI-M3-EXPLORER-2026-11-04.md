@@ -30,7 +30,7 @@ Java 验证整批任务、规范化目标并固定连接配置版本，再为每
 ## 验证
 
 ```sh
-cd Data-Agent-Server/pi-worker
+cd Data-Agent-Pi-Worker
 npm test
 
 cd ..

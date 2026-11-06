@@ -89,6 +89,8 @@ async function waitHello(worker) {
 
 test('an unscoped assistant discovers data sources and namespaces before listing tables', async () => {
   const server = await startFixtureServer((body, count) => {
+    assert.ok(body.messages.some(message => message.role === 'system' && message.content.includes('You are a local database assistant for tests.')),
+      'The configured system prompt must reach the model on every call');
     const names = body.tools.map(tool => tool.function.name);
     assert.ok(names.includes('list_connections')); assert.ok(names.includes('list_namespaces'));
     if (count === 1) return toolCallResponse([{ id: 'sources', name: 'list_connections', args: {} }]);
@@ -142,9 +144,52 @@ test('assistant delegates Explorer tasks and resumes with the structured task re
   } finally { await server.close(); }
 });
 
+test('schema Explorer reads one verified batch then has no tools for its summary', async () => {
+  const server = await startFixtureServer((body, count) => {
+    const names = (body.tools ?? []).map(tool => tool.function.name).sort();
+    if (count === 1) {
+      assert.deepEqual(names, ['describe_tables', 'list_tables']);
+      return toolCallResponse([{ id: 'batch', name: 'describe_tables', args: { tableNames: ['users', 'roles'] } }]);
+    }
+    assert.deepEqual(names, []);
+    return textResponse('{"summaryText":"Verified users and roles","objects":[]}');
+  });
+  try {
+    const worker = startWorker(); await waitHello(worker);
+    worker.send(startMessage({ baseUrl: server.baseUrl, role: 'explorer', toolProfile: 'schema' }));
+    await worker.waitFor(message => message.type === 'tool_call');
+    worker.send({ type: 'tool_result', runId: 'run-1', toolCallId: 'batch', isError: false,
+      result: JSON.stringify({ tables: [{ table: 'users', columns: [] }, { table: 'roles', columns: [] }], truncated: false }) });
+    assert.equal((await worker.waitFor(message => message.type === 'finished')).status, 'SUCCEEDED');
+    assert.equal(server.calls.length, 2);
+  } finally { await server.close(); }
+});
+
+test('schema delegation closes parent exploration and a new turn restores its tools', async () => {
+  const server = await startFixtureServer((body, count) => {
+    const names = (body.tools ?? []).map(tool => tool.function.name);
+    if (count === 1) return toolCallResponse([{ id: 'delegate-schema', name: 'callingExplorerSubAgent',
+      args: { tasks: [{ connectionId: 7, instruction: 'Find users', mode: 'schema' }] } }]);
+    if (count === 2) { assert.deepEqual(names, []); return textResponse('Schema summary'); }
+    assert.ok(names.includes('query_database')); assert.ok(names.includes('callingExplorerSubAgent'));
+    return textResponse('Next turn');
+  });
+  try {
+    const worker = startWorker(); await waitHello(worker);
+    worker.send(startMessage({ baseUrl: server.baseUrl }));
+    await worker.waitFor(message => message.type === 'tool_call');
+    worker.send({ type: 'tool_result', runId: 'run-1', toolCallId: 'delegate-schema', isError: false,
+      result: JSON.stringify({ taskResults: [{ status: 'SUCCESS', structures: [{ table: 'users', columns: [] }] }], truncated: false }) });
+    assert.equal((await worker.waitFor(message => message.type === 'finished' && message.runId === 'run-1')).status, 'SUCCEEDED');
+    worker.send(startMessage({ baseUrl: server.baseUrl, runId: 'run-2', message: 'Now count users' }));
+    assert.equal((await worker.waitFor(message => message.type === 'finished' && message.runId === 'run-2')).status, 'SUCCEEDED');
+    assert.equal(server.calls.length, 3);
+  } finally { await server.close(); }
+});
+
 test('Explorer role has only read tools and a model-call budget stops before another upstream call', async () => {
   const server = await startFixtureServer(body => {
-    assert.deepEqual(body.tools.map(tool => tool.function.name).sort(), ['describe_table', 'list_tables', 'query_database']);
+    assert.deepEqual(body.tools.map(tool => tool.function.name).sort(), ['describe_table', 'describe_tables', 'list_tables', 'query_database']);
     return toolCallResponse([{ id: 'read', name: 'list_tables', args: {} }]);
   });
   try {
@@ -260,7 +305,7 @@ test('tool failure reaches the model as an error and the run still completes', a
 test('metadata to read-only query loop preserves target and result facts until the final answer', async () => {
   const target = { connectionId: 7, catalogName: 'sales', schemaName: 'PUBLIC' };
   const server = await startFixtureServer((body, count) => {
-    assert.deepEqual(body.tools.map((tool) => tool.function.name).sort(), ['callingExplorerSubAgent', 'describe_table', 'list_connections', 'list_namespaces', 'list_tables', 'query_database']);
+    assert.deepEqual(body.tools.map((tool) => tool.function.name).sort(), ['callingExplorerSubAgent', 'describe_table', 'describe_tables', 'list_connections', 'list_namespaces', 'list_tables', 'query_database']);
     if (count === 1) return toolCallResponse([{ id: 'list', name: 'list_tables', args: target }]);
     if (count === 2) return toolCallResponse([{ id: 'describe', name: 'describe_table', args: { ...target, tableName: 'orders' } }]);
     if (count === 3) return toolCallResponse([{ id: 'query', name: 'query_database', args: { ...target, query: 'SELECT COUNT(*) FROM orders' } }]);

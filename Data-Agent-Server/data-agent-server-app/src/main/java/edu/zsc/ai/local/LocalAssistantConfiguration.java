@@ -13,7 +13,7 @@ import org.springframework.core.env.ConfigurableEnvironment;
         ModelDiagnosticService.class, ModelConnectionTestService.class, ModelConnectionProbe.class,
         ModelClientRegistry.class, ModelRuntime.class, OpenAiChatClientFactory.class, ResponsesClientFactory.class,
         AnthropicMessagesClientFactory.class, DashScopeClientFactory.class, ModelManagementController.class, LocalChatModelController.class,
-        LocalWriteService.class, LocalWriteExecutor.class, LocalConversationRegistry.class, LocalMetadataTools.class, LocalReadOnlyQuery.class, LocalPiChatService.class, LocalAssistantService.class, LocalAssistantController.class})
+        LocalWriteService.class, LocalWriteExecutor.class, LocalConversationRegistry.class, LocalForeignKeyReader.class, LocalMetadataTools.class, LocalReadOnlyQuery.class, LocalPiChatService.class, LocalAssistantService.class, LocalAssistantController.class})
 class LocalAssistantConfiguration {
     @Bean edu.zsc.ai.domain.service.agent.ChatReferenceService localChatReferences(LocalConnectionService connections) {
         return new edu.zsc.ai.domain.service.agent.ChatReferenceService(connections, connections);

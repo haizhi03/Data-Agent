@@ -18,17 +18,21 @@ public record LocalPiProperties(boolean enabled, String nodeBinary, Path workerS
         if (cancelGraceSeconds <= 0) cancelGraceSeconds = 10;
     }
 
-    /** Dev default: pi-worker next to the server module; packaged builds pass an absolute path. */
+    /** Dev module is a sibling of Client and Server; packaged builds pass an explicit path. */
     public Path resolveWorkerScript() {
+        return resolveWorkerScript(Path.of(System.getProperty("user.dir")));
+    }
+
+    Path resolveWorkerScript(Path workingDirectory) {
         if (workerScript != null) return workerScript.toAbsolutePath().normalize();
-        var userDir = Path.of(System.getProperty("user.dir"));
+        var userDir = workingDirectory.toAbsolutePath().normalize();
         var candidates = new Path[]{
-                userDir.resolve("pi-worker/src/worker.js"),
-                userDir.resolve("Data-Agent-Server/pi-worker/src/worker.js"),
-                userDir.resolveSibling("pi-worker/src/worker.js")};
+                userDir.resolve("Data-Agent-Pi-Worker/src/worker.js"),
+                userDir.resolve("../Data-Agent-Pi-Worker/src/worker.js"),
+                userDir.resolve("../../Data-Agent-Pi-Worker/src/worker.js")};
         for (Path candidate : candidates) {
             if (java.nio.file.Files.isRegularFile(candidate)) return candidate.toAbsolutePath().normalize();
         }
-        return candidates[1].toAbsolutePath().normalize();
+        return candidates[0].toAbsolutePath().normalize();
     }
 }

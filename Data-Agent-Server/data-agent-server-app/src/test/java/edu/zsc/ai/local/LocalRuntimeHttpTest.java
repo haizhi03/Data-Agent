@@ -45,6 +45,7 @@ class LocalRuntimeHttpTest {
         context = (ServletWebServerApplicationContext) new SpringApplicationBuilder(
                 DataAgentApplication.class, TestEndpoints.class).run(
                 "--server.port=0", "--spring.main.banner-mode=off",
+                "--app.local.pi.enabled=false",
                 "--app.local.data-directory=" + directory.toAbsolutePath(),
                 "--app.local.allowed-origins=http://localhost:5173",
                 "--logging.config=classpath:local-runtime-logback.xml");
@@ -113,7 +114,7 @@ class LocalRuntimeHttpTest {
             assertThat(data.path(field).booleanValue()).isFalse();
         }
         assertThat(data.path("features").size()).isEqualTo(5);
-        // The experimental Pi engine is present in the contract but disabled unless app.local.pi.enabled=true.
+        // This fixture explicitly disables Pi to verify the disabled capability contract.
         assertThat(data.path("features").path("piAssistant").path("state").asText()).isEqualTo("UNAVAILABLE");
         assertThat(data.path("features").path("piAssistant").path("reasonCode").asText()).isEqualTo("PI_DISABLED");
         assertThat(data.path("features").path("databaseWorkbench").path("state").asText()).isEqualTo("READY");

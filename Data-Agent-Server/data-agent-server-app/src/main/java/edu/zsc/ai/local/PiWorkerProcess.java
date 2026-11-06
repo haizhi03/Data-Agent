@@ -108,7 +108,8 @@ final class PiWorkerProcess implements AutoCloseable {
                     message = json.readTree(line);
                 } catch (Exception e) {
                     log.warn("Pi worker emitted non-JSON line: conversationId={}", conversationId);
-                    continue;
+                    markGone("PI_PROTOCOL_ERROR");
+                    return;
                 }
                 if (!gone && "hello".equals(message.path("type").asText()) && hello.remainingCapacity() > 0) {
                     hello.offer(message);
@@ -135,7 +136,9 @@ final class PiWorkerProcess implements AutoCloseable {
             try (var reader = new BufferedReader(new InputStreamReader(process.getErrorStream(), StandardCharsets.UTF_8))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
-                    log.info("pi-worker[{}] {}", conversationId, line.length() > 500 ? line.substring(0, 500) : line);
+                    // Worker diagnostics can contain provider errors or credentials. Drain them for
+                    // backpressure, but never copy untrusted stderr content into application logs.
+                    log.debug("Pi worker diagnostic suppressed: conversationId={}, lineChars={}", conversationId, line.length());
                 }
             } catch (Exception ignored) { /* process gone */ }
         }, "pi-worker-stderr-" + conversationId);
@@ -149,6 +152,9 @@ final class PiWorkerProcess implements AutoCloseable {
             gone = true;
         }
         if (process != null) process.destroyForcibly();
+        log.warn("Pi worker gone: conversationId={}, pid={}, reason={}, exitCode={}",
+                conversationId, process == null ? null : process.pid(), reasonCode,
+                process == null || process.isAlive() ? null : process.exitValue());
         listener.onGone(reasonCode);
     }
 

@@ -87,6 +87,7 @@ export class PiSession {
     run.maxModelCalls = msg.limits?.maxModelCalls ?? 16;
     run.maxToolCalls = msg.limits?.maxToolCalls ?? 32;
     run.role = msg.role ?? 'assistant';
+    run.toolProfile = msg.toolProfile ?? 'general';
     this.endpoint = endpoint;
     this.apiKey = msg.apiKey;
     try {
@@ -95,7 +96,7 @@ export class PiSession {
           initialState: {
             systemPrompt: msg.systemPrompt,
             model: endpoint.model,
-            tools: this.#buildTools(run.role),
+            tools: this.#buildTools(run.role, run.toolProfile),
           },
           streamFn: (model, context, options) => {
             const active = this.activeRun;
@@ -106,13 +107,20 @@ export class PiSession {
             return this.endpoint.streams.streamSimple(model, context, options);
           },
           getApiKey: () => this.apiKey,
+          prepareNextTurnWithContext: ({ context }) => {
+            const active = this.activeRun;
+            if (!active?.schemaReadComplete && !active?.schemaDelegationComplete) return undefined;
+            // A schema-only workflow ends exploration after its verified batch.
+            // Declare the empty loadout in the transcript before the summary call.
+            return { context: { ...context, tools: [] } };
+          },
           sessionId: this.sessionId,
           identity: { attribution: { name: 'data-agent-local-pi' } },
         });
         this.agent.subscribe((event) => this.#onEvent(event));
       } else {
         this.agent.state.model = endpoint.model;
-        this.agent.state.tools = this.#buildTools(run.role);
+        this.agent.state.tools = this.#buildTools(run.role, run.toolProfile);
       }
       await this.agent.prompt(msg.message);
       this.#finish(run, 'SUCCEEDED', null);
@@ -145,6 +153,16 @@ export class PiSession {
     if (isError) {
       pending.reject(new Error(text.slice(0, 2000) || 'tool failed'));
     } else {
+      try {
+        const body = JSON.parse(text);
+        if (run.toolProfile === 'schema' && pending.name === 'describe_tables' && body.tables?.length > 0) {
+          run.schemaReadComplete = true;
+        }
+        if (pending.schemaDelegation && body.taskResults?.length > 0 &&
+          body.taskResults.every(task => task.status === 'SUCCESS' && task.structures?.length > 0) && body.truncated !== true) {
+          run.schemaDelegationComplete = true;
+        }
+      } catch { /* Non-JSON tool text cannot advance the verified schema workflow. */ }
       const capped =
         text.length > MAX_TOOL_RESULT_CHARS ? `${text.slice(0, MAX_TOOL_RESULT_CHARS)}…[truncated]` : text;
       pending.resolve({ content: [{ type: 'text', text: capped }] });
@@ -156,7 +174,7 @@ export class PiSession {
     if (this.activeRun) this.cancel(this.activeRun.runId);
   }
 
-  #buildTools(role) {
+  #buildTools(role, profile = 'general') {
     const execute = (name) => (toolCallId, params, signal) =>
       new Promise((resolve, reject) => {
         const run = this.activeRun;
@@ -176,7 +194,9 @@ export class PiSession {
           }
           signal.addEventListener('abort', () => reject(new Error('cancelled')), { once: true });
         }
-        run.pendingTools.set(toolCallId, { resolve, reject });
+        run.pendingTools.set(toolCallId, { resolve, reject, name,
+          schemaDelegation: name === 'callingExplorerSubAgent' && params?.tasks?.length > 0 &&
+            params.tasks.every(task => task.mode === 'schema') });
         this.send({
           type: 'tool_call',
           runId: run.runId,
@@ -202,6 +222,18 @@ export class PiSession {
           ...targetFields,
         }),
         execute: execute('describe_table'),
+      },
+      {
+        name: 'describe_tables',
+        label: 'Describe related tables',
+        description: 'Read compact columns, primary keys and actual JDBC foreign keys for 1-4 named tables in one fixed scope. ' +
+          'Prefer this for relationships and ER diagrams instead of repeated describe_table or catalog SQL. ' +
+          'Check foreignKeys.available and truncated; unavailable keys do not mean no foreign keys exist.',
+        parameters: Type.Object({
+          tableNames: Type.Array(Type.String({ minLength: 1, maxLength: 128 }), { minItems: 1, maxItems: 4 }),
+          ...targetFields,
+        }),
+        execute: execute('describe_tables'),
       },
       {
         name: 'query_database',
@@ -233,17 +265,24 @@ export class PiSession {
       label: 'Explorer',
       description: 'Delegate up to two focused database discovery tasks to independent Pi Explorer agents. ' +
         'Each task has a fixed connection and optional catalog/schema. Returns taskResults with status, summaryText and verified objects. ' +
-        'Use for multi-table discovery; do not delegate writes or broad scans of every connection.',
+        'Required for multi-table schema analysis, relationships, business-module exploration and ER diagrams once the target is known. ' +
+        'Normally send one focused task with timeoutSeconds=45, select at most four core tables first, ' +
+        'pass existing discoveries and database type in context, and let Explorer read metadata rather than doing it yourself first. ' +
+        'Do not delegate writes or broad scans of every connection.',
       parameters: Type.Object({ tasks: Type.Array(Type.Object({
         connectionId: Type.Number({ minimum: 1 }),
         catalogName: Type.Optional(Type.String()), schemaName: Type.Optional(Type.String()),
         instruction: Type.String({ minLength: 1, maxLength: 4000 }),
+        mode: Type.Optional(Type.Union([Type.Literal('schema'), Type.Literal('general')], {
+          description: 'schema: metadata/relationships/ER only; batch once, then summarize without more tools. general: tasks needing data queries or mixed work.',
+        })),
         context: Type.Optional(Type.String({ maxLength: 4000 })),
         timeoutSeconds: Type.Optional(Type.Integer({ minimum: 1, maximum: 45 })),
       }), { minItems: 1, maxItems: 2 }) }),
       execute: execute('callingExplorerSubAgent'),
     });
-    return tools;
+    return role === 'explorer' && profile === 'schema'
+      ? tools.filter(tool => ['list_tables', 'describe_tables'].includes(tool.name)) : tools;
   }
 
   #onEvent(event) {

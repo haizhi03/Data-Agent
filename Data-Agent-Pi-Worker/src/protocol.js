@@ -2,7 +2,7 @@
  * stdio JSON-lines protocol for the Data-Agent Pi worker.
  *
  * Inbound (Java host -> worker):
- *   start       { type, runId, sessionId, systemPrompt, message, model, apiKey, role?, limits?, context? }
+ *   start       { type, runId, sessionId, systemPrompt, message, model, apiKey, role?, toolProfile?, limits?, context? }
  *   tool_result { type, runId, toolCallId, isError, result }
  *   cancel      { type, runId }
  *

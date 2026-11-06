@@ -1,7 +1,9 @@
 <configuration>
     <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
-        <encoder><pattern>%level %logger{32} - %msg%n</pattern></encoder>
+        <encoder><pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %level %logger{32} - %msg%n</pattern></encoder>
     </appender>
+    <!-- Local runtime diagnostics go directly to the IDE/host console. -->
+    <logger name="edu.zsc.ai.local" level="INFO"/>
     <logger name="agent.runtime" level="INFO"/>
     <root level="INFO"><appender-ref ref="CONSOLE"/></root>
 </configuration>

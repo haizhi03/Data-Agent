@@ -1,12 +1,66 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { localAssistantService } from './localAssistant.service';
 import { localFetch } from '../lib/localRuntime';
 vi.mock('../lib/localRuntime', () => ({ localFetch: vi.fn() }));
 beforeEach(() => vi.clearAllMocks());
+afterEach(() => vi.useRealTimers());
 const stream = (events: unknown[]) => new Response(events.map(event => `data:${JSON.stringify(event)}\n\n`).join(''), {
   headers: { 'Content-Type': 'text/event-stream' },
 });
 describe('local assistant stream contract', () => {
+  function controlledStream() {
+    let controller: ReadableStreamDefaultController<Uint8Array>;
+    let requestSignal: AbortSignal;
+    vi.mocked(localFetch).mockImplementationOnce(async (_path, init) => {
+      requestSignal = init!.signal as AbortSignal;
+      const body = new ReadableStream<Uint8Array>({ start(value) { controller = value; } });
+      requestSignal.addEventListener('abort', () => controller.error(requestSignal.reason), { once: true });
+      return new Response(body, { headers: { 'Content-Type': 'text/event-stream' } });
+    });
+    return {
+      emit: (block: unknown) => controller.enqueue(new TextEncoder().encode(`data:${JSON.stringify(block)}\n\n`)),
+      close: () => controller.close(),
+      aborted: () => requestSignal.aborted,
+    };
+  }
+  it('allows an active run to exceed 175 seconds overall and clears its idle timer', async () => {
+    vi.useFakeTimers();
+    const source = controlledStream();
+    const iterator = localAssistantService.chat(7, 'hello', 'model-id', new AbortController().signal, undefined, 'pi');
+    const first = iterator.next();
+    await vi.advanceTimersByTimeAsync(100000);
+    source.emit({ type: 'TEXT', data: 'still working', done: false });
+    expect((await first).value).toMatchObject({ type: 'TEXT' });
+    const last = iterator.next();
+    await vi.advanceTimersByTimeAsync(100000);
+    expect(source.aborted()).toBe(false);
+    source.emit({ done: true, data: '{"status":"SUCCEEDED"}' });
+    source.close();
+    expect((await last).value).toMatchObject({ done: true });
+    expect((await iterator.next()).done).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+  it('aborts an idle stream and reports a distinct timeout', async () => {
+    vi.useFakeTimers();
+    const source = controlledStream();
+    const iterator = localAssistantService.chat(7, 'hello', 'model-id', new AbortController().signal);
+    const pending = expect(iterator.next()).rejects.toThrow('LOCAL_STREAM_TIMEOUT');
+    await vi.advanceTimersByTimeAsync(175000);
+    await pending;
+    expect(source.aborted()).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+  it('preserves explicit cancellation and clears the idle timer', async () => {
+    vi.useFakeTimers();
+    const source = controlledStream();
+    const cancel = new AbortController();
+    const iterator = localAssistantService.chat(7, 'hello', 'model-id', cancel.signal);
+    const pending = expect(iterator.next()).rejects.toThrow('user stopped');
+    cancel.abort(new Error('user stopped'));
+    await pending;
+    expect(source.aborted()).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+  });
   it('preserves ordered tool and terminal events', async () => {
     const events = [{ type: 'TOOL_RESULT', data: '{"truncated":true}', done: false }, { done: true, data: '{"status":"SUCCEEDED"}' }];
     vi.mocked(localFetch).mockResolvedValue(stream(events));
