@@ -3,6 +3,7 @@ import type { ErRelation, ErTable } from '../../services/table.service';
 import { columnKey, tableId } from './erDiagramRelations';
 import {
   cardHeight,
+  shiftCardsForResize,
   ER_MIN_ZOOM,
   ER_MINIMAP_HIDE_SLACK,
   ER_MINIMAP_SHOW_SLACK,
@@ -59,6 +60,28 @@ describe('ER diagram card height', () => {
     expect(cardHeight(20)).toBe(34 + 12 * 22 + 22 + 2);
     expect(cardHeight(20, true)).toBeGreaterThan(cardHeight(20));
     expect(cardHeight(8)).toBe(34 + 8 * 22 + 2);
+  });
+
+  it('shifts only the column under a resized card and keeps the card itself', () => {
+    const collapsed = cardHeight(20);
+    const expanded = cardHeight(20, true);
+    const cards = [
+      { id: 'long', x: 24, y: 24, width: 260, height: expanded },
+      { id: 'below', x: 24, y: 24 + collapsed + 48, width: 260, height: 80 },
+      { id: 'beside', x: 24 + 260 + 100, y: 24 + collapsed + 48, width: 260, height: 80 },
+    ];
+    const grown = shiftCardsForResize(cards, 'long', collapsed);
+    expect(grown.find((card) => card.id === 'long')).toMatchObject({ x: 24, y: 24, height: expanded });
+    expect(grown.find((card) => card.id === 'below')?.y).toBe(24 + expanded + 48);
+    expect(grown.find((card) => card.id === 'beside')?.y).toBe(24 + collapsed + 48);
+
+    const shrunk = shiftCardsForResize(
+      grown.map((card) => (card.id === 'long' ? { ...card, height: collapsed } : card)),
+      'long',
+      expanded,
+    );
+    expect(shrunk.find((card) => card.id === 'below')?.y).toBe(24 + collapsed + 48);
+    expect(shrunk.find((card) => card.id === 'beside')?.y).toBe(24 + collapsed + 48);
   });
 
   it('keeps a linked column that would otherwise sit below the fold', () => {
