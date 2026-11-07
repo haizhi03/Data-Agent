@@ -8,7 +8,7 @@ import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import url from 'node:url';
-import { startFixtureServer, textResponse, toolCallResponse } from './fixture-openai-server.js';
+import { startFixtureServer, textResponse, toolCallResponse, chunk, usageChunk } from './fixture-openai-server.js';
 
 const WORKER = path.join(path.dirname(url.fileURLToPath(import.meta.url)), '..', 'src', 'worker.js');
 const workers = [];
@@ -480,4 +480,151 @@ test('stdin EOF shuts the worker down', async () => {
   worker.process.stdin.end();
   const code = await worker.exited;
   assert.equal(code, 0);
+});
+
+// pi-agent-core/pi-ai 1.5.0 moved tool argument validation from TypeBox to
+// pi-schema. The tests below pin the new behavior the worker exposes: invalid
+// arguments are rejected before any tool_call reaches the Java host, the model
+// receives the pi-schema error text, and coerced/extra fields keep their
+// host-visible shape.
+
+test('a missing required field is rejected before the host and the model sees the pi-schema error', async () => {
+  const server = await startFixtureServer((body, count) => {
+    if (count === 1) return toolCallResponse([{ id: 'bad', name: 'describe_table', args: {} }]);
+    const toolMessage = body.messages.find((m) => m.role === 'tool');
+    assert.ok(toolMessage, 'validation failure must be fed back to the model as a tool result');
+    assert.match(toolMessage.content, /Validation failed for tool "describe_table"/);
+    assert.match(toolMessage.content, /- tableName: missing/);
+    assert.match(toolMessage.content, /Received arguments:/);
+    return textResponse('缺少 tableName，请补充');
+  });
+  try {
+    const worker = startWorker();
+    await waitHello(worker);
+    worker.send(startMessage({ baseUrl: server.baseUrl }));
+    const finished = await worker.waitFor((m) => m.type === 'finished');
+    assert.equal(finished.status, 'SUCCEEDED');
+    assert.equal(worker.messages.filter((m) => m.type === 'tool_call').length, 0, 'invalid arguments never reach the host');
+    assert.equal(server.calls.length, 2);
+  } finally {
+    await server.close();
+  }
+});
+
+test('enum and boundary violations list every pi-schema error and never reach the host', async () => {
+  const server = await startFixtureServer((body, count) => {
+    if (count === 1) return toolCallResponse([{ id: 'bad', name: 'callingExplorerSubAgent',
+      args: { tasks: [{ connectionId: 7, instruction: 'Find users', mode: 'full', timeoutSeconds: 46 }] } }]);
+    const toolMessage = body.messages.find((m) => m.role === 'tool');
+    assert.ok(toolMessage);
+    assert.match(toolMessage.content, /Validation failed for tool "callingExplorerSubAgent"/);
+    assert.match(toolMessage.content, /- tasks\.0\.mode: expected "schema"/);
+    assert.match(toolMessage.content, /- tasks\.0\.timeoutSeconds: expected <= 45/);
+    return textResponse('参数不合法');
+  });
+  try {
+    const worker = startWorker();
+    await waitHello(worker);
+    worker.send(startMessage({ baseUrl: server.baseUrl }));
+    const finished = await worker.waitFor((m) => m.type === 'finished');
+    assert.equal(finished.status, 'SUCCEEDED');
+    assert.equal(worker.messages.filter((m) => m.type === 'tool_call').length, 0);
+    assert.equal(server.calls.length, 2);
+  } finally {
+    await server.close();
+  }
+});
+
+test('argument coercion, dropped optional nulls and kept extra fields preserve the host-facing shape', async () => {
+  const server = await startFixtureServer((body, count) => {
+    if (count === 1) return toolCallResponse([{ id: 'coerced', name: 'describe_table',
+      args: { tableName: 42, connectionId: '7', catalogName: null, unexpected: 'kept' } }]);
+    return textResponse('ok');
+  });
+  try {
+    const worker = startWorker();
+    await waitHello(worker);
+    worker.send(startMessage({ baseUrl: server.baseUrl }));
+    const call = await worker.waitFor((m) => m.type === 'tool_call');
+    assert.equal(call.name, 'describe_table');
+    // pi-schema coerces loose types, drops optional nulls, and keeps extra
+    // fields: the host sees the same argument shape it saw with 1.4.0.
+    assert.deepEqual(JSON.parse(call.arguments), { tableName: '42', connectionId: 7, unexpected: 'kept' });
+    worker.send({ type: 'tool_result', runId: 'run-1', toolCallId: 'coerced', isError: false, result: '{"columns":[]}' });
+    assert.equal((await worker.waitFor((m) => m.type === 'finished')).status, 'SUCCEEDED');
+  } finally {
+    await server.close();
+  }
+});
+
+test('tool arguments streamed in chunks are assembled into one complete tool_call', async () => {
+  const longNote = 'x'.repeat(3000);
+  const query = `SELECT * FROM orders WHERE note = '${longNote}'\nLIMIT 1`;
+  const argsJson = JSON.stringify({ query });
+  const escapeAt = argsJson.indexOf('\\n');
+  assert.ok(escapeAt > 12, 'test setup needs the escape after the first cut');
+  // Cut mid-string and between the backslash and the 'n' of the escape sequence.
+  const pieces = [
+    argsJson.slice(0, 12),
+    argsJson.slice(12, escapeAt + 1),
+    argsJson.slice(escapeAt + 1, escapeAt + 2000),
+    argsJson.slice(escapeAt + 2000),
+  ];
+  const server = await startFixtureServer((_body, count) => {
+    if (count === 1) {
+      return async (write) => {
+        await write(chunk({ role: 'assistant', tool_calls: [{ index: 0, id: 'call_chunked', type: 'function',
+          function: { name: 'query_database', arguments: pieces[0] } }] }));
+        for (const piece of pieces.slice(1)) {
+          await write(chunk({ tool_calls: [{ index: 0, function: { arguments: piece } }] }));
+        }
+        await write(chunk({}, 'tool_calls'));
+        await write(usageChunk());
+      };
+    }
+    return textResponse('查询完成');
+  });
+  try {
+    const worker = startWorker();
+    await waitHello(worker);
+    worker.send(startMessage({ baseUrl: server.baseUrl }));
+    const call = await worker.waitFor((m) => m.type === 'tool_call');
+    assert.equal(call.toolCallId, 'call_chunked');
+    assert.equal(call.name, 'query_database');
+    assert.deepEqual(JSON.parse(call.arguments), { query });
+    worker.send({ type: 'tool_result', runId: 'run-1', toolCallId: 'call_chunked', isError: false, result: '{"rows":[]}' });
+    assert.equal((await worker.waitFor((m) => m.type === 'finished')).status, 'SUCCEEDED');
+    assert.equal(worker.messages.filter((m) => m.type === 'tool_call').length, 1, 'chunked deltas produce exactly one tool_call');
+  } finally {
+    await server.close();
+  }
+});
+
+test('malformed streamed arguments become a model-visible error, not a host tool_call', async () => {
+  const server = await startFixtureServer((body, count) => {
+    if (count === 1) {
+      return async (write) => {
+        await write(chunk({ role: 'assistant', tool_calls: [{ index: 0, id: 'call_broken', type: 'function',
+          function: { name: 'query_database', arguments: 'this is not json' } }] }));
+        await write(chunk({}, 'tool_calls'));
+        await write(usageChunk());
+      };
+    }
+    const toolMessage = body.messages.find((m) => m.role === 'tool');
+    assert.ok(toolMessage);
+    assert.match(toolMessage.content, /Invalid arguments for tool "query_database"/);
+    assert.match(toolMessage.content, /Received arguments/);
+    return textResponse('无法理解参数');
+  });
+  try {
+    const worker = startWorker();
+    await waitHello(worker);
+    worker.send(startMessage({ baseUrl: server.baseUrl }));
+    const finished = await worker.waitFor((m) => m.type === 'finished');
+    assert.equal(finished.status, 'SUCCEEDED');
+    assert.equal(worker.messages.filter((m) => m.type === 'tool_call').length, 0);
+    assert.equal(server.calls.length, 2);
+  } finally {
+    await server.close();
+  }
 });

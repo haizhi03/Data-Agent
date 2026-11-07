@@ -119,8 +119,8 @@ process.on('unhandledRejection', (error) => {
 send({
   type: 'hello',
   protocol: PROTOCOL_VERSION,
-  piAgentCore: '1.4.0',
-  piAi: typeof PI_AI_VERSION === 'string' ? PI_AI_VERSION : '1.4.0',
+  piAgentCore: '1.5.0',
+  piAi: typeof PI_AI_VERSION === 'string' ? PI_AI_VERSION : '1.5.0',
 });
 touch();
 readJsonLines(process.stdin, {
