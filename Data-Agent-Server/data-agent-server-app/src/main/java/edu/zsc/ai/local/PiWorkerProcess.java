@@ -7,6 +7,8 @@ import java.io.BufferedWriter;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
@@ -35,6 +37,13 @@ final class PiWorkerProcess implements AutoCloseable {
     private Process process;
     private BufferedWriter stdin;
     private volatile boolean gone;
+    /** Negotiated protocol version from the worker hello: 1 (legacy) or 2 (durable). */
+    private volatile int protocol;
+    /** Durable runs the worker recovered from its own storage (protocol 2 only). */
+    private volatile List<RecoveredRun> recoveredRuns = List.of();
+
+    /** A run the durable worker recovered from its storage and reported in the v2 hello. */
+    record RecoveredRun(String sessionId, String runId, String status) { }
 
     private PiWorkerProcess(long conversationId, ObjectMapper json, int maxLineBytes, Listener listener) {
         this.conversationId = conversationId; this.json = json; this.maxLineBytes = maxLineBytes; this.listener = listener;
@@ -65,11 +74,21 @@ final class PiWorkerProcess implements AutoCloseable {
             for (;;) {
                 var message = hello.poll(100, TimeUnit.MILLISECONDS);
                 if (message != null) {
-                    if (!"hello".equals(message.path("type").asText()) || message.path("protocol").asInt() != 1) {
+                    int protocol = message.path("protocol").asInt(-1);
+                    if (!"hello".equals(message.path("type").asText()) || (protocol != 1 && protocol != 2)) {
                         worker.close();
                         throw new LocalRequestException(503, "PI_PROTOCOL_ERROR", "Pi worker 协议版本不兼容");
                     }
-                    log.info("Pi worker ready: conversationId={}, piAi={}", conversationId, message.path("piAi").asText());
+                    worker.protocol = protocol;
+                    worker.recoveredRuns = parseRecoveredRuns(message);
+                    log.info(
+                            "Pi worker ready: conversationId={}, protocol={}, piAi={}, piDurable={}, storage={}, recoveredRuns={}",
+                            conversationId, protocol, message.path("piAi").asText(),
+                            message.hasNonNull("piDurable") ? message.path("piDurable").asText() : null,
+                            message.hasNonNull("storage") ? message.path("storage").asText() : null,
+                            worker.recoveredRuns.size());
+                    if (!worker.recoveredRuns.isEmpty())
+                        log.info("Pi worker recovered runs: conversationId={}, runs={}", conversationId, worker.recoveredRuns);
                     return worker;
                 }
                 var reason = failure.poll();
@@ -87,6 +106,26 @@ final class PiWorkerProcess implements AutoCloseable {
 
     boolean isAlive() { return !gone && process != null && process.isAlive(); }
 
+    int protocol() { return protocol; }
+
+    List<RecoveredRun> recoveredRuns() { return recoveredRuns; }
+
+    /** Bounded, tolerant parse of the v2 hello recoveredRuns array. */
+    private static List<RecoveredRun> parseRecoveredRuns(JsonNode hello) {
+        var runs = hello.path("recoveredRuns");
+        if (!runs.isArray()) return List.of();
+        var result = new ArrayList<RecoveredRun>();
+        for (var run : runs) {
+            if (result.size() >= 64) break;
+            String sessionId = run.path("sessionId").asText(null);
+            String runId = run.path("runId").asText(null);
+            String status = run.path("status").asText(null);
+            if (sessionId == null || runId == null || status == null) continue;
+            result.add(new RecoveredRun(sessionId, runId, status));
+        }
+        return List.copyOf(result);
+    }
+
     synchronized void send(Map<String, Object> message) {
         if (!isAlive()) return;
         try {
@@ -100,6 +139,12 @@ final class PiWorkerProcess implements AutoCloseable {
     }
 
     private void readStdout(java.util.concurrent.BlockingQueue<JsonNode> hello, java.util.concurrent.BlockingQueue<String> failure) {
+        // Durable workers emit recovered-run events (text_reset, replays) BEFORE their hello.
+        // Delivering them to the listener here would block on the service monitor, which
+        // workerFor holds while start() waits for the hello — a deadlock. Buffer pre-hello
+        // events and deliver them right after the hello has been offered.
+        var preHello = new ArrayList<JsonNode>();
+        var helloSeen = false; // explicit: the hello queue is drained by start(), so capacity is no signal
         try (var reader = new BoundedLineReader(process.getInputStream(), maxLineBytes)) {
             String line;
             while ((line = reader.readLine()) != null) {
@@ -111,8 +156,20 @@ final class PiWorkerProcess implements AutoCloseable {
                     markGone("PI_PROTOCOL_ERROR");
                     return;
                 }
-                if (!gone && "hello".equals(message.path("type").asText()) && hello.remainingCapacity() > 0) {
-                    hello.offer(message);
+                if (!gone && !helloSeen) {
+                    if ("hello".equals(message.path("type").asText())) {
+                        helloSeen = true;
+                        hello.offer(message);
+                        for (var queued : preHello) listener.onMessage(queued);
+                        preHello.clear();
+                        continue;
+                    }
+                    preHello.add(message);
+                    if (preHello.size() > 256) { // a worker that never says hello must not fill memory
+                        log.warn("Pi worker flooded pre-hello events: conversationId={}", conversationId);
+                        markGone("PI_PROTOCOL_ERROR");
+                        return;
+                    }
                     continue;
                 }
                 listener.onMessage(message);

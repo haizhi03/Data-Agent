@@ -32,6 +32,8 @@ final class LocalPiChatService implements AutoCloseable {
     private static final int MAX_OUTPUT_CHARS = 64000;
     private static final int MAX_TOOL_RESULT_CHARS = 12000;
     private static final int MAX_TOOL_CALLS = 32;
+    /** Bounded durable-reattach attempts per protocol v2 run before the run is failed. */
+    private static final int MAX_REATTACH_ATTEMPTS = 2;
 
     static final String SYSTEM_PROMPT = edu.zsc.ai.config.ai.PromptConfig.loadClassPathResource("prompt/pi-main-agent_zh.md");
 
@@ -52,6 +54,7 @@ final class LocalPiChatService implements AutoCloseable {
     private final Map<Long, RunHandler> activeRuns = new HashMap<>();
     private final ExecutorService toolExecutor;
     private final ScheduledExecutorService cancelGuard;
+    private final ExecutorService reattachExecutor;
 
     LocalPiChatService(ModelRuntime models, CredentialService credentials, ModelConfigResolver resolver,
             ModelManagementService management, LocalConversationRegistry sessions, LocalConnectionService connections,
@@ -67,6 +70,9 @@ final class LocalPiChatService implements AutoCloseable {
         });
         this.cancelGuard = Executors.newSingleThreadScheduledExecutor(runnable -> {
             var thread = new Thread(runnable, "pi-cancel-guard"); thread.setDaemon(true); return thread;
+        });
+        this.reattachExecutor = Executors.newSingleThreadExecutor(runnable -> {
+            var thread = new Thread(runnable, "pi-reattach"); thread.setDaemon(true); return thread;
         });
         sessions.setSessionGoneListener(this::closeConversation);
     }
@@ -109,11 +115,16 @@ final class LocalPiChatService implements AutoCloseable {
         try {
             for (var mention : mentions) versions.computeIfAbsent(mention.getConnectionId(), id -> connections.get(id).version());
             String enriched = ChatTurnContext.encode(input.message(), target, mentions, explicitReferences.renderReferences(mentions, "zh"));
-            var start = credentials.withSecret(config, secret -> startMessage(session, run, config, secret, enriched, target, mentions));
+            // The factory re-reads the secret from the vault so a durable reattach can re-send the
+            // same start payload (same idempotencyKey) with fresh credentials. Secrets travel only
+            // over the worker stdin pipe and are never logged.
+            java.util.function.Supplier<Map<String, Object>> startFactory =
+                    () -> credentials.withSecret(config, secret -> startMessage(session, run, config, secret, enriched, target, mentions));
+            var start = startFactory.get();
             var requestContext = RequestContext.snapshot().toBuilder().conversationId(session.id)
                     .connectionId(db.connectionId()).catalog(db.catalog()).schema(db.schema()).build();
             var agentContext = AgentRequestContextInfo.builder().modelRunSnapshot(run).agentMode("agent").agentType("main").build();
-            return stream(session, run, defaultTarget, versions, requestContext, agentContext, start);
+            return stream(session, run, defaultTarget, versions, requestContext, agentContext, start, startFactory);
         } catch (RuntimeException e) {
             sessions.finish(session, run, null);
             throw e;
@@ -153,7 +164,8 @@ final class LocalPiChatService implements AutoCloseable {
 
     private Flux<ChatResponseBlock> stream(LocalConversationRegistry.Session session, ModelRunSnapshot run,
             DbContext defaultTarget, Map<Long, Long> versions, RequestContextInfo requestContext,
-            AgentRequestContextInfo agentContext, Map<String, Object> start) {
+            AgentRequestContextInfo agentContext, Map<String, Object> start,
+            java.util.function.Supplier<Map<String, Object>> startFactory) {
         long startedNanos = System.nanoTime();
         return Flux.<ChatResponseBlock>create(sink -> {
             var handler = new RunHandler(session, run, sink, defaultTarget, versions, requestContext, agentContext, startedNanos);
@@ -169,9 +181,14 @@ final class LocalPiChatService implements AutoCloseable {
             try {
                 PiWorkerProcess worker = workerFor(session.id);
                 handler.worker = worker;
+                handler.protocol = worker.protocol();
+                handler.protocolSessionId = "conversation-" + session.id;
+                // Reattach factory: same idempotencyKey, freshly re-read credentials. v2 runs only.
+                handler.startFactory = () -> withProtocolV2Fields(startFactory.get(), run);
                 run.track(() -> {
                     handler.cancelRequested = true;
-                    worker.send(Map.of("type", "cancel", "runId", run.runId()));
+                    var current = handler.worker;
+                    if (current != null) current.send(Map.of("type", "cancel", "runId", run.runId()));
                     cancelGuard.schedule(() -> {
                         if (!handler.terminal.get()) {
                             log.warn("Pi worker did not settle after cancel; killing: conversationId={}, runId={}", session.id, run.runId());
@@ -181,6 +198,7 @@ final class LocalPiChatService implements AutoCloseable {
                     }, properties.cancelGraceSeconds(), TimeUnit.SECONDS);
                 });
                 sink.next(ChatResponseBlock.builder().type("STATUS").data("RUNNING").conversationId(session.id).build());
+                if (worker.protocol() == 2) withProtocolV2Fields(start, run);
                 worker.send(start);
             } catch (RuntimeException e) {
                 log.error("Pi run failed to start: conversationId={}, runId={}", session.id, run.runId(), e);
@@ -197,6 +215,14 @@ final class LocalPiChatService implements AutoCloseable {
                     block.setConversationId(session.id);
                     return Flux.just(block);
                 });
+    }
+
+    /** Protocol v2 start fields: stable idempotencyKey lets the durable worker recognize a re-attached run. */
+    private static Map<String, Object> withProtocolV2Fields(Map<String, Object> start, ModelRunSnapshot run) {
+        start.put("idempotencyKey", run.runId());
+        start.put("role", "assistant");
+        start.put("toolProfile", "general");
+        return start;
     }
 
     private synchronized PiWorkerProcess workerFor(long conversationId) {
@@ -218,6 +244,17 @@ final class LocalPiChatService implements AutoCloseable {
                 RunHandler handler;
                 synchronized (LocalPiChatService.this) { handler = activeRuns.get(conversationId); }
                 if (handler != null) {
+                    if (handler.protocol == 2 && !handler.cancelRequested && !handler.terminal.get()
+                            && handler.reattachAttempts.incrementAndGet() <= MAX_REATTACH_ATTEMPTS) {
+                        // Durable worker: the run survives the process. Respawn and re-attach instead
+                        // of failing the run; the recovered worker re-emits its pending tool_call.
+                        handler.beginGate();
+                        int attempt = handler.reattachAttempts.get();
+                        log.warn("Pi v2 worker lost, scheduling durable reattach: conversationId={}, runId={}, reason={}, attempt={}",
+                                conversationId, handler.run.runId(), reasonCode, attempt);
+                        reattachExecutor.execute(() -> reattach(conversationId, handler));
+                        return;
+                    }
                     log.warn("Pi worker gone during run: conversationId={}, runId={}, reason={}", conversationId, handler.run.runId(), reasonCode);
                     handler.terminate(handler.cancelRequested ? "CANCELLED" : "FAILED",
                             handler.cancelRequested ? null : reasonCode, null);
@@ -226,7 +263,55 @@ final class LocalPiChatService implements AutoCloseable {
         };
         var worker = PiWorkerProcess.start(conversationId, properties, json, listener);
         workers.put(conversationId, worker);
+        cancelUnownedRecoveredRuns(worker);
         return worker;
+    }
+
+    /** Durable workers may report runs from a previous Java lifetime; cancel those no active run owns. */
+    private void cancelUnownedRecoveredRuns(PiWorkerProcess worker) {
+        if (worker.protocol() != 2) return;
+        for (var recovered : worker.recoveredRuns()) {
+            if (!"RUNNING".equals(recovered.status())) continue;
+            // Only main-chat runs ("conversation-<id>") are owned here; Explorer child runs
+            // ("pi-explore-<uuid>") belong to short-lived child workers and are left alone.
+            if (!recovered.sessionId().startsWith("conversation-")) continue;
+            boolean owned = activeRuns.values().stream().anyMatch(handler -> handler.run.runId().equals(recovered.runId()));
+            if (!owned) {
+                log.info("Cancelling orphaned recovered Pi run: runId={}, sessionId={}", recovered.runId(), recovered.sessionId());
+                worker.send(Map.of("type", "cancel", "runId", recovered.runId()));
+            }
+        }
+    }
+
+    /**
+     * Re-attach a protocol v2 run to a freshly spawned worker: re-send the start message with the
+     * same idempotencyKey (re-attaching credentials and model config, fresh from the vault), then
+     * attach for event replay after the last seq seen. Only after both are sent do queued tool_call
+     * events get processed, so a tool_result never precedes the re-attaching start.
+     */
+    private void reattach(long conversationId, RunHandler handler) {
+        try {
+            if (handler.terminal.get()) return;
+            PiWorkerProcess worker = workerFor(conversationId);
+            if (handler.terminal.get()) return;
+            boolean recovered = worker.protocol() == 2 && worker.recoveredRuns().stream().anyMatch(
+                    run -> run.runId().equals(handler.run.runId()) && "RUNNING".equals(run.status()));
+            if (!recovered) {
+                log.warn("Pi v2 worker did not recover the run: conversationId={}, runId={}, protocol={}, recoveredRuns={}",
+                        conversationId, handler.run.runId(), worker.protocol(), worker.recoveredRuns());
+                handler.terminate("FAILED", "PI_WORKER_EXIT", null);
+                return;
+            }
+            handler.worker = worker;
+            worker.send(handler.startFactory.get());
+            worker.send(Map.of("type", "attach", "sessionId", handler.protocolSessionId, "afterSeq", handler.lastSeq.get()));
+            handler.endGateAndDrain();
+            log.info("Pi run reattached after worker restart: conversationId={}, runId={}, attempt={}",
+                    conversationId, handler.run.runId(), handler.reattachAttempts.get());
+        } catch (RuntimeException e) {
+            log.error("Pi run reattach failed: conversationId={}, runId={}", conversationId, handler.run.runId(), e);
+            handler.terminate("FAILED", errorCode(e), null);
+        }
     }
 
     private synchronized void removeRun(long conversationId) { activeRuns.remove(conversationId); }
@@ -379,7 +464,22 @@ final class LocalPiChatService implements AutoCloseable {
         final AtomicInteger toolCalls = new AtomicInteger();
         final AtomicInteger explorerTasks = new AtomicInteger();
         final Set<String> claimedToolCalls = ConcurrentHashMap.newKeySet();
+        /** Completed tool results by toolCallId; serves v2 re-sent tool_calls without re-executing. Cleared with the run. */
+        final Map<String, ToolResult> completedToolCalls = new ConcurrentHashMap<>();
         final List<JsonNode> childUsage = new CopyOnWriteArrayList<>();
+        /** Negotiated worker protocol for this run (1 or 2); set before the start message is sent. */
+        volatile int protocol = 1;
+        /** Protocol-level session id ("conversation-<id>") used for v2 attach. */
+        volatile String protocolSessionId;
+        /** Rebuilds the start message with fresh credentials for a durable reattach. */
+        volatile java.util.function.Supplier<Map<String, Object>> startFactory;
+        /** Last per-session event seq processed (protocol v2); replayed events with seq <= lastSeq are dropped. */
+        final AtomicLong lastSeq = new AtomicLong();
+        final AtomicInteger reattachAttempts = new AtomicInteger();
+        /** While a durable reattach is in flight, incoming tool_calls queue here so start precedes any tool_result. */
+        private final Object gateLock = new Object();
+        private boolean gated;
+        private final List<JsonNode> gatedToolCalls = new ArrayList<>();
         volatile boolean cancelRequested;
         volatile PiWorkerProcess worker;
 
@@ -393,8 +493,28 @@ final class LocalPiChatService implements AutoCloseable {
 
         void onMessage(JsonNode message) {
             if (terminal.get()) return; // late events never write to a finished run
+            String type = message.path("type").asText();
+            if ("attached".equals(type)) { // session-scoped replay acknowledgement; carries no runId
+                log.info("Pi session attached: conversationId={}, sessionId={}, replayed={}",
+                        session.id, message.path("sessionId").asText(), message.path("replayed").asLong(-1));
+                return;
+            }
             if (!run.runId().equals(message.path("runId").asText())) return; // late events from a previous run
-            switch (message.path("type").asText()) {
+            if (protocol == 2) {
+                long seq = message.path("seq").asLong(-1);
+                if (seq >= 0) {
+                    long previous = lastSeq.getAndUpdate(seen -> Math.max(seen, seq));
+                    if (seq <= previous) {
+                        log.info("Pi duplicate event dropped: conversationId={}, runId={}, type={}, seq={}",
+                                session.id, run.runId(), type, seq);
+                        return;
+                    }
+                    if (seq > previous + 1)
+                        log.warn("Pi event sequence gap: conversationId={}, runId={}, expected={}, got={}",
+                                session.id, run.runId(), previous + 1, seq);
+                }
+            }
+            switch (type) {
                 case "text_delta" -> {
                     String delta = message.path("delta").asText("");
                     if (delta.isEmpty()) return;
@@ -405,7 +525,24 @@ final class LocalPiChatService implements AutoCloseable {
                     }
                     sink.next(ChatResponseBlock.text(delta));
                 }
-                case "tool_call" -> onToolCall(message);
+                case "text_reset" -> {
+                    // The durable worker rewound the run's text; the frontend must drop what it
+                    // accumulated for this run and rebuild from subsequent deltas.
+                    log.info("Pi text reset: conversationId={}, runId={}, seq={}",
+                            session.id, run.runId(), message.path("seq").asLong(-1));
+                    sink.next(ChatResponseBlock.status("TEXT_RESET"));
+                }
+                case "tool_call" -> {
+                    if (protocol == 2) {
+                        synchronized (gateLock) {
+                            if (gated) { // reattach in flight: start/attach must reach the worker first
+                                gatedToolCalls.add(message);
+                                return;
+                            }
+                        }
+                    }
+                    onToolCall(message);
+                }
                 case "finished" -> {
                     String status = switch (message.path("status").asText("")) {
                         case "SUCCEEDED", "CANCELLED" -> message.path("status").asText();
@@ -420,12 +557,49 @@ final class LocalPiChatService implements AutoCloseable {
             }
         }
 
+        void beginGate() {
+            synchronized (gateLock) { gated = true; }
+        }
+
+        void endGateAndDrain() {
+            List<JsonNode> pending;
+            synchronized (gateLock) {
+                gated = false;
+                pending = new ArrayList<>(gatedToolCalls);
+                gatedToolCalls.clear();
+            }
+            for (var message : pending) {
+                if (terminal.get()) return;
+                onToolCall(message);
+            }
+        }
+
         private void onToolCall(JsonNode message) {
             String toolCallId = message.path("toolCallId").asText();
             String name = message.path("name").asText();
             String arguments = message.path("arguments").asText("{}");
-            if(toolCallId.isBlank() || toolCallId.length()>200 || name.length()>100 || arguments.length()>65536 || !claimedToolCalls.add(toolCallId)) {
-                terminate("FAILED","PI_PROTOCOL_ERROR",null);return;
+            if (toolCallId.isBlank() || toolCallId.length() > 200 || name.length() > 100 || arguments.length() > 65536) {
+                terminate("FAILED", "PI_PROTOCOL_ERROR", null);
+                return;
+            }
+            if (!claimedToolCalls.add(toolCallId)) {
+                if (protocol != 2) { // v1 workers never resend: a duplicate id is a protocol violation
+                    terminate("FAILED", "PI_PROTOCOL_ERROR", null);
+                    return;
+                }
+                // A recovered v2 worker re-sends the tool_call it was waiting on. Serve the cached
+                // result without re-executing; if execution is still in flight, its completion
+                // delivers the result to the current worker.
+                var cached = completedToolCalls.get(toolCallId);
+                if (cached != null) {
+                    log.info("Pi tool_call deduplicated from cache: conversationId={}, runId={}, toolCallId={}",
+                            session.id, run.runId(), toolCallId.replaceAll("[^A-Za-z0-9_/-]", "_"));
+                    sendToolResult(toolCallId, cached);
+                } else {
+                    log.info("Pi tool_call resend ignored, execution in flight: conversationId={}, runId={}, toolCallId={}",
+                            session.id, run.runId(), toolCallId.replaceAll("[^A-Za-z0-9_/-]", "_"));
+                }
+                return;
             }
             sink.next(ChatResponseBlock.toolCall(toolCallId, name, arguments));
             String loggedName = name.replaceAll("[^A-Za-z0-9_]", "_");
@@ -458,19 +632,25 @@ final class LocalPiChatService implements AutoCloseable {
                 }
                 log.info("Pi tool finished: conversationId={}, runId={}, tool={}, isError={}, elapsedMs={}",
                         session.id, run.runId(), loggedName, isError, (System.nanoTime()-toolStarted)/1_000_000);
+                // Cache before the terminal check so a recovered worker can still be answered.
+                completedToolCalls.put(toolCallId, new ToolResult(result, isError));
                 if (terminal.get()) return;
                 sink.next(ChatResponseBlock.toolResult(toolCallId, name, result, isError));
-                var worker = this.worker;
-                if (worker != null) {
-                    var response = new LinkedHashMap<String, Object>();
-                    response.put("type", "tool_result");
-                    response.put("runId", run.runId());
-                    response.put("toolCallId", toolCallId);
-                    response.put("isError", isError);
-                    response.put("result", result);
-                    worker.send(response);
-                }
+                sendToolResult(toolCallId, new ToolResult(result, isError));
             });
+        }
+
+        /** Sends a tool_result to the worker currently owning the run; a dead worker simply drops it. */
+        private void sendToolResult(String toolCallId, ToolResult outcome) {
+            var current = this.worker;
+            if (current == null) return;
+            var response = new LinkedHashMap<String, Object>();
+            response.put("type", "tool_result");
+            response.put("runId", run.runId());
+            response.put("toolCallId", toolCallId);
+            response.put("isError", outcome.isError());
+            response.put("result", outcome.text());
+            current.send(response);
         }
 
         void terminate(String status, String code, JsonNode usage) {
@@ -519,5 +699,6 @@ final class LocalPiChatService implements AutoCloseable {
         all.forEach(PiWorkerProcess::close);
         toolExecutor.shutdownNow();
         cancelGuard.shutdownNow();
+        reattachExecutor.shutdownNow();
     }
 }
