@@ -78,6 +78,15 @@ public final class MySqlTemplate {
     public static final String SQL_COUNT_TABLES_NAME_CLAUSE = " AND TABLE_NAME LIKE ?";
     public static final String SQL_COUNT_ROUTINES_NAME_CLAUSE = " AND ROUTINE_NAME LIKE ?";
 
+    // --- information_schema.TABLES comments ---
+    /** Parameter: 1 = TABLE_SCHEMA. Base tables only; views are excluded. */
+    public static final String SQL_LIST_TABLE_COMMENTS =
+            "SELECT TABLE_NAME, TABLE_COMMENT FROM information_schema.TABLES"
+                    + " WHERE TABLE_SCHEMA = ?"
+                    + " AND TABLE_TYPE = 'BASE TABLE'";
+    /** %1$s = full table name, %2$s = escaped comment literal */
+    public static final String SQL_ALTER_TABLE_COMMENT = "ALTER TABLE %s COMMENT = '%s'";
+
     // --- information_schema.COLUMNS ---
     /** %s = TABLE_SCHEMA, %s = TABLE_NAME. For tables and views. */
     public static final String SQL_LIST_COLUMNS =

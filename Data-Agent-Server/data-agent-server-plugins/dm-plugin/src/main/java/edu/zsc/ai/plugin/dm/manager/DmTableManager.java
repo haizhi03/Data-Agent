@@ -2,6 +2,7 @@ package edu.zsc.ai.plugin.dm.manager;
 
 import java.sql.Connection;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 import org.apache.commons.lang3.StringUtils;
@@ -33,6 +34,18 @@ public final class DmTableManager implements TableManager {
     @Override
     public String getTableComment(Connection connection, String catalog, String schema, String tableName) {
         return support.getTableComment(connection, support.resolveSchema(connection, schema), tableName.trim());
+    }
+
+    @Override
+    public Map<String, String> getTableComments(Connection connection, String catalog, String schema) {
+        return support.getTableComments(connection, support.resolveSchema(connection, schema));
+    }
+
+    @Override
+    public void updateTableComment(Connection connection, String catalog, String schema,
+                                   String tableName, String comment) {
+        support.updateTableComment(
+                connection, support.resolveSchema(connection, schema), tableName, comment);
     }
 
     @Override

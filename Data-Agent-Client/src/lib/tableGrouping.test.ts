@@ -148,4 +148,30 @@ describe('buildTablesFolderChildren', () => {
     expect(ungrouped.groupId).toBeUndefined();
     expect(ungrouped.groupKind).toBeUndefined();
   });
+
+  it('attaches non-blank comments to grouped and ungrouped tables', () => {
+    useTableGroupStore.setState({
+      groupsByScope: {
+        '1|db|public': [{ id: 'g', name: 'G', rule: { type: 'prefix', value: 't_' } }],
+      },
+    });
+
+    const nodes = buildTablesFolderChildren({
+      ...folderOpts(['t_a', 'plain', 'blank']),
+      tableComments: { t_a: 'Grouped comment', plain: 'Plain comment', blank: '   ' },
+    });
+
+    const group = nodes.find((n) => n.type === ExplorerNodeType.GROUP)!;
+    expect(group.children![0].comment).toBe('Grouped comment');
+
+    const byName = Object.fromEntries(nodes.filter((n) => n.type === ExplorerNodeType.TABLE).map((n) => [n.name, n]));
+    expect(byName.plain.comment).toBe('Plain comment');
+    // Blank comments must not create the field, otherwise the row reserves space.
+    expect(byName.blank.comment).toBeUndefined();
+  });
+
+  it('omits comments when the caller has no comment map', () => {
+    const nodes = buildTablesFolderChildren(folderOpts(['a']));
+    expect(nodes[0].comment).toBeUndefined();
+  });
 });

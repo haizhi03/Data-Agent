@@ -7,6 +7,7 @@ import edu.zsc.ai.domain.service.db.impl.ActiveConnectionRegistry;
 import edu.zsc.ai.domain.service.db.transfer.ImportBatchSupport;
 import edu.zsc.ai.domain.service.db.transfer.ImportFailureException;
 import edu.zsc.ai.domain.service.db.transfer.TableDataImporter;
+import edu.zsc.ai.plugin.enums.DbType;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -55,7 +56,8 @@ public class SqlTableDataImporter implements TableDataImporter {
             if (!script.isEmpty() && script.charAt(0) == '\uFEFF') {
                 script = script.substring(1);
             }
-            List<String> statements = splitSqlStatements(script);
+            boolean mysql = DbType.MYSQL.getCode().equalsIgnoreCase(active.dbType());
+            List<String> statements = splitSqlStatements(script, mysql);
             if (statements.isEmpty()) {
                 return ImportBatchSupport.failureResponse(1, "SQL file contains no INSERT statements", 0);
             }
@@ -111,10 +113,9 @@ public class SqlTableDataImporter implements TableDataImporter {
 
     /**
      * Splits a SQL script into statements on semicolons that sit outside quotes and
-     * comments. Line comments (-- and #), block comments, string literals with
-     * backslash and doubled-quote escapes, and quoted identifiers are handled.
+     * comments. MySQL string literals additionally honor backslash escapes.
      */
-    private List<String> splitSqlStatements(String script) {
+    List<String> splitSqlStatements(String script, boolean mysql) {
         List<String> statements = new ArrayList<>();
         StringBuilder current = new StringBuilder();
         int n = script.length();
@@ -144,7 +145,7 @@ public class SqlTableDataImporter implements TableDataImporter {
                     char ch = script.charAt(i);
                     current.append(ch);
                     i++;
-                    if (ch == '\\' && i < n) {
+                    if (mysql && ch == '\\' && i < n) {
                         current.append(script.charAt(i));
                         i++;
                         continue;

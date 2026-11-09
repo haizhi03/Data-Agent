@@ -16,6 +16,7 @@ import type { ExplorerNode } from '../types/explorer';
 import type { DbTypeOption, IdentifierQuoteStyle } from '../types/dbType';
 import type { ConsoleTabMetadata } from '../types/tab';
 import type { DbConnection } from '../types/connection';
+import type { SqlStatementType } from '../utils/sqlGenerator';
 
 interface DataViewActionsProps {
   setSelectedDdlNode: (node: ExplorerNode | null) => void;
@@ -278,6 +279,35 @@ export function useDataViewActions({
     [ensureConsoleTab, updateTabContent, t],
   );
 
+  // Table-node "SQL & Code" templates: the backend builds the statement from the
+  // table's column metadata (NULL placeholders) because the tree has no row data.
+  const handleGenerateSql = useCallback(
+    async (node: ExplorerNode, statementType: SqlStatementType) => {
+      const consoleContext = ensureConsoleTab(node);
+      if (!consoleContext) return;
+
+      const objectName = node.tableName || node.objectName || node.name;
+
+      try {
+        const sql = await tableService.generateSqlTemplate(
+          String(consoleContext.connectionId),
+          objectName,
+          statementType,
+          node.catalog ?? '',
+          node.schema ?? '',
+        );
+
+        const existingContent = tabs.find((tab) => tab.id === consoleContext.tabId)?.content ?? '';
+        updateTabContent(consoleContext.tabId, appendSql(existingContent, sql));
+        switchTab(consoleContext.tabId);
+      } catch (err) {
+        const errMsg = (err as Error).message || t(I18N_KEYS.EXPLORER.LOAD_COLUMNS_FAILED);
+        updateTabContent(consoleContext.tabId, `-- ${errMsg}\n`);
+      }
+    },
+    [ensureConsoleTab, switchTab, t, tabs, updateTabContent],
+  );
+
   const handleViewData = useCallback(
     (node: ExplorerNode, highlightCol?: string) => {
       if (!node.connectionId) return;
@@ -440,6 +470,7 @@ export function useDataViewActions({
   return {
     handleViewDdl,
     handleGenerateIndexes,
+    handleGenerateSql,
     handleViewData,
     handleTableOrViewDoubleClick,
     handleOpenQueryConsole,

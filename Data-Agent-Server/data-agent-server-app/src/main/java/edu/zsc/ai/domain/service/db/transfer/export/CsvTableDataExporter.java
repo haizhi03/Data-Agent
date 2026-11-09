@@ -40,7 +40,7 @@ public class CsvTableDataExporter extends AbstractTableDataExporter<CsvTableData
     @Override
     protected CsvSession onStart(OutputStream outputStream, DbContext db, String tableName, String fileType,
                                  List<String> headers, List<Integer> columnIndexes,
-                                 SqlCommandResult firstPage, String identifierQuote) throws IOException {
+                                 SqlCommandResult firstPage, String identifierQuote, String dbType) throws IOException {
         OutputStreamWriter streamWriter = new OutputStreamWriter(nonClosing(outputStream), StandardCharsets.UTF_8);
         BufferedWriter writer = new BufferedWriter(streamWriter);
         boolean hasRows = firstPage.getRows() != null && !firstPage.getRows().isEmpty();

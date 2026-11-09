@@ -11,6 +11,7 @@ import { useConnectionActions } from '../../hooks/useConnectionActions';
 import { useDataViewActions } from '../../hooks/useDataViewActions';
 import { useDeleteActions } from '../../hooks/useDeleteActions';
 import { useRenameActions } from '../../hooks/useRenameActions';
+import { useTableCommentActions } from '../../hooks/useTableCommentActions';
 import { I18N_KEYS } from '../../constants/i18nKeys';
 import { DataAttributes } from '../../constants/dataAttributes';
 import { EXPLORER_SQL_OBJECT_CHANGED, ExplorerNodeType, FolderName } from '../../constants/explorer';
@@ -114,6 +115,8 @@ export function DatabaseExplorer() {
     setSelectedCreateTableNode,
     renameState,
     setRenameState,
+    commentState,
+    setCommentState,
   } = dialogState;
 
   // Connection actions
@@ -125,7 +128,7 @@ export function DatabaseExplorer() {
   });
 
   // Data view actions
-  const { handleViewDdl, handleGenerateIndexes, handleViewData, handleTableOrViewDoubleClick, handleOpenQueryConsole, handleCreateTable, handleOpenErDiagram, getDdlConfig, resolveConsoleContext } = useDataViewActions({
+  const { handleViewDdl, handleGenerateIndexes, handleGenerateSql, handleViewData, handleTableOrViewDoubleClick, handleOpenQueryConsole, handleCreateTable, handleOpenErDiagram, getDdlConfig, resolveConsoleContext } = useDataViewActions({
     setSelectedDdlNode,
     setDdlDialogOpen,
     setTableDataDialogOpen,
@@ -151,6 +154,13 @@ export function DatabaseExplorer() {
     renameState,
     setTreeDataState,
     rebuildTablesFolder,
+  });
+
+  // Table comment actions
+  const { handleTableComment, confirmTableComment } = useTableCommentActions({
+    commentState,
+    setCommentState,
+    setTreeDataState,
   });
 
   const ddlConfig = getDdlConfig();
@@ -411,7 +421,7 @@ export function DatabaseExplorer() {
         connectionId: number;
         catalog?: string | null;
         schema?: string | null;
-        objectType: string;
+        objectType: string | null;
       }>).detail;
       const folderByType: Record<string, FolderName> = {
         TABLE: FolderName.TABLES,
@@ -422,7 +432,7 @@ export function DatabaseExplorer() {
         SEQUENCE: FolderName.SEQUENCES,
         CONSTRAINT: FolderName.CONSTRAINTS,
       };
-      const folderName = folderByType[detail.objectType];
+      const folderName = detail.objectType ? folderByType[detail.objectType] : undefined;
       const nodes: ExplorerNode[] = [];
       const collect = (items: ExplorerNode[]) => {
         for (const item of items) {
@@ -440,7 +450,14 @@ export function DatabaseExplorer() {
       const schema = nodes.find(node =>
         node.type === ExplorerNodeType.SCHEMA && matchingScope(node)
         && node.name === detail.schema);
-      const target = folder ?? schema;
+      // DB nodes store the database name in `name` (catalog is undefined for
+      // them), so match by name as a last-resort scope — needed for MySQL,
+      // which has no schema nodes.
+      const db = nodes.find(node =>
+        node.type === ExplorerNodeType.DB
+        && node.connectionId === String(detail.connectionId)
+        && node.name === detail.catalog);
+      const target = folder ?? schema ?? db;
       if (target) void refreshNodeById(target.id);
     };
     window.addEventListener(EXPLORER_SQL_OBJECT_CHANGED, onSqlObjectChanged);
@@ -486,11 +503,13 @@ export function DatabaseExplorer() {
           onViewDdl={handleViewDdl}
           onViewData={handleViewData}
           onTableOrViewDoubleClick={handleTableOrViewDoubleClick}
+          onTableComment={handleTableComment}
           onRename={handleRename}
           onDelete={handleDelete}
           onOpenQueryConsole={handleOpenQueryConsole}
           onRunSqlScript={handleRunSqlScript}
           onSqlGenerator={handleSqlGenerator}
+          onGenerateSql={handleGenerateSql}
           onCreateTable={handleCreateTable}
           onImportData={handleImportData}
           onExportData={handleExportData}
@@ -538,6 +557,9 @@ export function DatabaseExplorer() {
         renameState={renameState}
         onRenameStateChange={setRenameState}
         onConfirmRename={confirmRename}
+        commentState={commentState}
+        onCommentStateChange={setCommentState}
+        onConfirmTableComment={confirmTableComment}
         createTableDialogOpen={createTableDialogOpen}
         onCreateTableDialogOpenChange={setCreateTableDialogOpen}
         setSelectedCreateTableNode={setSelectedCreateTableNode}

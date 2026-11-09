@@ -12,7 +12,9 @@ const EXPLORER_METADATA_QUERY_ROOT = 'explorer-metadata';
 const EXPLORER_METADATA_STALE_TIME_MS = 60 * 1000;
 
 /** Object-list query kinds; each key is [root, kind, connectionId, catalog, schema]. */
-const EXPLORER_OBJECT_KINDS = ['tables', 'views', 'functions', 'procedures', 'triggers'] as const;
+const EXPLORER_OBJECT_KINDS = ['tables', 'table-comments', 'views', 'functions', 'procedures', 'triggers'] as const;
+
+export type ExplorerTableComments = Record<string, string>;
 
 type CachedListOptions = {
   force?: boolean;
@@ -29,6 +31,9 @@ export const getExplorerSchemasQueryKey = (connectionId: string, catalog?: strin
 
 export const getExplorerTablesQueryKey = (connectionId: string, catalog?: string, schema?: string) =>
   [EXPLORER_METADATA_QUERY_ROOT, 'tables', connectionId, normalizeScope(catalog), normalizeScope(schema)] as const;
+
+export const getExplorerTableCommentsQueryKey = (connectionId: string, catalog?: string, schema?: string) =>
+  [EXPLORER_METADATA_QUERY_ROOT, 'table-comments', connectionId, normalizeScope(catalog), normalizeScope(schema)] as const;
 
 export const getExplorerViewsQueryKey = (connectionId: string, catalog?: string, schema?: string) =>
   [EXPLORER_METADATA_QUERY_ROOT, 'views', connectionId, normalizeScope(catalog), normalizeScope(schema)] as const;
@@ -75,6 +80,17 @@ export function getCachedExplorerTables(
   schema?: string
 ): string[] | undefined {
   return queryClient.getQueryData<string[]>(getExplorerTablesQueryKey(connectionId, catalog, schema));
+}
+
+export function getCachedExplorerTableComments(
+  queryClient: QueryClient,
+  connectionId: string,
+  catalog?: string,
+  schema?: string
+): ExplorerTableComments | undefined {
+  return queryClient.getQueryData<ExplorerTableComments>(
+    getExplorerTableCommentsQueryKey(connectionId, catalog, schema)
+  );
 }
 
 export function getCachedExplorerViews(
@@ -151,6 +167,21 @@ export function fetchExplorerTables(
     queryClient,
     getExplorerTablesQueryKey(connectionId, catalog, schema),
     () => tableService.listTables(connectionId, catalog, schema),
+    options
+  );
+}
+
+export function fetchExplorerTableComments(
+  queryClient: QueryClient,
+  connectionId: string,
+  catalog?: string,
+  schema?: string,
+  options?: CachedListOptions
+): Promise<ExplorerTableComments> {
+  return fetchCachedData(
+    queryClient,
+    getExplorerTableCommentsQueryKey(connectionId, catalog, schema),
+    () => tableService.getTableComments(connectionId, catalog, schema),
     options
   );
 }
@@ -248,6 +279,14 @@ export function renameCachedExplorerTable(
   if (!cached || !cached.includes(oldName)) return;
   const next = [...new Set(cached.map((name) => (name === oldName ? newName : name)))];
   queryClient.setQueryData<string[]>(queryKey, next);
+
+  const commentsKey = getExplorerTableCommentsQueryKey(connectionId, catalog, schema);
+  const comments = queryClient.getQueryData<ExplorerTableComments>(commentsKey);
+  if (comments && oldName in comments) {
+    const nextComments = { ...comments, [newName]: comments[oldName] };
+    delete nextComments[oldName];
+    queryClient.setQueryData<ExplorerTableComments>(commentsKey, nextComments);
+  }
 }
 
 export function removeCachedExplorerTable(
@@ -258,6 +297,39 @@ export function removeCachedExplorerTable(
   name: string
 ) {
   removeNameFromCachedList(queryClient, getExplorerTablesQueryKey(connectionId, catalog, schema), name);
+
+  const commentsKey = getExplorerTableCommentsQueryKey(connectionId, catalog, schema);
+  const comments = queryClient.getQueryData<ExplorerTableComments>(commentsKey);
+  if (comments && name in comments) {
+    const nextComments = { ...comments };
+    delete nextComments[name];
+    queryClient.setQueryData<ExplorerTableComments>(commentsKey, nextComments);
+  }
+}
+
+/**
+ * Reflect a comment edit in the cached map. Only touches an existing cache;
+ * creating a partial map would make hydration believe comments were loaded.
+ */
+export function updateCachedExplorerTableComment(
+  queryClient: QueryClient,
+  connectionId: string,
+  catalog: string | undefined,
+  schema: string | undefined,
+  tableName: string,
+  comment: string
+) {
+  const commentsKey = getExplorerTableCommentsQueryKey(connectionId, catalog, schema);
+  const cached = queryClient.getQueryData<ExplorerTableComments>(commentsKey);
+  if (!cached) return;
+
+  if (comment.trim() === '') {
+    const nextComments = { ...cached };
+    delete nextComments[tableName];
+    queryClient.setQueryData<ExplorerTableComments>(commentsKey, nextComments);
+    return;
+  }
+  queryClient.setQueryData<ExplorerTableComments>(commentsKey, { ...cached, [tableName]: comment });
 }
 
 export function removeCachedExplorerView(
@@ -327,6 +399,7 @@ export function invalidateCachedExplorerFolder(
   switch (folderName) {
     case FolderName.TABLES:
       queryClient.removeQueries({ queryKey: getExplorerTablesQueryKey(connectionId, catalog, schema) });
+      queryClient.removeQueries({ queryKey: getExplorerTableCommentsQueryKey(connectionId, catalog, schema) });
       break;
     case FolderName.VIEWS:
       queryClient.removeQueries({ queryKey: getExplorerViewsQueryKey(connectionId, catalog, schema) });

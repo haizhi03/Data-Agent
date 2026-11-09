@@ -225,6 +225,7 @@ export function CreateTableDialog({
                     >
                       <input
                         type="checkbox"
+                        disabled={!section.enabled}
                         checked={checkedSections.has(section.id)}
                         onChange={(event) => {
                           event.stopPropagation();
@@ -276,21 +277,6 @@ export function CreateTableDialog({
                       className="h-8 text-sm"
                     />
                   </div>
-                  <div className="grid grid-cols-[100px_1fr] items-center gap-x-3 gap-y-1">
-                    <label className="text-xs text-muted-foreground">{t('explorer.create_dialog_persistence')}</label>
-                    <div className="flex items-center gap-2">
-                      <select className="h-8 flex-1 rounded-md border px-2 text-sm">
-                        <option value="PERSISTENT">PERSISTENT</option>
-                        <option value="UNLOGGED">UNLOGGED</option>
-                        <option value="TEMPORARY">TEMPORARY</option>
-                      </select>
-                      <label className="flex shrink-0 items-center gap-1.5 text-xs">
-                        <input type="checkbox" className="rounded border border-border bg-muted/80 accent-primary" />
-                        {t('explorer.create_dialog_has_oid')}
-                      </label>
-                    </div>
-                  </div>
-
                   {selectedSection === 'columns' ? (
                     <div className="grid grid-cols-[100px_1fr] items-start gap-x-3 gap-y-1">
                       <label className="pt-1.5 text-xs leading-8 text-muted-foreground">
@@ -457,58 +443,6 @@ export function CreateTableDialog({
                     </div>
                   ) : null}
 
-                  <div className="grid grid-cols-[100px_1fr] items-center gap-x-3 gap-y-1">
-                    <label className="text-xs text-muted-foreground">{t('explorer.create_dialog_partition_expression')}</label>
-                    <Input className="h-8 text-sm" />
-                  </div>
-                  <div className="grid grid-cols-[100px_1fr] items-center gap-x-3 gap-y-1">
-                    <label className="text-xs text-muted-foreground">{t('explorer.create_dialog_partition_key')}</label>
-                    <Input className="h-8 text-sm" />
-                  </div>
-                  <div className="grid grid-cols-[100px_1fr] items-center gap-x-3 gap-y-1">
-                    <label className="text-xs text-muted-foreground">{t('explorer.create_dialog_options')}</label>
-                    <div className="flex items-center gap-1">
-                      <Input className="h-8 flex-1 text-sm" />
-                      <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 opacity-60">...</Button>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-[100px_1fr] items-center gap-x-3 gap-y-1">
-                    <label className="text-xs text-muted-foreground">{t('explorer.create_dialog_access_method')}</label>
-                    <select className="h-8 flex-1 rounded-md border px-2 text-sm">
-                      <option value="">-</option>
-                    </select>
-                  </div>
-                  <div className="grid grid-cols-[100px_1fr] items-center gap-x-3 gap-y-1">
-                    <label className="text-xs text-muted-foreground">{t('explorer.create_dialog_tablespace')}</label>
-                    <select className="h-8 flex-1 rounded-md border px-2 text-sm">
-                      <option value="">-</option>
-                    </select>
-                  </div>
-                  <div className="grid grid-cols-[100px_1fr] items-center gap-x-3 gap-y-1">
-                    <label className="text-xs text-muted-foreground">{t('explorer.create_dialog_owner')}</label>
-                    <select className="h-8 flex-1 rounded-md border px-2 text-sm">
-                      <option value="">-</option>
-                    </select>
-                  </div>
-                  <div className="grid grid-cols-[100px_1fr] items-start gap-x-3 gap-y-1">
-                    <label className="pt-1.5 text-xs text-muted-foreground">{t('explorer.create_dialog_authorization')}</label>
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-1">
-                        <Button variant="ghost" size="icon" className="h-7 w-7">
-                          <Plus className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-7 w-7">
-                          <ChevronUp className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-7 w-7">
-                          <ChevronDown className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                      <div className="rounded-md border border-dashed border-border px-4 py-6 text-center text-xs text-muted-foreground">
-                        {t('explorer.create_dialog_no_content')}
-                      </div>
-                    </div>
-                  </div>
                 </div>
               </div>
             </div>

@@ -202,7 +202,11 @@ export default function Home() {
                 </div>
             )}
 
-            {/* Opened ER diagrams stay mounted so switching back skips reload and layout. */}
+            {/* Opened ER diagrams stay mounted so switching back skips reload and layout.
+                Retained diagrams use opacity-0, not display:none, so the canvas keeps its
+                clientWidth/clientHeight. visibility:hidden still paints React Flow's transformed
+                layer through the semi-transparent insert row and Output panel. inert keeps
+                the hidden diagram out of keyboard Tab order. */}
             <div className="relative min-h-0 flex-1">
                 {erTabs.map((tab) => {
                     const retained = activeTabId !== tab.id;
@@ -210,7 +214,9 @@ export default function Home() {
                         <div
                             key={tab.id}
                             className={`absolute inset-0 isolate overflow-hidden bg-transparent ${retained ? 'z-0 opacity-0 pointer-events-none' : 'z-10'}`}
-                            aria-hidden={retained}
+                            ref={(node) => {
+                                if (node) node.inert = retained;
+                            }}
                         >
                             <ErDiagramTab metadata={tab.metadata as ErDiagramTabMetadata} />
                         </div>

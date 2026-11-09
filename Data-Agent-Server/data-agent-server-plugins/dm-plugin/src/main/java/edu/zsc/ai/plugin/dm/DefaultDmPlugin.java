@@ -65,6 +65,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Base class for DM (达梦) database plugins.
@@ -307,6 +308,22 @@ public abstract class DefaultDmPlugin extends AbstractDatabasePlugin
     }
 
     // ========== TableManager ==========
+
+    @Override
+    public String getTableComment(Connection connection, String catalog, String schema, String tableName) {
+        return tableManager.getTableComment(connection, catalog, schema, tableName);
+    }
+
+    @Override
+    public Map<String, String> getTableComments(Connection connection, String catalog, String schema) {
+        return tableManager.getTableComments(connection, catalog, schema);
+    }
+
+    @Override
+    public void updateTableComment(Connection connection, String catalog, String schema,
+                                   String tableName, String comment) {
+        tableManager.updateTableComment(connection, catalog, schema, tableName, comment);
+    }
 
     @Override
     public String getTableDdl(Connection connection, String catalog, String schema, String tableName) {

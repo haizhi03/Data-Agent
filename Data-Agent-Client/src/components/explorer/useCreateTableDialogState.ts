@@ -8,6 +8,17 @@ import { useToast } from '../../hooks/useToast';
 import type { ExplorerNode } from '../../types/explorer';
 import type { DbConnection } from '../../types/connection';
 import { resolveErrorMessage } from '../../lib/errorMessage';
+import {
+  buildDmCommentOnTableStatement,
+  buildMysqlTableCommentClause,
+  isDmDbType,
+  quoteCreateTableIdentifier,
+} from '../../lib/sqlComment';
+import {
+  buildDmCreateIndexStatement,
+  buildInlineIndexDefinition,
+  getCreateTableColumnTypes,
+} from '../../lib/createTableDialect';
 
 const MIN_WIDTH = 520;
 const MIN_HEIGHT = 400;
@@ -27,20 +38,6 @@ function fitToViewport(width: number, height: number) {
     height: Math.max(MIN_HEIGHT, Math.min(height, window.innerHeight - VIEWPORT_MARGIN * 2)),
   };
 }
-
-const COMMON_TYPES = [
-  'INT',
-  'BIGINT',
-  'VARCHAR(255)',
-  'TEXT',
-  'DATE',
-  'DATETIME',
-  'TIMESTAMP',
-  'DECIMAL(10,2)',
-  'BOOLEAN',
-  'FLOAT',
-  'DOUBLE',
-] as const;
 
 export type TreeSectionId = 'columns' | 'keys' | 'foreign_keys' | 'indexes' | 'checks' | 'virtual_columns' | 'virtual_fk';
 
@@ -67,12 +64,6 @@ interface UseCreateTableDialogStateArgs {
   node: ExplorerNode | null;
   connections?: DbConnection[];
   onSuccess?: (node: ExplorerNode) => void;
-}
-
-function quoteIdentifier(name: string, dbType?: string): string {
-  if (!name.trim()) return name;
-  const isMysql = dbType?.toLowerCase().includes('mysql');
-  return isMysql ? `\`${name}\`` : `"${name.replace(/"/g, '""')}"`;
 }
 
 function validateTableName(name: string): boolean {
@@ -295,8 +286,8 @@ export function useCreateTableDialogState({
     });
   };
 
-  const previewSql = useMemo(() => {
-    const q = (s: string) => quoteIdentifier(s, dbType);
+  const baseSql = useMemo(() => {
+    const q = (s: string) => quoteCreateTableIdentifier(s, dbType);
     const validCols = columns.filter((c) => c.name.trim());
     const tblName = tableName.trim() || 'table_name';
     if (validCols.length === 0) return `create table ${q(displayTableName)}\n(\n);`;
@@ -316,13 +307,10 @@ export function useCreateTableDialogState({
           parts.push(`  CONSTRAINT fk_${tblName}_${i + 1} FOREIGN KEY (${q(fk.column.trim())}) REFERENCES ${q(fk.refTable.trim())} (${q(fk.refColumn.trim())})`);
         });
     }
-    if (hasIdx && indexes.length > 0) {
+    if (hasIdx && !isDmDbType(dbType) && indexes.length > 0) {
       indexes
         .filter((idx) => idx.name.trim() && idx.columns.trim())
-        .forEach((idx) => {
-          const cols = idx.columns.trim().split(/\s*,\s*/).map((c) => q(c.trim())).join(', ');
-          parts.push(`  KEY ${q(idx.name.trim())} (${cols})`);
-        });
+        .forEach((idx) => parts.push(buildInlineIndexDefinition(idx, dbType)));
     }
     return `create table ${q(tblName)}\n(\n${parts.join(',\n')}\n)`;
   }, [
@@ -334,6 +322,43 @@ export function useCreateTableDialogState({
     displayTableName,
     [...checkedSections].sort().join(','),
   ]);
+
+  const mysqlCommentClause = useMemo(
+    () => buildMysqlTableCommentClause(tableComment, dbType),
+    [tableComment, dbType],
+  );
+
+  const dmIndexStatements = useMemo(() => {
+    if (!isDmDbType(dbType) || !checkedSections.has('indexes')) return [];
+    return indexes
+      .filter((idx) => idx.name.trim() && idx.columns.trim())
+      .map((idx) => buildDmCreateIndexStatement(
+        schema,
+        tableName.trim() || 'table_name',
+        idx,
+        dbType,
+      ));
+  }, [checkedSections, dbType, indexes, schema, tableName]);
+
+  const dmCommentStatement = useMemo(() => {
+    if (!isDmDbType(dbType) || !tableComment.trim()) return '';
+    return buildDmCommentOnTableStatement(
+      schema,
+      tableName.trim() || 'table_name',
+      tableComment,
+      dbType,
+    );
+  }, [dbType, schema, tableComment, tableName]);
+
+  const createTableSql = useMemo(
+    () => `${baseSql.replace(/^create table/i, 'CREATE TABLE')}${mysqlCommentClause}`,
+    [baseSql, mysqlCommentClause],
+  );
+
+  const previewSql = useMemo(
+    () => [createTableSql, ...dmIndexStatements, dmCommentStatement].filter(Boolean).join(';\n'),
+    [createTableSql, dmCommentStatement, dmIndexStatements],
+  );
 
   const handleSubmit = async () => {
     if (!connectionId || !tableName.trim()) return;
@@ -352,15 +377,13 @@ export function useCreateTableDialogState({
       return;
     }
 
-    const createSql = previewSql.replace(/^create table/i, 'CREATE TABLE');
-
     setIsPending(true);
     try {
       const response = await tableService.createTable({
         connectionId: Number(connectionId),
         databaseName: catalog || undefined,
         schemaName: schema ?? undefined,
-        sql: createSql,
+        sql: createTableSql,
       });
 
       if (response.type === 'ERROR' || !response.success) {
@@ -369,7 +392,42 @@ export function useCreateTableDialogState({
         return;
       }
 
+      for (const sql of dmIndexStatements) {
+        const indexResponse = await tableService.createTable({
+          connectionId: Number(connectionId),
+          databaseName: catalog || undefined,
+          schemaName: schema ?? undefined,
+          sql,
+        });
+        if (indexResponse.type === 'ERROR' || !indexResponse.success) {
+          const errMsg = indexResponse.messages?.[0]?.message ?? indexResponse.errorMessage ?? 'Unknown error';
+          toast.error(`${t(I18N_KEYS.EXPLORER.CREATE_TABLE_FAILED)}: ${errMsg}`);
+          return;
+        }
+      }
+
       toast.success(t(I18N_KEYS.EXPLORER.CREATE_TABLE_SUCCESS));
+
+      // Dialects without an inline table comment (DM) need a second statement.
+      // The table already exists, so a failure here only warns and still refreshes.
+      if (dmCommentStatement) {
+        try {
+          await tableService.updateTableComment(
+            connectionId,
+            tableName.trim(),
+            tableComment.trim(),
+            catalog || undefined,
+            schema,
+          );
+        } catch (commentError) {
+          console.error('Failed to save table comment:', commentError);
+          toast.error(resolveErrorMessage(
+            commentError,
+            t(I18N_KEYS.EXPLORER.CREATE_TABLE_COMMENT_FAILED),
+          ));
+        }
+      }
+
       handleClose(false);
       if (node) {
         onSuccess?.(node);
@@ -386,7 +444,7 @@ export function useCreateTableDialogState({
     MIN_HEIGHT,
     DEFAULT_WIDTH,
     DEFAULT_HEIGHT,
-    COMMON_TYPES,
+    COMMON_TYPES: getCreateTableColumnTypes(dbType),
     formScrollRef,
     handleFormWheel,
     tableName,

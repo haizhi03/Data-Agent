@@ -5,6 +5,7 @@ import { ExplorerIdPrefix, ExplorerTreeConfig, ExplorerNodeType, FolderName } fr
 import { I18N_KEYS } from '../../constants/i18nKeys';
 import { ExplorerTreeNode } from './ExplorerTreeNode';
 import type { ExplorerNode } from '../../types/explorer';
+import type { SqlStatementType } from '../../utils/sqlGenerator';
 import type { ExplorerNodeHydrationState } from '../../hooks/useConnectionTree';
 
 interface ExplorerTreeProps {
@@ -20,11 +21,13 @@ interface ExplorerTreeProps {
   onViewDdl: (node: ExplorerNode) => void;
   onViewData: (node: ExplorerNode, highlightColumn?: string) => void;
   onTableOrViewDoubleClick: (node: ExplorerNode) => void;
+  onTableComment: (node: ExplorerNode) => void;
   onRename: (node: ExplorerNode) => void;
   onDelete: (node: ExplorerNode, type: ExplorerNodeType) => void;
   onOpenQueryConsole: (node: ExplorerNode) => void;
   onRunSqlScript: (node: ExplorerNode) => void;
   onSqlGenerator: (node: ExplorerNode) => void;
+  onGenerateSql: (node: ExplorerNode, statementType: SqlStatementType) => void;
   onCreateTable: (node: ExplorerNode) => void;
   onImportData: (node: ExplorerNode) => void;
   onExportData: (node: ExplorerNode) => void;
@@ -113,11 +116,13 @@ export const ExplorerTree = forwardRef<ExplorerTreeHandle, ExplorerTreeProps>(fu
   onViewDdl,
   onViewData,
   onTableOrViewDoubleClick,
+  onTableComment,
   onRename,
   onDelete,
   onOpenQueryConsole,
   onRunSqlScript,
   onSqlGenerator,
+  onGenerateSql,
   onCreateTable,
   onImportData,
   onExportData,
@@ -246,11 +251,13 @@ export const ExplorerTree = forwardRef<ExplorerTreeHandle, ExplorerTreeProps>(fu
         onViewDdl={onViewDdl}
         onViewData={onViewData}
         onTableOrViewDoubleClick={onTableOrViewDoubleClick}
+        onTableComment={onTableComment}
         onRename={onRename}
         onDelete={onDelete}
         onOpenQueryConsole={onOpenQueryConsole}
         onRunSqlScript={onRunSqlScript}
         onSqlGenerator={onSqlGenerator}
+        onGenerateSql={onGenerateSql}
         onCreateTable={onCreateTable}
         onImportData={onImportData}
         onExportData={onExportData}

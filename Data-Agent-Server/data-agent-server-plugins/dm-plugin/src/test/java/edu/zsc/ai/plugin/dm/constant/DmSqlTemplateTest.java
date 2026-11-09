@@ -31,6 +31,9 @@ class DmSqlTemplateTest {
     void commentQueriesUseOracleCompatibleDictionary() {
         assertTrue(DmSqlTemplate.SQL_TABLE_COMMENT.contains("ALL_TAB_COMMENTS"));
         assertTrue(DmSqlTemplate.SQL_TABLE_COMMENT.contains("TABLE_TYPE = 'TABLE'"));
+        assertTrue(DmSqlTemplate.SQL_TABLE_COMMENTS.contains("SELECT TABLE_NAME, COMMENTS FROM ALL_TAB_COMMENTS"));
+        assertTrue(DmSqlTemplate.SQL_TABLE_COMMENTS.contains("OWNER = ?"));
+        assertTrue(DmSqlTemplate.SQL_TABLE_COMMENTS.contains("TABLE_TYPE = 'TABLE'"));
         assertTrue(DmSqlTemplate.SQL_COLUMN_COMMENTS.contains("ALL_COL_COMMENTS"));
         assertTrue(DmSqlTemplate.SQL_COLUMN_COMMENTS.contains("COLUMN_NAME"));
     }

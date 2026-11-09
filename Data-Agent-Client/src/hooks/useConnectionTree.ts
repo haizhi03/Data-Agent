@@ -20,11 +20,13 @@ import {
   clearExplorerMetadataForConnection,
   fetchExplorerDatabases,
   fetchExplorerSchemas,
+  fetchExplorerTableComments,
   fetchExplorerTables,
   getCachedExplorerDatabases,
   getCachedExplorerFunctions,
   getCachedExplorerProcedures,
   getCachedExplorerSchemas,
+  getCachedExplorerTableComments,
   getCachedExplorerTables,
   getCachedExplorerTriggers,
   getCachedExplorerViews,
@@ -224,6 +226,7 @@ export function useConnectionTree() {
       }
 
       const tables = getCachedExplorerTables(queryClient, connId, dbName) ?? [];
+      const tableComments = getCachedExplorerTableComments(queryClient, connId, dbName);
       const views = getCachedExplorerViews(queryClient, connId, dbName) ?? [];
       const functions = getCachedExplorerFunctions(queryClient, connId, dbName);
       const procedures = getCachedExplorerProcedures(queryClient, connId, dbName);
@@ -242,6 +245,7 @@ export function useConnectionTree() {
           catalog: dbName,
           schema: undefined,
           t,
+          tableComments,
         },
         tables,
         views,
@@ -252,6 +256,7 @@ export function useConnectionTree() {
       updateNodeChildren(node.id, folders);
       const isFull = functions !== undefined && procedures !== undefined && triggers !== undefined
         && getCachedExplorerTables(queryClient, connId, dbName) !== undefined
+        && tableComments !== undefined
         && getCachedExplorerViews(queryClient, connId, dbName) !== undefined;
       return isFull ? 'full' : 'partial';
     }
@@ -260,6 +265,7 @@ export function useConnectionTree() {
       const dbName = node.data.catalog ?? '';
       const schemaName = node.data.name;
       const tables = getCachedExplorerTables(queryClient, connId, dbName, schemaName) ?? [];
+      const tableComments = getCachedExplorerTableComments(queryClient, connId, dbName, schemaName);
       const views = getCachedExplorerViews(queryClient, connId, dbName, schemaName) ?? [];
       const functions = getCachedExplorerFunctions(queryClient, connId, dbName, schemaName);
       const procedures = getCachedExplorerProcedures(queryClient, connId, dbName, schemaName);
@@ -279,6 +285,7 @@ export function useConnectionTree() {
           schema: schemaName,
           t,
           isDm: node.data.dbConnection?.dbType?.toLowerCase() === 'dm',
+          tableComments,
         },
         tables,
         views,
@@ -289,6 +296,7 @@ export function useConnectionTree() {
       updateNodeChildren(node.id, folders);
       const isFull = functions !== undefined && procedures !== undefined && triggers !== undefined
         && getCachedExplorerTables(queryClient, connId, dbName, schemaName) !== undefined
+        && tableComments !== undefined
         && getCachedExplorerViews(queryClient, connId, dbName, schemaName) !== undefined;
       return isFull && node.data.dbConnection?.dbType?.toLowerCase() !== 'dm' ? 'full' : 'partial';
     }
@@ -297,15 +305,22 @@ export function useConnectionTree() {
       if (node.data.folderName === FolderName.TABLES) {
         const tables = getCachedExplorerTables(queryClient, connId, node.data.catalog, node.data.schema);
         if (!tables) return 'none';
+        const tableComments = getCachedExplorerTableComments(
+          queryClient,
+          connId,
+          node.data.catalog,
+          node.data.schema
+        );
         const children = buildTablesFolderChildren({
           connectionId: connId,
           catalog: node.data.catalog,
           schema: node.data.schema,
           folderId: node.id,
           tableNames: tables,
+          tableComments,
         });
         updateNodeChildren(node.id, toChildrenOrEmpty(children, node.id, t));
-        return 'full';
+        return tableComments ? 'full' : 'partial';
       }
 
       if (node.data.folderName === FolderName.VIEWS) {
@@ -555,7 +570,7 @@ export function useConnectionTree() {
     const connId = String(connectionId);
     const folder = findTablesFolderNode(treeDataState, connId, catalog ?? '', schema ?? '');
     if (!folder) return;
-    const rebuild = (tables: string[]) => {
+    const rebuild = (tables: string[], tableComments: Record<string, string>) => {
       // Read children inside the state updater so queued renames or metadata
       // loads are retained even before the hook renders again.
       updateNodeChildren(folder.id, (previousChildren) => toChildrenOrEmpty(buildTablesFolderChildren({
@@ -564,20 +579,27 @@ export function useConnectionTree() {
         schema,
         folderId: folder.id,
         tableNames: tables,
+        tableComments,
         previousChildren,
       }), folder.id, t));
     };
     const tables = getCachedExplorerTables(queryClient, connId, catalog, schema);
-    if (tables) {
-      rebuild(tables);
+    const tableComments = getCachedExplorerTableComments(queryClient, connId, catalog, schema);
+    if (tables && tableComments) {
+      rebuild(tables, tableComments);
       return;
     }
 
     // Cache eviction must not turn a group change into a destructive tree
-    // refresh. Fetch only the table list and reconcile it with the current tree.
+    // refresh. Fetch only the missing metadata and reconcile it with the
+    // current tree.
     setNodeLoading(folder.id, true);
     try {
-      rebuild(await fetchExplorerTables(queryClient, connId, catalog, schema));
+      const [nextTables, nextComments] = await Promise.all([
+        tables ?? fetchExplorerTables(queryClient, connId, catalog, schema),
+        tableComments ?? fetchExplorerTableComments(queryClient, connId, catalog, schema),
+      ]);
+      rebuild(nextTables, nextComments);
     } catch (err) {
       console.error('Failed to rebuild tables folder:', err);
       toast.error(t('explorer.load_failed'));

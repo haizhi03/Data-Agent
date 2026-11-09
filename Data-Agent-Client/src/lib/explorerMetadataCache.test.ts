@@ -4,16 +4,19 @@ import { FolderName } from '../constants/explorer';
 import {
   clearExplorerMetadataForCatalog,
   getCachedExplorerSchemas,
+  getCachedExplorerTableComments,
   getCachedExplorerTables,
   getCachedExplorerViews,
   getExplorerDatabasesQueryKey,
   getExplorerSchemasQueryKey,
+  getExplorerTableCommentsQueryKey,
   getExplorerTablesQueryKey,
   getExplorerViewsQueryKey,
   invalidateCachedExplorerFolder,
   removeCachedExplorerTable,
   removeCachedExplorerView,
   renameCachedExplorerTable,
+  updateCachedExplorerTableComment,
 } from './explorerMetadataCache';
 
 describe('explorer metadata cache after deletes', () => {
@@ -104,5 +107,97 @@ describe('explorer metadata cache after renames', () => {
     queryClient.setQueryData(getExplorerTablesQueryKey('1', 'db', undefined), ['orders']);
     renameCachedExplorerTable(queryClient, '1', 'db', undefined, 'users', 'customers');
     expect(getCachedExplorerTables(queryClient, '1', 'db', undefined)).toEqual(['orders']);
+  });
+
+  it('moves the cached comment to the new table name', () => {
+    queryClient.setQueryData(getExplorerTablesQueryKey('1', 'db', 'public'), ['users', 'orders']);
+    queryClient.setQueryData(getExplorerTableCommentsQueryKey('1', 'db', 'public'), {
+      users: 'People',
+      orders: 'Sales',
+    });
+
+    renameCachedExplorerTable(queryClient, '1', 'db', 'public', 'users', 'customers');
+
+    expect(getCachedExplorerTableComments(queryClient, '1', 'db', 'public')).toEqual({
+      customers: 'People',
+      orders: 'Sales',
+    });
+  });
+});
+
+describe('explorer metadata cache table comments', () => {
+  let queryClient: QueryClient;
+
+  beforeEach(() => {
+    queryClient = new QueryClient();
+  });
+
+  it('sets and clears one table comment without touching the others', () => {
+    queryClient.setQueryData(getExplorerTableCommentsQueryKey('1', 'db', undefined), {
+      users: 'People',
+      orders: 'Sales',
+    });
+
+    updateCachedExplorerTableComment(queryClient, '1', 'db', undefined, 'users', 'Customers');
+    expect(getCachedExplorerTableComments(queryClient, '1', 'db', undefined)).toEqual({
+      users: 'Customers',
+      orders: 'Sales',
+    });
+
+    updateCachedExplorerTableComment(queryClient, '1', 'db', undefined, 'users', '   ');
+    expect(getCachedExplorerTableComments(queryClient, '1', 'db', undefined)).toEqual({
+      orders: 'Sales',
+    });
+  });
+
+  it('does not create a partial cache when comments were never fetched', () => {
+    updateCachedExplorerTableComment(queryClient, '1', 'db', undefined, 'users', 'People');
+    // A partial map would make hydration believe the comment list is loaded.
+    expect(getCachedExplorerTableComments(queryClient, '1', 'db', undefined)).toBeUndefined();
+  });
+
+  it('drops the comment when the table is deleted', () => {
+    queryClient.setQueryData(getExplorerTableCommentsQueryKey('1', 'db', undefined), {
+      users: 'People',
+      orders: 'Sales',
+    });
+
+    removeCachedExplorerTable(queryClient, '1', 'db', undefined, 'users');
+
+    expect(getCachedExplorerTableComments(queryClient, '1', 'db', undefined)).toEqual({
+      orders: 'Sales',
+    });
+  });
+
+  it('drops both the table list and comments after deleting a folder of tables', () => {
+    queryClient.setQueryData(getExplorerTablesQueryKey('1', 'db', undefined), ['users']);
+    queryClient.setQueryData(getExplorerTableCommentsQueryKey('1', 'db', undefined), {
+      users: 'People',
+    });
+
+    invalidateCachedExplorerFolder(queryClient, '1', 'db', undefined, FolderName.TABLES);
+
+    expect(getCachedExplorerTables(queryClient, '1', 'db', undefined)).toBeUndefined();
+    expect(getCachedExplorerTableComments(queryClient, '1', 'db', undefined)).toBeUndefined();
+  });
+
+  it('drops comments when clearing a catalog or a connection', () => {
+    queryClient.setQueryData(getExplorerTableCommentsQueryKey('1', 'app', 'public'), {
+      users: 'People',
+    });
+    queryClient.setQueryData(getExplorerTableCommentsQueryKey('1', 'app', 'hr'), {
+      employees: 'Staff',
+    });
+    queryClient.setQueryData(getExplorerTableCommentsQueryKey('1', 'other', 'public'), {
+      logs: 'Logs',
+    });
+
+    clearExplorerMetadataForCatalog(queryClient, '1', 'app');
+
+    expect(getCachedExplorerTableComments(queryClient, '1', 'app', 'public')).toBeUndefined();
+    expect(getCachedExplorerTableComments(queryClient, '1', 'app', 'hr')).toBeUndefined();
+    expect(getCachedExplorerTableComments(queryClient, '1', 'other', 'public')).toEqual({
+      logs: 'Logs',
+    });
   });
 });

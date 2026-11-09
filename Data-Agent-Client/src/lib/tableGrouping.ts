@@ -17,9 +17,10 @@ function makeTableNode(
   name: string,
   groupId?: string,
   groupKind?: 'manual' | 'rule',
+  comment?: string,
   previous?: ExplorerNode
 ): ExplorerNode {
-  return {
+  const node: ExplorerNode = {
     ...previous,
     id: `${folderId}${ExplorerIdPrefix.TABLE}${name}`,
     name,
@@ -31,6 +32,15 @@ function makeTableNode(
     groupKind,
     children: previous?.children ?? [],
   };
+  // `undefined` keeps whatever the previous node carried; an empty string clears it.
+  if (comment !== undefined) {
+    if (comment.trim()) {
+      node.comment = comment;
+    } else {
+      delete node.comment;
+    }
+  }
+  return node;
 }
 
 function matchString(
@@ -82,10 +92,11 @@ export function buildTablesFolderChildren(opts: {
   schema?: string;
   folderId: string;
   tableNames: string[];
+  tableComments?: Record<string, string>;
   /** Existing rendered children to retain metadata when only grouping changes. */
   previousChildren?: ExplorerNode[];
 }): ExplorerNode[] {
-  const { connectionId, catalog, schema, folderId, tableNames } = opts;
+  const { connectionId, catalog, schema, folderId, tableNames, tableComments } = opts;
   const scope = tableGroupScopeKey(connectionId, catalog, schema);
   const groups = useTableGroupStore.getState().groupsByScope[scope] ?? [];
   const previousTables = new Map<string, ExplorerNode>();
@@ -122,7 +133,15 @@ export function buildTablesFolderChildren(opts: {
     const children = tableNames
       .filter((name) => tableToGroup.get(name)?.id === group.id)
       .map((name) => makeTableNode(
-        folderId, connectionId, catalog, schema, name, group.id, kind, previousTables.get(name),
+        folderId,
+        connectionId,
+        catalog,
+        schema,
+        name,
+        group.id,
+        kind,
+        tableComments ? (tableComments[name] ?? '') : previousTables.get(name)?.comment,
+        previousTables.get(name)
       ));
     return {
       id: groupId,
@@ -140,7 +159,15 @@ export function buildTablesFolderChildren(opts: {
   const ungrouped = tableNames
     .filter((name) => !tableToGroup.has(name))
     .map((name) => makeTableNode(
-      folderId, connectionId, catalog, schema, name, undefined, undefined, previousTables.get(name),
+      folderId,
+      connectionId,
+      catalog,
+      schema,
+      name,
+      undefined,
+      undefined,
+      tableComments ? (tableComments[name] ?? '') : previousTables.get(name)?.comment,
+      previousTables.get(name)
     ));
 
   const all: ExplorerNode[] = [...groupNodes, ...ungrouped];

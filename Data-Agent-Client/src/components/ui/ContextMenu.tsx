@@ -3,7 +3,93 @@ import * as ContextMenuPrimitive from '@radix-ui/react-context-menu';
 import { Check, ChevronRight, Circle } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
-const ContextMenu = ContextMenuPrimitive.Root;
+// Whole-menu close: Radix keeps the context menu open until you click outside or
+// press Esc. We close the entire menu (root + any open submenus) when the pointer
+// leaves it. ContextMenu.Root is uncontrolled (no `open` prop), so we track open
+// ourselves via onOpenChange and simply stop rendering the content when the
+// pointer leaves. Every Content / SubContent carries a shared `data-menu-root`
+// id, so "inside the menu" means "inside any of its panels".
+const MENU_CLOSE_DELAY = 150;
+
+let menuIdCounter = 0;
+
+interface MenuRootContextValue {
+  rootId: string;
+  open: boolean;
+  isWithinMenu: (target: EventTarget | null) => boolean;
+  onContentEnter: () => void;
+  onContentLeave: (event: React.PointerEvent) => void;
+}
+
+const MenuRootContext = React.createContext<MenuRootContextValue | null>(null);
+
+const ContextMenu = ({ children, onOpenChange, ...props }: ContextMenuPrimitive.ContextMenuProps) => {
+  const [open, setOpen] = React.useState(false);
+  const idRef = React.useRef<string>();
+  if (!idRef.current) idRef.current = `menu-${++menuIdCounter}`;
+  const rootId = idRef.current;
+  const closeTimerRef = React.useRef<number>();
+
+  const cancelClose = React.useCallback(() => {
+    if (closeTimerRef.current !== undefined) {
+      window.clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = undefined;
+    }
+  }, []);
+
+  const scheduleClose = React.useCallback(() => {
+    cancelClose();
+    closeTimerRef.current = window.setTimeout(() => setOpen(false), MENU_CLOSE_DELAY);
+  }, [cancelClose]);
+
+  React.useEffect(() => cancelClose, [cancelClose]);
+
+  const handleOpenChange = React.useCallback(
+    (next: boolean) => {
+      cancelClose();
+      setOpen(next);
+      onOpenChange?.(next);
+    },
+    [cancelClose, onOpenChange]
+  );
+
+  const isWithinMenu = React.useCallback(
+    (target: EventTarget | null) =>
+      target instanceof Element && target.closest(`[data-menu-root="${rootId}"]`) !== null,
+    [rootId]
+  );
+
+  const handleLeave = React.useCallback(
+    (event: React.PointerEvent) => {
+      if (isWithinMenu(event.relatedTarget)) {
+        cancelClose();
+      } else {
+        scheduleClose();
+      }
+    },
+    [isWithinMenu, cancelClose, scheduleClose]
+  );
+
+  const contextValue = React.useMemo<MenuRootContextValue>(
+    () => ({
+      rootId,
+      open,
+      isWithinMenu,
+      onContentEnter: cancelClose,
+      onContentLeave: handleLeave,
+    }),
+    [rootId, open, isWithinMenu, cancelClose, handleLeave]
+  );
+
+  return (
+    <MenuRootContext.Provider value={contextValue}>
+      <ContextMenuPrimitive.Root {...props} onOpenChange={handleOpenChange}>
+        {children}
+      </ContextMenuPrimitive.Root>
+    </MenuRootContext.Provider>
+  );
+};
+ContextMenu.displayName = 'ContextMenu';
 const ContextMenuTrigger = ContextMenuPrimitive.Trigger;
 const ContextMenuGroup = ContextMenuPrimitive.Group;
 const ContextMenuPortal = ContextMenuPrimitive.Portal;
@@ -32,33 +118,60 @@ ContextMenuSubTrigger.displayName = ContextMenuPrimitive.SubTrigger.displayName;
 const ContextMenuSubContent = React.forwardRef<
   React.ElementRef<typeof ContextMenuPrimitive.SubContent>,
   React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.SubContent>
->(({ className, ...props }, ref) => (
-  <ContextMenuPrimitive.SubContent
-    ref={ref}
-    className={cn(
-      'z-50 min-w-[8rem] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-lg data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2',
-      className
-    )}
-    {...props}
-  />
-));
+>(({ className, onPointerEnter, onPointerLeave, ...props }, ref) => {
+  const menu = React.useContext(MenuRootContext);
+  return (
+    <ContextMenuPrimitive.SubContent
+      ref={ref}
+      data-menu-root={menu?.rootId}
+      onPointerEnter={(event) => {
+        menu?.onContentEnter();
+        onPointerEnter?.(event);
+      }}
+      onPointerLeave={(event) => {
+        menu?.onContentLeave(event);
+        onPointerLeave?.(event);
+      }}
+      className={cn(
+        'z-50 min-w-[8rem] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-lg data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2',
+        className
+      )}
+      {...props}
+    />
+  );
+});
 ContextMenuSubContent.displayName = ContextMenuPrimitive.SubContent.displayName;
 
 const ContextMenuContent = React.forwardRef<
   React.ElementRef<typeof ContextMenuPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.Content>
->(({ className, ...props }, ref) => (
-  <ContextMenuPrimitive.Portal>
-    <ContextMenuPrimitive.Content
-      ref={ref}
-      className={cn(
-        'z-50 min-w-[8rem] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2',
-        className
-      )}
-      {...props}
-    />
-  </ContextMenuPrimitive.Portal>
-));
+>(({ className, onPointerEnter, onPointerLeave, ...props }, ref) => {
+  const menu = React.useContext(MenuRootContext);
+  if (!menu?.open) {
+    return null;
+  }
+  return (
+    <ContextMenuPrimitive.Portal>
+      <ContextMenuPrimitive.Content
+        ref={ref}
+        data-menu-root={menu.rootId}
+        onPointerEnter={(event) => {
+          menu.onContentEnter();
+          onPointerEnter?.(event);
+        }}
+        onPointerLeave={(event) => {
+          menu.onContentLeave(event);
+          onPointerLeave?.(event);
+        }}
+        className={cn(
+          'z-50 min-w-[8rem] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2',
+          className
+        )}
+        {...props}
+      />
+    </ContextMenuPrimitive.Portal>
+  );
+});
 ContextMenuContent.displayName = ContextMenuPrimitive.Content.displayName;
 
 const ContextMenuItem = React.forwardRef<

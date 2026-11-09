@@ -39,6 +39,45 @@ public final class MysqlCapabilitySupport {
                 SqlCommandRequest.ofWithoutTransaction(connection, sql, sql, database, null));
     }
 
+    public Map<String, String> getTableComments(Connection connection, String database) {
+        if (connection == null || StringUtils.isBlank(database)) {
+            return Map.of();
+        }
+
+        Map<String, String> comments = new LinkedHashMap<>();
+        try (PreparedStatement statement = connection.prepareStatement(MySqlTemplate.SQL_LIST_TABLE_COMMENTS)) {
+            statement.setString(1, database);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                while (resultSet.next()) {
+                    String name = resultSet.getString(1);
+                    String comment = resultSet.getString(2);
+                    if (StringUtils.isNotBlank(name) && StringUtils.isNotBlank(comment)) {
+                        comments.put(name, comment);
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to get table comments: " + e.getMessage(), e);
+        }
+        return comments;
+    }
+
+    public void updateTableComment(Connection connection, String database, String tableName, String comment) {
+        if (connection == null || StringUtils.isBlank(tableName)) {
+            throw new IllegalArgumentException("Connection and table name must not be null or empty");
+        }
+
+        String fullName = MysqlIdentifierBuilder.buildFullIdentifier(database, tableName.trim());
+        String escapedComment = MysqlIdentifierEscaper.getInstance()
+                .escapeStringLiteral(comment == null ? "" : comment);
+        String sql = String.format(MySqlTemplate.SQL_ALTER_TABLE_COMMENT, fullName, escapedComment);
+
+        SqlCommandResult result = execute(connection, database, sql);
+        if (!result.isSuccess()) {
+            throw new RuntimeException("Failed to update table comment: " + result.getErrorMessage());
+        }
+    }
+
     public long countObjectsByName(Connection connection, String database, String baseSql, String namePattern, String nameClause) {
         if (connection == null || StringUtils.isBlank(database)) {
             return 0;

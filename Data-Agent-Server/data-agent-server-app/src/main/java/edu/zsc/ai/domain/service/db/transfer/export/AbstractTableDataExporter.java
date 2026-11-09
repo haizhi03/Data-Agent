@@ -63,7 +63,7 @@ public abstract class AbstractTableDataExporter<S> implements TableDataExporter 
             onBeforeFirstWrite.run();
 
             session = onStart(outputStream, db, tableName, fileType, headers, columnIndexes,
-                    first, identifierQuote);
+                    first, identifierQuote, active.dbType());
 
             int offset = 0;
             long totalRows = 0;
@@ -132,10 +132,11 @@ public abstract class AbstractTableDataExporter<S> implements TableDataExporter 
      * (BOM, header line, file preamble, workbook header row, ...).
      * @param identifierQuote the database's identifier quote string ("" when the
      *                        database does not quote); only SQL output needs it
+     * @param dbType active connection's database type code
      */
     protected abstract S onStart(OutputStream outputStream, DbContext db, String tableName, String fileType,
                                  List<String> headers, List<Integer> columnIndexes,
-                                 SqlCommandResult firstPage, String identifierQuote) throws IOException;
+                                 SqlCommandResult firstPage, String identifierQuote, String dbType) throws IOException;
 
     /** Write one page of data rows into the session. */
     protected abstract void writeRows(S session, List<List<Object>> rows) throws IOException;

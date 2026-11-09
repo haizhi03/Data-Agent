@@ -6,6 +6,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 import org.apache.commons.lang3.StringUtils;
 
@@ -15,8 +16,7 @@ import edu.zsc.ai.plugin.model.metadata.ColumnMetadata;
 
 /**
  * DM column manager. Reuses the SPI default {@code DatabaseMetaData.getColumns}
- * implementation, and supplements empty remarks with comments from
- * ALL_COL_COMMENTS (DM dictionary view).
+ * implementation, then supplements comments and identity metadata from DM dictionary tables.
  */
 public final class DmColumnManager implements ColumnManager {
 
@@ -33,32 +33,29 @@ public final class DmColumnManager implements ColumnManager {
             return columns;
         }
 
-        boolean anyRemarkMissing = columns.stream().anyMatch(c -> StringUtils.isBlank(c.remarks()));
-        if (!anyRemarkMissing) {
-            return columns;
-        }
-
         String owner = support.resolveSchema(connection, schema);
         String exactTableName = tableOrViewName.trim();
+        boolean anyRemarkMissing = columns.stream().anyMatch(c -> StringUtils.isBlank(c.remarks()));
 
         Map<String, String> commentsByColumn = new HashMap<>();
-        for (String[] columnComment : support.getColumnComments(connection, owner, exactTableName)) {
-            if (StringUtils.isNotBlank(columnComment[0]) && StringUtils.isNotBlank(columnComment[1])) {
-                commentsByColumn.put(columnComment[0], columnComment[1]);
+        if (anyRemarkMissing) {
+            for (String[] columnComment : support.getColumnComments(connection, owner, exactTableName)) {
+                if (StringUtils.isNotBlank(columnComment[0]) && StringUtils.isNotBlank(columnComment[1])) {
+                    commentsByColumn.put(columnComment[0], columnComment[1]);
+                }
             }
         }
-        if (commentsByColumn.isEmpty()) {
-            return columns;
-        }
+        Set<String> autoIncrementColumns = support.getAutoIncrementColumns(connection, owner, exactTableName);
 
         List<ColumnMetadata> enriched = new ArrayList<>(columns.size());
         for (ColumnMetadata column : columns) {
-            if (StringUtils.isNotBlank(column.remarks()) || column.name() == null) {
-                enriched.add(column);
-                continue;
+            String remarks = column.remarks();
+            if (StringUtils.isBlank(remarks) && column.name() != null) {
+                remarks = commentsByColumn.getOrDefault(column.name(), remarks);
             }
-            String comment = commentsByColumn.get(column.name());
-            if (comment == null) {
+            boolean autoIncrement = column.isAutoIncrement()
+                    || column.name() != null && autoIncrementColumns.contains(column.name());
+            if (Objects.equals(remarks, column.remarks()) && autoIncrement == column.isAutoIncrement()) {
                 enriched.add(column);
                 continue;
             }
@@ -70,9 +67,9 @@ public final class DmColumnManager implements ColumnManager {
                     column.decimalDigits(),
                     column.nullable(),
                     column.ordinalPosition(),
-                    comment,
+                    remarks,
                     column.isPrimaryKeyPart(),
-                    column.isAutoIncrement(),
+                    autoIncrement,
                     column.isUnsigned(),
                     column.defaultValue()
             ));

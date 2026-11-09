@@ -26,6 +26,7 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Core table operations: metadata (list/DDL/count), table lifecycle, single-row
@@ -84,6 +85,48 @@ public class TableServiceImpl implements TableService {
         try (ActiveConnectionRegistry.BorrowedConnection borrowed = active.borrowConnection()) {
             return provider.getTableDdl(borrowed.connection(), db.catalog(), db.schema(), tableName);
         }
+    }
+
+    @Override
+    public Map<String, String> getTableComments(DbContext db) {
+        connectionService.openConnection(db);
+
+        ActiveConnectionRegistry.ActiveConnection active = ActiveConnectionRegistry.getOwnedConnection(db);
+        TableManager provider = DefaultPluginManager.getInstance().getTableManagerByPluginId(active.pluginId());
+        try (ActiveConnectionRegistry.BorrowedConnection borrowed = active.borrowConnection()) {
+            return loadCommentsSafely(provider, borrowed.connection(), db);
+        }
+    }
+
+    /**
+     * Comments are supplementary metadata: a failed lookup must not hide the
+     * table list in the explorer, so degrade to an empty map. Scoped to the
+     * provider call only — connection-acquisition failures still propagate.
+     */
+    private Map<String, String> loadCommentsSafely(TableManager provider, Connection connection, DbContext db) {
+        try {
+            return provider.getTableComments(connection, db.catalog(), db.schema());
+        } catch (RuntimeException e) {
+            log.warn("Failed to load table comments: connectionId={}, catalog={}, schema={}",
+                    db.connectionId(), db.catalog(), db.schema(), e);
+            return Map.of();
+        }
+    }
+
+    @Override
+    public void updateTableComment(DbContext db, String tableName, String comment) {
+        connectionService.openConnection(db);
+
+        ActiveConnectionRegistry.ActiveConnection active = ActiveConnectionRegistry.getOwnedConnection(db);
+        TableManager provider = DefaultPluginManager.getInstance().getTableManagerByPluginId(active.pluginId());
+        String normalizedComment = comment == null ? "" : comment.trim();
+        try (ActiveConnectionRegistry.BorrowedConnection borrowed = active.borrowConnection()) {
+            provider.updateTableComment(
+                    borrowed.connection(), db.catalog(), db.schema(), tableName, normalizedComment);
+        }
+
+        log.info("Table comment updated successfully: connectionId={}, catalog={}, schema={}, tableName={}",
+                db.connectionId(), db.catalog(), db.schema(), tableName);
     }
 
     @Override

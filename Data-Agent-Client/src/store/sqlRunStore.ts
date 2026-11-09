@@ -49,7 +49,7 @@ export const useSqlRunStore = create<SqlRunState>((set) => ({
   cancelStatus: null,
 
   runSql: async (params) => {
-    const { connectionId, databaseName, schemaName, dbType, sql, mode, timeoutMs, maxRows } = params;
+    const { connectionId, databaseName, schemaName, sql, mode, timeoutMs, maxRows } = params;
     if (!sql || !connectionId || currentExecution) return;
 
     const executionId = crypto.randomUUID();
@@ -90,8 +90,8 @@ export const useSqlRunStore = create<SqlRunState>((set) => ({
         },
       });
 
-      // After successful DDL on a DM database, refresh the explorer tree scope.
-      if (results.some((item) => item.success) && dbType?.toUpperCase() === 'DM') {
+      // After successful DDL, refresh the explorer tree scope.
+      if (results.some((item) => item.success)) {
         sqlAnalysisService
           .analyze({
             connectionId,
@@ -104,8 +104,7 @@ export const useSqlRunStore = create<SqlRunState>((set) => ({
             for (const [index, statement] of analysis.statements.entries()) {
               if (
                 results[index]?.success &&
-                ['CREATE', 'ALTER', 'DROP', 'TRUNCATE'].includes(statement.type) &&
-                statement.objectType
+                ['CREATE', 'ALTER', 'DROP', 'TRUNCATE'].includes(statement.type)
               ) {
                 window.dispatchEvent(
                   new CustomEvent(EXPLORER_SQL_OBJECT_CHANGED, {

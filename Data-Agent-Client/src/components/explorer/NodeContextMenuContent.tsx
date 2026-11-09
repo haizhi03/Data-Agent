@@ -1,4 +1,4 @@
-import { Download, Eraser, FileCode2, FileText, FolderCog, FolderInput, FolderOpen, FolderPlus, ListFilter, Pencil, Play, Plus, Table, Table2, Trash2, Upload, Waypoints } from 'lucide-react';
+import { Download, Eraser, FileCode2, FileText, FolderCog, FolderInput, FolderOpen, FolderPlus, ListFilter, MessageSquare, Pencil, Play, Plus, Table, Table2, Trash2, Upload, Waypoints } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import {
   ContextMenuContent,
@@ -10,6 +10,7 @@ import {
 } from '../ui/ContextMenu';
 import { ExplorerNodeType } from '../../constants/explorer';
 import type { ExplorerNode } from '../../types/explorer';
+import type { SqlStatementType } from '../../utils/sqlGenerator';
 import { I18N_KEYS } from '../../constants/i18nKeys';
 import { useTableGroupStore, isManualGroup, groupContainsTable, tableGroupScopeKey } from '../../store/tableGroupStore';
 import { collectDeletableChildren } from '../../utils/treeOperations';
@@ -20,10 +21,12 @@ interface NodeContextMenuContentProps {
   onOpenQueryConsole: (node: ExplorerNode) => void;
   onRunSqlScript: (node: ExplorerNode) => void;
   onSqlGenerator: (node: ExplorerNode) => void;
+  onGenerateSql: (node: ExplorerNode, statementType: SqlStatementType) => void;
   onCreateTable: (node: ExplorerNode) => void;
   onOpenErDiagram: (node: ExplorerNode) => void;
   onViewDdl: (node: ExplorerNode) => void;
   onViewData: (node: ExplorerNode, highlightColumn?: string) => void;
+  onTableComment: (node: ExplorerNode) => void;
   onRename: (node: ExplorerNode) => void;
   onDelete: (node: ExplorerNode, type: ExplorerNodeType) => void;
   onImportData: (node: ExplorerNode) => void;
@@ -46,10 +49,12 @@ export function NodeContextMenuContent({
   onOpenQueryConsole,
   onRunSqlScript,
   onSqlGenerator,
+  onGenerateSql,
   onCreateTable,
   onOpenErDiagram,
   onViewDdl,
   onViewData,
+  onTableComment,
   onRename,
   onDelete,
   onImportData,
@@ -206,6 +211,34 @@ export function NodeContextMenuContent({
         </>
       )}
 
+      {/* 2.5 SQL & Code - statement templates for a concrete table */}
+      {isConnected && node.type === ExplorerNodeType.TABLE && (
+        <ContextMenuSub>
+          <ContextMenuSubTrigger>
+            <FileCode2 className="w-3.5 h-3.5 mr-2" />
+            {t(I18N_KEYS.EXPLORER.SQL_AND_CODE)}
+          </ContextMenuSubTrigger>
+          <ContextMenuSubContent>
+            <ContextMenuItem onSelect={() => onGenerateSql(node, 'SELECT')}>
+              {t(I18N_KEYS.EXPLORER.GENERATE_SQL_SELECT)}
+            </ContextMenuItem>
+            <ContextMenuItem onSelect={() => onGenerateSql(node, 'INSERT')}>
+              {t(I18N_KEYS.EXPLORER.GENERATE_SQL_INSERT)}
+            </ContextMenuItem>
+            <ContextMenuItem onSelect={() => onGenerateSql(node, 'UPDATE')}>
+              {t(I18N_KEYS.EXPLORER.GENERATE_SQL_UPDATE)}
+            </ContextMenuItem>
+            <ContextMenuItem onSelect={() => onGenerateSql(node, 'DELETE')}>
+              {t(I18N_KEYS.EXPLORER.GENERATE_SQL_DELETE)}
+            </ContextMenuItem>
+            <ContextMenuSeparator />
+            <ContextMenuItem onSelect={() => onViewDdl(node)}>
+              {t(I18N_KEYS.EXPLORER.GENERATE_SQL_DDL)}
+            </ContextMenuItem>
+          </ContextMenuSubContent>
+        </ContextMenuSub>
+      )}
+
       {/* 3. View Data - for tables/views and their children */}
       {(isTableOrView || isColumnOrIndexOrKey) && (
         <>
@@ -302,9 +335,13 @@ export function NodeContextMenuContent({
         </ContextMenuSub>
       )}
 
-      {/* 4. Rename - for tables */}
+      {/* 4. Table comment / rename - for tables */}
       {node.type === ExplorerNodeType.TABLE && (
         <>
+          <ContextMenuItem onSelect={() => onTableComment(node)}>
+            <MessageSquare className="w-3.5 h-3.5 mr-2" />
+            {t(I18N_KEYS.EXPLORER.EDIT_TABLE_COMMENT)}
+          </ContextMenuItem>
           <ContextMenuItem onSelect={() => onRename(node)}>
             <Pencil className="w-3.5 h-3.5 mr-2" />
             {t(I18N_KEYS.EXPLORER.RENAME_TABLE)}

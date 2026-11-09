@@ -11,16 +11,11 @@ import { resolveErrorMessage } from '../lib/errorMessage';
 import { useTableGroupStore, tableGroupScopeKey } from '../store/tableGroupStore';
 import { ExplorerNodeType } from '../constants/explorer';
 import type { ExplorerNode } from '../types/explorer';
-
-interface RenameState {
-  node: ExplorerNode | null;
-  isOpen: boolean;
-  isPending: boolean;
-}
+import type { NodeDialogState } from './useDialogState';
 
 interface RenameActionsProps {
-  setRenameState: React.Dispatch<React.SetStateAction<RenameState>>;
-  renameState: RenameState;
+  setRenameState: React.Dispatch<React.SetStateAction<NodeDialogState>>;
+  renameState: NodeDialogState;
   setTreeDataState: (cb: (prev: ExplorerNode[]) => ExplorerNode[]) => void;
   /** Re-derives the Tables folder so grouped nodes pick up the new name. */
   rebuildTablesFolder?: (connectionId: string, catalog?: string, schema?: string) => void | Promise<void>;

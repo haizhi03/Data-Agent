@@ -30,10 +30,22 @@ public final class DmSqlTemplate {
     public static final String SQL_TABLE_COMMENT =
             "SELECT COMMENTS FROM ALL_TAB_COMMENTS"
                     + " WHERE OWNER = ? AND TABLE_NAME = ? AND TABLE_TYPE = 'TABLE'";
+    /** Parameter: 1 = exact owner schema. Base tables only; views are excluded. */
+    public static final String SQL_TABLE_COMMENTS =
+            "SELECT TABLE_NAME, COMMENTS FROM ALL_TAB_COMMENTS"
+                    + " WHERE OWNER = ? AND TABLE_TYPE = 'TABLE'";
     /** Parameters: 1 = exact owner schema, 2 = exact table name. */
     public static final String SQL_COLUMN_COMMENTS =
             "SELECT COLUMN_NAME, COMMENTS FROM ALL_COL_COMMENTS"
                     + " WHERE OWNER = ? AND TABLE_NAME = ?";
+
+    // --- Identity columns (parameters: 1 = exact table name, 2 = exact owner schema) ---
+    public static final String SQL_AUTO_INCREMENT_COLUMNS =
+            "SELECT c.NAME FROM SYS.SYSCOLUMNS c"
+                    + " JOIN SYS.SYSOBJECTS o ON c.ID = o.ID"
+                    + " WHERE c.INFO2 = 1 AND o.NAME = ?"
+                    + " AND o.SCHID = (SELECT s.ID FROM SYS.SYSOBJECTS s"
+                    + " WHERE s.NAME = ? AND s.TYPE$ = 'SCH')";
 
     /** %1$s = full table name, %2$s = escaped comment text */
     public static final String SQL_COMMENT_ON_TABLE = "COMMENT ON TABLE %s IS '%s'";

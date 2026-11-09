@@ -3,6 +3,7 @@ package edu.zsc.ai.domain.service.db.transfer.export;
 import edu.zsc.ai.domain.model.context.DbContext;
 import edu.zsc.ai.domain.service.db.ConnectionService;
 import edu.zsc.ai.domain.service.db.transfer.ImportPrepareSupport;
+import edu.zsc.ai.plugin.enums.DbType;
 import edu.zsc.ai.plugin.model.command.sql.SqlColumnInfo;
 import edu.zsc.ai.plugin.model.command.sql.SqlCommandResult;
 import org.springframework.stereotype.Component;
@@ -47,9 +48,10 @@ public class SqlTableDataExporter extends AbstractTableDataExporter<SqlTableData
     @Override
     protected SqlSession onStart(OutputStream outputStream, DbContext db, String tableName, String fileType,
                                  List<String> headers, List<Integer> columnIndexes,
-                                 SqlCommandResult firstPage, String identifierQuote) throws IOException {
+                                 SqlCommandResult firstPage, String identifierQuote, String dbType) throws IOException {
         OutputStreamWriter streamWriter = new OutputStreamWriter(nonClosing(outputStream), StandardCharsets.UTF_8);
         BufferedWriter writer = new BufferedWriter(streamWriter);
+        boolean mysql = DbType.MYSQL.getCode().equalsIgnoreCase(dbType);
 
         List<String> selectedHeaders = columnIndexes.stream().map(headers::get).toList();
         Map<String, Integer> jdbcTypeByName = resolveJdbcTypes(firstPage);
@@ -60,8 +62,11 @@ public class SqlTableDataExporter extends AbstractTableDataExporter<SqlTableData
         writer.write("\r\n");
         writer.write("-- Exported at: " + new Date());
         writer.write("\r\n");
-        writer.write("SET NAMES utf8mb4;");
-        writer.write("\r\n\r\n");
+        if (mysql) {
+            writer.write("SET NAMES utf8mb4;");
+            writer.write("\r\n");
+        }
+        writer.write("\r\n");
 
         // Quote table and column identifiers so reserved words (order, group, ...)
         // round-trip through export -> import.
@@ -69,7 +74,7 @@ public class SqlTableDataExporter extends AbstractTableDataExporter<SqlTableData
         String columnList = selectedHeaders.stream()
                 .map(header -> ImportPrepareSupport.quoteIdentifier(identifierQuote, header))
                 .collect(Collectors.joining(", "));
-        return new SqlSession(writer, quotedTable, columnList, selectedHeaders, columnIndexes, jdbcTypeByName);
+        return new SqlSession(writer, quotedTable, columnList, selectedHeaders, columnIndexes, jdbcTypeByName, mysql);
     }
 
     @Override
@@ -85,7 +90,7 @@ public class SqlTableDataExporter extends AbstractTableDataExporter<SqlTableData
                 int index = columnIndexes.get(i);
                 Object value = index < row.size() ? row.get(index) : null;
                 Integer jdbcType = session.jdbcTypeByName().get(session.selectedHeaders().get(i));
-                writer.write(toSqlLiteral(value, jdbcType));
+                writer.write(toSqlLiteral(value, jdbcType, session.mysql()));
             }
             writer.write(");\r\n");
         }
@@ -120,7 +125,7 @@ public class SqlTableDataExporter extends AbstractTableDataExporter<SqlTableData
         return map;
     }
 
-    private String toSqlLiteral(Object value, Integer jdbcType) {
+    private String toSqlLiteral(Object value, Integer jdbcType, boolean mysql) {
         if (value == null) {
             return "NULL";
         }
@@ -148,7 +153,7 @@ public class SqlTableDataExporter extends AbstractTableDataExporter<SqlTableData
         }
 
         // Temporal and all other types are emitted as quoted strings.
-        return "'" + escapeSqlString(value.toString()) + "'";
+        return "'" + escapeSqlString(value.toString(), mysql) + "'";
     }
 
     private boolean isNumericJdbcType(int jdbcType) {
@@ -164,10 +169,9 @@ public class SqlTableDataExporter extends AbstractTableDataExporter<SqlTableData
                 || jdbcType == Types.DECIMAL;
     }
 
-    private String escapeSqlString(String value) {
-        return value.replace("\\", "\\\\")
-                .replace("'", "''")
-                .replace("\0", "");
+    private String escapeSqlString(String value, boolean mysql) {
+        String escaped = mysql ? value.replace("\\", "\\\\") : value;
+        return escaped.replace("'", "''").replace("\0", "");
     }
 
     /**
@@ -175,6 +179,6 @@ public class SqlTableDataExporter extends AbstractTableDataExporter<SqlTableData
      */
     record SqlSession(BufferedWriter writer, String quotedTable, String columnList,
                       List<String> selectedHeaders, List<Integer> columnIndexes,
-                      Map<String, Integer> jdbcTypeByName) {
+                      Map<String, Integer> jdbcTypeByName, boolean mysql) {
     }
 }

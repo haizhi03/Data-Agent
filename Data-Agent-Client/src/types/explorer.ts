@@ -24,6 +24,8 @@ export interface ExplorerNode {
   isPrimaryKey?: boolean;
   /** Raw object name for API calls when display name differs, e.g. trigger name without " (on tableName)" */
   objectName?: string;
+  /** Database comment; currently only set on TABLE nodes and only when non-blank. */
+  comment?: string;
 }
 
 /** Target of a right-clicked DB/schema/folder node for DDL generation. */

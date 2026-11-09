@@ -66,6 +66,9 @@ public final class JdbcMetaDataConstants {
      */
     public static final String COLUMN_DEF = "COLUMN_DEF";
 
+    /** Auto-increment indicator in ResultSet from getColumns: YES, NO, or empty when unknown. */
+    public static final String IS_AUTOINCREMENT = "IS_AUTOINCREMENT";
+
     /** Primary-key table catalog in ResultSet from getImportedKeys / getExportedKeys. */
     public static final String PKTABLE_CAT = "PKTABLE_CAT";
     /** Primary-key table schema in ResultSet from getImportedKeys / getExportedKeys. */

@@ -22,9 +22,11 @@ import { buildTablesFolderChildren } from '../lib/tableGrouping';
 import {
   fetchExplorerFunctions,
   fetchExplorerProcedures,
+  fetchExplorerTableComments,
   fetchExplorerTables,
   fetchExplorerTriggers,
   fetchExplorerViews,
+  type ExplorerTableComments,
 } from '../lib/explorerMetadataCache';
 
 export { formatRoutineSignature } from './folderContentLoaders';
@@ -102,6 +104,7 @@ export function createCachedObjectFolders(
           schema: ctx.schema,
           folderId: folderId(ctx, FolderName.TABLES),
           tableNames: tables,
+          tableComments: ctx.tableComments,
         })
       )
     );
@@ -179,6 +182,7 @@ type DbSchemaContext = {
   queryClient?: QueryClient;
   force?: boolean;
   isDm?: boolean;
+  tableComments?: ExplorerTableComments;
 };
 
 function folderId(ctx: DbSchemaContext, fn: FolderName) {
@@ -253,10 +257,13 @@ function toSequenceNodes(ctx: DbSchemaContext, sequences: SequenceMetadata[]): E
 
 /** Load all object folders for DB/Schema. Only returns non-empty folders. */
 export async function loadDbSchemaFolders(ctx: DbSchemaContext): Promise<ExplorerNode[]> {
-  const [tables, views, functions, procedures, triggers] = await Promise.all([
+  const [tables, tableComments, views, functions, procedures, triggers] = await Promise.all([
     ctx.queryClient
       ? fetchExplorerTables(ctx.queryClient, ctx.connId, ctx.catalog, ctx.schema, { force: ctx.force })
       : tableService.listTables(ctx.connId, ctx.catalog, ctx.schema),
+    ctx.queryClient
+      ? fetchExplorerTableComments(ctx.queryClient, ctx.connId, ctx.catalog, ctx.schema, { force: ctx.force })
+      : tableService.getTableComments(ctx.connId, ctx.catalog, ctx.schema),
     ctx.queryClient
       ? fetchExplorerViews(ctx.queryClient, ctx.connId, ctx.catalog, ctx.schema, { force: ctx.force })
       : viewService.listViews(ctx.connId, ctx.catalog, ctx.schema),
@@ -271,7 +278,14 @@ export async function loadDbSchemaFolders(ctx: DbSchemaContext): Promise<Explore
       : triggerService.listTriggers(ctx.connId, ctx.catalog, ctx.schema),
   ]);
 
-  return createCachedObjectFolders(ctx, tables, views, functions, procedures, triggers);
+  return createCachedObjectFolders(
+    { ...ctx, tableComments },
+    tables,
+    views,
+    functions,
+    procedures,
+    triggers
+  );
 }
 
 /** Load folder contents (lazy load when expanding a pre-created folder). */

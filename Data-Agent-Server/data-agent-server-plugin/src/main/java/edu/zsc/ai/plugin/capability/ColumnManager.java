@@ -35,6 +35,8 @@ public interface ColumnManager {
                     int ordinalPosition = rs.getInt(JdbcMetaDataConstants.ORDINAL_POSITION);
                     String remarks = rs.getString(JdbcMetaDataConstants.REMARKS);
                     String columnDef = rs.getString(JdbcMetaDataConstants.COLUMN_DEF);
+                    boolean autoIncrement = "YES".equalsIgnoreCase(
+                            rs.getString(JdbcMetaDataConstants.IS_AUTOINCREMENT));
                     if (remarks == null) {
                         remarks = "";
                     }
@@ -49,7 +51,7 @@ public interface ColumnManager {
                             ordinalPosition,
                             remarks,
                             isPk,
-                            false,
+                            autoIncrement,
                             false,
                             columnDef
                     ));

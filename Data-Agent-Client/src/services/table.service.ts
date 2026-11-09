@@ -2,6 +2,7 @@ import http from '../lib/http';
 import { ApiPaths } from '../constants/apiPaths';
 import { sqlExecutionService } from './sqlExecution.service';
 import type { ExecuteSqlResponse } from '../types/sql';
+import type { SqlStatementType } from '../utils/sqlGenerator';
 
 export interface CreateTableParams {
   connectionId: number;
@@ -105,6 +106,35 @@ export const tableService = {
     return response.data;
   },
 
+  getTableComments: async (
+    connectionId: string,
+    catalog?: string,
+    schema?: string
+  ): Promise<Record<string, string>> => {
+    const params: Record<string, string> = { connectionId };
+    if (catalog != null && catalog !== '') params.catalog = catalog;
+    if (schema != null && schema !== '') params.schema = schema;
+
+    const response = await http.get<Record<string, string>>(ApiPaths.TABLES_COMMENTS, { params });
+    return response.data ?? {};
+  },
+
+  updateTableComment: async (
+    connectionId: string,
+    tableName: string,
+    comment: string,
+    catalog?: string,
+    schema?: string
+  ): Promise<void> => {
+    await http.put(ApiPaths.TABLES_COMMENT, {
+      connectionId,
+      tableName,
+      comment,
+      catalog,
+      schema,
+    });
+  },
+
   getTableDdl: async (
     connectionId: string,
     tableName: string,
@@ -119,6 +149,22 @@ export const tableService = {
     if (schema != null && schema !== '') params.schema = schema;
 
     const response = await http.get<string>(ApiPaths.TABLES_DDL, { params });
+    return response.data;
+  },
+
+  /** Builds a SELECT/INSERT/UPDATE/DELETE template from the table's column metadata. */
+  generateSqlTemplate: async (
+    connectionId: string,
+    tableName: string,
+    statementType: SqlStatementType,
+    catalog?: string,
+    schema?: string
+  ): Promise<string> => {
+    const params: Record<string, string> = { connectionId, tableName, statementType };
+    if (catalog != null && catalog !== '') params.catalog = catalog;
+    if (schema != null && schema !== '') params.schema = schema;
+
+    const response = await http.get<string>(ApiPaths.TABLES_SQL_TEMPLATE, { params });
     return response.data;
   },
 

@@ -72,7 +72,7 @@ public class ExcelTableDataExporter extends AbstractTableDataExporter<ExcelTable
     @Override
     protected ExcelSession onStart(OutputStream outputStream, DbContext db, String tableName, String fileType,
                                    List<String> headers, List<Integer> columnIndexes,
-                                   SqlCommandResult firstPage, String identifierQuote) throws IOException {
+                                   SqlCommandResult firstPage, String identifierQuote, String dbType) throws IOException {
         boolean xlsx = !"XLS".equalsIgnoreCase(fileType);
 
         SXSSFWorkbook sxssfWorkbook = null;

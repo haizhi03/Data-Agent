@@ -10,7 +10,8 @@ interface DeleteState {
   isPending: boolean;
 }
 
-interface RenameState {
+/** Shared shape for dialogs that act on a single tree node (rename, comment). */
+export interface NodeDialogState {
   node: ExplorerNode | null;
   isOpen: boolean;
   isPending: boolean;
@@ -52,7 +53,14 @@ export function useDialogState() {
   const [selectedCreateTableNode, setSelectedCreateTableNode] = useState<ExplorerNode | null>(null);
 
   // Rename table dialog
-  const [renameState, setRenameState] = useState<RenameState>({
+  const [renameState, setRenameState] = useState<NodeDialogState>({
+    node: null,
+    isOpen: false,
+    isPending: false,
+  });
+
+  // Table comment dialog
+  const [commentState, setCommentState] = useState<NodeDialogState>({
     node: null,
     isOpen: false,
     isPending: false,
@@ -106,5 +114,9 @@ export function useDialogState() {
     // Rename table
     renameState,
     setRenameState,
+
+    // Table comment
+    commentState,
+    setCommentState,
   };
 }

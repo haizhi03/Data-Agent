@@ -10,6 +10,7 @@ import edu.zsc.ai.plugin.mysql.support.MysqlRowWriteSupport;
 
 import java.sql.Connection;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 public final class MysqlTableManager implements TableManager {
@@ -43,6 +44,18 @@ public final class MysqlTableManager implements TableManager {
                 "Create Table",
                 DatabaseObjectTypeEnum.TABLE.getValue()
         );
+    }
+
+    @Override
+    public Map<String, String> getTableComments(Connection connection, String catalog, String schema) {
+        return support.getTableComments(connection, support.resolveDatabase(catalog, schema));
+    }
+
+    @Override
+    public void updateTableComment(Connection connection, String catalog, String schema,
+                                   String tableName, String comment) {
+        support.updateTableComment(
+                connection, support.resolveDatabase(catalog, schema), tableName, comment);
     }
 
     @Override

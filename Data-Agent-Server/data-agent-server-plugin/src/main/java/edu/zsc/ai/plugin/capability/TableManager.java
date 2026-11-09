@@ -9,7 +9,9 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 public interface TableManager {
 
@@ -46,6 +48,34 @@ public interface TableManager {
 
     default String getTableComment(Connection connection, String catalog, String schema, String tableName) {
         return null;
+    }
+
+    /**
+     * Get non-blank comments for all base tables in the given scope, keyed by
+     * table name. The default reads JDBC metadata remarks; plugins whose driver
+     * does not expose remarks (e.g. MySQL without useInformationSchema) must
+     * override it with a dictionary query.
+     */
+    default Map<String, String> getTableComments(Connection connection, String catalog, String schema) {
+        Map<String, String> comments = new LinkedHashMap<>();
+        try (ResultSet rs = connection.getMetaData().getTables(
+                catalog, schema, null, new String[] {JdbcMetaDataConstants.TABLE_TYPE_TABLE})) {
+            while (rs.next()) {
+                String name = rs.getString(JdbcMetaDataConstants.TABLE_NAME);
+                String comment = rs.getString(JdbcMetaDataConstants.REMARKS);
+                if (StringUtils.isNotBlank(name) && StringUtils.isNotBlank(comment)) {
+                    comments.put(name, comment);
+                }
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to get table comments: " + e.getMessage(), e);
+        }
+        return comments;
+    }
+
+    default void updateTableComment(Connection connection, String catalog, String schema,
+                                    String tableName, String comment) {
+        throw new UnsupportedOperationException("Plugin does not support updating table comments");
     }
 
     default void deleteTable(Connection connection, String catalog, String schema, String tableName) {

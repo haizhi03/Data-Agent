@@ -11,6 +11,7 @@ import edu.zsc.ai.plugin.model.db.TableRowValue;
 
 import java.io.InputStream;
 import java.util.List;
+import java.util.Map;
 
 public interface TableService {
 
@@ -23,6 +24,16 @@ public interface TableService {
     long countTableRows(DbContext db, String tableName);
 
     String getTableDdl(DbContext db, String tableName);
+
+    /**
+     * Non-blank comments of all base tables in the scope, keyed by table name.
+     * Comment lookup is supplementary, so implementations may return an empty
+     * map instead of failing when the database cannot provide it.
+     */
+    Map<String, String> getTableComments(DbContext db);
+
+    /** Set the table comment; an empty string clears it. */
+    void updateTableComment(DbContext db, String tableName, String comment);
 
     void deleteTable(DbContext db, String tableName);
 

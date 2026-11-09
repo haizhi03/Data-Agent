@@ -12,7 +12,7 @@ import { constraintService } from '../services/constraint.service';
 import { ExplorerNodeType, ExplorerIdPrefix, TRIGGER_ON_TABLE_FORMAT, INDEX_UNIQUE_SUFFIX } from '../constants/explorer';
 import type { ExplorerNode } from '../types/explorer';
 import type { ParameterInfo } from '../services/function.service';
-import { fetchExplorerTables, fetchExplorerViews } from '../lib/explorerMetadataCache';
+import { fetchExplorerTableComments, fetchExplorerTables, fetchExplorerViews } from '../lib/explorerMetadataCache';
 import { buildTablesFolderChildren } from '../lib/tableGrouping';
 
 export function formatRoutineSignature(
@@ -40,10 +40,23 @@ export type FolderLoadContext = {
 
 async function loadTables(ctx: FolderLoadContext): Promise<ExplorerNode[]> {
   const { connId, catalog, schema, folderId: fid } = ctx;
-  const tables = ctx.queryClient
-    ? await fetchExplorerTables(ctx.queryClient, connId, catalog, schema, { force: ctx.force })
-    : await tableService.listTables(connId, catalog, schema);
-  return buildTablesFolderChildren({ connectionId: connId, catalog, schema, folderId: fid, tableNames: tables });
+  const query = ctx.queryClient;
+  const [tables, comments] = await Promise.all([
+    query
+      ? fetchExplorerTables(query, connId, catalog, schema, { force: ctx.force })
+      : tableService.listTables(connId, catalog, schema),
+    query
+      ? fetchExplorerTableComments(query, connId, catalog, schema, { force: ctx.force })
+      : tableService.getTableComments(connId, catalog, schema),
+  ]);
+  return buildTablesFolderChildren({
+    connectionId: connId,
+    catalog,
+    schema,
+    folderId: fid,
+    tableNames: tables,
+    tableComments: comments,
+  });
 }
 
 async function loadViews(ctx: FolderLoadContext): Promise<ExplorerNode[]> {

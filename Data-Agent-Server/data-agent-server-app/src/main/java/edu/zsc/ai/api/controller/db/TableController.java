@@ -9,6 +9,7 @@ import edu.zsc.ai.domain.model.dto.request.db.ErDiagramRequest;
 import edu.zsc.ai.domain.model.dto.request.db.InsertTableRowRequest;
 import edu.zsc.ai.domain.model.dto.request.db.RenameTableRequest;
 import edu.zsc.ai.domain.model.dto.request.db.TableRowValueRequest;
+import edu.zsc.ai.domain.model.dto.request.db.UpdateTableCommentRequest;
 import edu.zsc.ai.domain.model.dto.request.db.UpdateTableRowRequest;
 import edu.zsc.ai.domain.model.dto.response.base.ApiResponse;
 import edu.zsc.ai.domain.model.dto.response.db.BatchTableRowsResponse;
@@ -17,6 +18,7 @@ import edu.zsc.ai.domain.model.dto.response.db.ExecuteSqlResponse;
 import edu.zsc.ai.domain.model.dto.response.db.ImportTableDataResponse;
 import edu.zsc.ai.domain.model.dto.response.db.TableDataResponse;
 import edu.zsc.ai.domain.service.db.ErDiagramService;
+import edu.zsc.ai.domain.service.db.SqlTemplateService;
 import edu.zsc.ai.domain.service.db.TableService;
 import edu.zsc.ai.domain.service.db.transfer.TableDataExporter;
 import edu.zsc.ai.plugin.model.db.TableRowValue;
@@ -42,6 +44,7 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 
 @Slf4j
 @Validated
@@ -52,6 +55,7 @@ public class TableController {
 
     private final TableService tableService;
     private final ErDiagramService erDiagramService;
+    private final SqlTemplateService sqlTemplateService;
 
     @GetMapping("/er-diagram")
     public ApiResponse<ErDiagramResponse> erDiagram(
@@ -82,6 +86,25 @@ public class TableController {
         return ApiResponse.success(tables);
     }
 
+    @GetMapping("/comments")
+    public ApiResponse<Map<String, String>> listTableComments(
+            @RequestParam @NotNull(message = "connectionId is required") Long connectionId,
+            @RequestParam(required = false) String catalog,
+            @RequestParam(required = false) String schema) {
+        log.info("Listing table comments: connectionId={}, catalog={}, schema={}", connectionId, catalog, schema);
+        DbContext db = new DbContext(connectionId, catalog, schema);
+        return ApiResponse.success(tableService.getTableComments(db));
+    }
+
+    @PutMapping("/comment")
+    public ApiResponse<Void> updateTableComment(@Valid @RequestBody UpdateTableCommentRequest request) {
+        log.info("Updating table comment: connectionId={}, tableName={}, catalog={}, schema={}",
+                request.getConnectionId(), request.getTableName(), request.getCatalog(), request.getSchema());
+        DbContext db = new DbContext(request.getConnectionId(), request.getCatalog(), request.getSchema());
+        tableService.updateTableComment(db, request.getTableName(), request.getComment());
+        return ApiResponse.success(null);
+    }
+
     @GetMapping("/ddl")
     public ApiResponse<String> getTableDdl(
             @RequestParam @NotNull(message = "connectionId is required") Long connectionId,
@@ -93,6 +116,19 @@ public class TableController {
         DbContext db = new DbContext(connectionId, catalog, schema);
         String ddl = tableService.getTableDdl(db, tableName);
         return ApiResponse.success(ddl);
+    }
+
+    @GetMapping("/sql-template")
+    public ApiResponse<String> generateSqlTemplate(
+            @RequestParam @NotNull(message = "connectionId is required") Long connectionId,
+            @RequestParam @NotNull(message = "tableName is required") String tableName,
+            @RequestParam @NotNull(message = "statementType is required") String statementType,
+            @RequestParam(required = false) String catalog,
+            @RequestParam(required = false) String schema) {
+        log.info("Generating SQL template: connectionId={}, tableName={}, statementType={}, catalog={}, schema={}",
+                connectionId, tableName, statementType, catalog, schema);
+        DbContext db = new DbContext(connectionId, catalog, schema);
+        return ApiResponse.success(sqlTemplateService.generate(db, tableName, statementType));
     }
 
     @DeleteMapping
