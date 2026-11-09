@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { ChevronDown, ChevronUp, KeyRound } from 'lucide-react';
 import { I18N_KEYS } from '../../constants/i18nKeys';
 import type { ErTable } from '../../services/table.service';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/Tooltip';
 import { columnHandleId, overflowHandleId } from './erDiagramEdges';
 import { useErDiagramInteraction } from './erDiagramInteraction';
 import { CARD_WIDTH, cardHeight, MAX_VISIBLE_ROWS, visibleColumns } from './erDiagramLayout';
@@ -15,6 +16,26 @@ export type ErTableNodeData = {
 };
 
 export type ErTableNodeType = Node<ErTableNodeData, 'erTable'>;
+
+function ColumnComment({ comment }: { comment: string }) {
+  const className = 'min-w-0 flex-1 truncate theme-text-secondary';
+  if (!comment.trim()) {
+    return <span className={className} />;
+  }
+  return (
+    <Tooltip disableHoverableContent>
+      <TooltipTrigger asChild>
+        <span className={className}>{comment}</span>
+      </TooltipTrigger>
+      <TooltipContent
+        side="top"
+        className="max-w-64 whitespace-pre-wrap break-words px-2 py-1 text-left text-xs font-normal leading-snug"
+      >
+        {comment}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
 
 function tableTitle(table: ErTable) {
   if (!table.external) return table.name;
@@ -109,48 +130,50 @@ export function ErTableNode({ data }: NodeProps<ErTableNodeType>) {
         </button>
       </div>
       <div className="nodrag nopan">
-        {columns.map((column) => {
-          const key = columnKey(id, column.name);
-          const linked = interaction.linked.has(key);
-          const highlighted = interaction.highlighted.has(key);
-          return (
-            <div
-              key={column.name}
-              data-er-highlighted={highlighted ? 'true' : 'false'}
-              className={`relative flex h-[22px] items-center gap-1 px-2 text-[11px] ${highlighted ? 'bg-rose-500/15' : ''} ${linked ? 'cursor-pointer' : ''}`}
-              onPointerDown={(event) => {
-                if (!linked) return;
-                event.stopPropagation();
-              }}
-              onClick={(event) => {
-                if (!linked) return;
-                event.stopPropagation();
-                interaction.togglePin({ tableId: id, column: column.name });
-              }}
-              onPointerEnter={() => {
-                if (!linked) return;
-                interaction.setHover({ tableId: id, column: column.name });
-              }}
-              onPointerLeave={() => {
-                interaction.clearHover({ tableId: id, column: column.name });
-              }}
-            >
-              <SideHandles role="target" side="left" column={column.name} />
-              <SideHandles role="source" side="left" column={column.name} />
-              <SideHandles role="target" side="right" column={column.name} />
-              <SideHandles role="source" side="right" column={column.name} />
-              <span className="w-3 shrink-0 text-amber-500">
-                {column.primaryKey ? <KeyRound className="h-3 w-3" /> : null}
-              </span>
-              <span className="flex w-2 shrink-0 justify-center">
-                {linked ? <span className="h-1.5 w-1.5 rounded-full bg-rose-500" /> : null}
-              </span>
-              <span className="w-[38%] truncate theme-text-primary" title={column.name}>{column.name}</span>
-              <span className="w-[28%] truncate text-sky-500" title={column.typeName}>{column.typeName}</span>
-              <span className="min-w-0 flex-1 truncate theme-text-secondary" title={column.comment}>{column.comment}</span>
-            </div>
-          );
-        })}
+        <TooltipProvider delayDuration={300}>
+          {columns.map((column) => {
+            const key = columnKey(id, column.name);
+            const linked = interaction.linked.has(key);
+            const highlighted = interaction.highlighted.has(key);
+            return (
+              <div
+                key={column.name}
+                data-er-highlighted={highlighted ? 'true' : 'false'}
+                className={`relative flex h-[22px] items-center gap-1 px-2 text-[11px] ${highlighted ? 'bg-rose-500/15' : ''} ${linked ? 'cursor-pointer' : ''}`}
+                onPointerDown={(event) => {
+                  if (!linked) return;
+                  event.stopPropagation();
+                }}
+                onClick={(event) => {
+                  if (!linked) return;
+                  event.stopPropagation();
+                  interaction.togglePin({ tableId: id, column: column.name });
+                }}
+                onPointerEnter={() => {
+                  if (!linked) return;
+                  interaction.setHover({ tableId: id, column: column.name });
+                }}
+                onPointerLeave={() => {
+                  interaction.clearHover({ tableId: id, column: column.name });
+                }}
+              >
+                <SideHandles role="target" side="left" column={column.name} />
+                <SideHandles role="source" side="left" column={column.name} />
+                <SideHandles role="target" side="right" column={column.name} />
+                <SideHandles role="source" side="right" column={column.name} />
+                <span className="w-3 shrink-0 text-amber-500">
+                  {column.primaryKey ? <KeyRound className="h-3 w-3" /> : null}
+                </span>
+                <span className="flex w-2 shrink-0 justify-center">
+                  {linked ? <span className="h-1.5 w-1.5 rounded-full bg-rose-500" /> : null}
+                </span>
+                <span className="w-[38%] truncate theme-text-primary" title={column.name}>{column.name}</span>
+                <span className="w-[28%] truncate text-sky-500" title={column.typeName}>{column.typeName}</span>
+                <ColumnComment comment={column.comment} />
+              </div>
+            );
+          })}
+        </TooltipProvider>
       </div>
       {table.columns.length > MAX_VISIBLE_ROWS && (
         <button
