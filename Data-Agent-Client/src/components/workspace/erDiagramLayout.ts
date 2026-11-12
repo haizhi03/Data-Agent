@@ -18,6 +18,34 @@ export function cardHeight(columnCount: number, expanded = false) {
   return HEADER_HEIGHT + rows * ROW_HEIGHT + (overflow ? EXPAND_BAR_HEIGHT : 0) + CARD_BORDER;
 }
 
+export interface DiagramCard {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * Keeps the resized card where it is. Cards in the same column at or below its
+ * previous bottom move by the height delta, so growing does not cover them and
+ * shrinking puts them back. The viewport is left alone.
+ */
+export function shiftCardsForResize(cards: DiagramCard[], resizedId: string, previousHeight: number): DiagramCard[] {
+  const resized = cards.find((card) => card.id === resizedId);
+  if (!resized) return cards.map((card) => ({ ...card }));
+  const delta = resized.height - previousHeight;
+  if (delta === 0) return cards.map((card) => ({ ...card }));
+  const previousBottom = resized.y + previousHeight;
+  return cards.map((card) => {
+    if (card.id === resizedId) return { ...card };
+    const center = card.x + card.width / 2;
+    const sameColumn = center >= resized.x && center < resized.x + resized.width;
+    if (!sameColumn || card.y + 1 < previousBottom) return { ...card };
+    return { ...card, y: card.y + delta };
+  });
+}
+
 /** Keeps linked rows on the card. Extra fields stay behind the expand bar. */
 export function visibleColumns<T extends { name: string }>(
   columns: T[],

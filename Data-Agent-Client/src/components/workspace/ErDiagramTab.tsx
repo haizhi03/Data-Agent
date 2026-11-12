@@ -53,6 +53,7 @@ import {
   ER_MIN_ZOOM,
   cardHeight,
   clearStoredLayout,
+  shiftCardsForResize,
   hasStoredLayout,
   layoutBounds,
   layoutDiagram,
@@ -341,13 +342,40 @@ function ErDiagramCanvas({ metadata }: ErDiagramTabProps) {
   }, [getNodes, setNodes, storageKey]);
 
   const toggleExpanded = useCallback((nodeId: string) => {
-    if (!shown || layouting || exporting) return;
-    const previous = (getNodes() as ErTableNodeType[]).map((node) => (
-      node.id === nodeId ? { ...node, data: { ...node.data, expanded: !node.data.expanded } } : node
-    ));
-    // Re-layout with the actual card sizes; saved collapsed positions would overlap.
-    void placeNodes(shown, false, previous, true);
-  }, [exporting, getNodes, layouting, placeNodes, shown]);
+    if (layouting || exporting) return;
+    const current = getNodes() as ErTableNodeType[];
+    const target = current.find((node) => node.id === nodeId);
+    if (!target) return;
+    const expanded = !target.data.expanded;
+    const previousHeight = cardHeight(target.data.table.columns.length, target.data.expanded);
+    const nextHeight = cardHeight(target.data.table.columns.length, expanded);
+    const shifted = shiftCardsForResize(current.map((node) => ({
+      id: node.id,
+      x: node.position.x,
+      y: node.position.y,
+      width: node.width ?? CARD_WIDTH,
+      height: node.id === nodeId ? nextHeight : (node.height ?? cardHeight(node.data.table.columns.length, node.data.expanded)),
+    })), nodeId, previousHeight);
+    const byId = new Map(shifted.map((card) => [card.id, card]));
+    const moved = shifted.some((card) => {
+      const before = current.find((node) => node.id === card.id);
+      return !!before && (before.position.x !== card.x || before.position.y !== card.y);
+    });
+    setNodes(current.map((node) => {
+      const card = byId.get(node.id);
+      if (!card) return node;
+      return {
+        ...node,
+        position: { x: card.x, y: card.y },
+        height: card.height,
+        data: node.id === nodeId ? { ...node.data, expanded } : node.data,
+      };
+    }));
+    if (moved) {
+      writeStoredLayout(storageKey, Object.fromEntries(shifted.map((card) => [card.id, { x: card.x, y: card.y }])));
+      setHasCustomLayout(true);
+    }
+  }, [exporting, getNodes, layouting, setNodes, storageKey]);
 
   useEffect(() => {
     if (!shown || shown.tables.length === 0) {
