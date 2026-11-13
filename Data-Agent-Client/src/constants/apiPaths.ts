@@ -29,6 +29,7 @@ export const ApiPaths = {
   CONSTRAINTS_DDL: '/constraints/ddl',
   INDEXES: '/indexes',
   PRIMARY_KEYS: '/primary-keys',
+  SCHEMA_COMPARE: '/schema/compare',
 } as const;
 
 /** Authentication endpoints */

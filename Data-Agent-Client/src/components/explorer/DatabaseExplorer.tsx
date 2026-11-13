@@ -28,6 +28,7 @@ import type { BatchImportParams } from './BatchImportDialog';
 import { ImportDataDialog } from './ImportDataDialog';
 import type { ImportDataParams } from './ImportDataDialog';
 import { SchemaDdlGeneratorDialog } from './SchemaDdlGeneratorDialog';
+import { SchemaCompareDialog } from './SchemaCompareDialog';
 import { RunSqlScriptDialog } from './RunSqlScriptDialog';
 import { GroupNameDialog } from './GroupNameDialog';
 import { RuleGroupDialog } from './RuleGroupDialog';
@@ -282,6 +283,25 @@ export function DatabaseExplorer() {
     setRunSqlScriptOpen(true);
   };
 
+  // Schema compare dialog (read-only structure diff): right-click a DB/schema node.
+  const [schemaCompareOpen, setSchemaCompareOpen] = useState(false);
+  const [schemaCompareDefaults, setSchemaCompareDefaults] = useState<{
+    connectionId?: number;
+    catalog?: string | null;
+    schema?: string | null;
+  }>({});
+  const handleSchemaCompare = (node: ExplorerNode) => {
+    const conn = node.dbConnection ?? connections.find((c) => String(c.id) === node.connectionId);
+    // DB nodes carry the database name in `name` (no catalog field), schema nodes carry both.
+    const catalog = node.catalog ?? (node.type === ExplorerNodeType.DB ? node.name : conn?.database) ?? '';
+    setSchemaCompareDefaults({
+      connectionId: Number(node.connectionId),
+      catalog: catalog || null,
+      schema: node.schema || null,
+    });
+    setSchemaCompareOpen(true);
+  };
+
   // ---- Table groups ----
   const [groupNameDialogOpen, setGroupNameDialogOpen] = useState(false);
   const [groupNameMode, setGroupNameMode] = useState<'create' | 'rename'>('create');
@@ -516,6 +536,7 @@ export function DatabaseExplorer() {
           onExportTablesWizard={handleExportTablesWizard}
           onImportTablesWizard={handleImportTablesWizard}
           onOpenErDiagram={handleOpenErDiagram}
+          onSchemaCompare={handleSchemaCompare}
           onCreateGroup={handleCreateGroup}
           onCreateRuleGroup={handleCreateRuleGroup}
           onRenameGroup={handleRenameGroup}
@@ -605,6 +626,15 @@ export function DatabaseExplorer() {
         open={sqlGeneratorOpen}
         onOpenChange={setSqlGeneratorOpen}
         target={sqlScriptTarget}
+      />
+
+      <SchemaCompareDialog
+        open={schemaCompareOpen}
+        onOpenChange={setSchemaCompareOpen}
+        connections={connections}
+        defaultConnectionId={schemaCompareDefaults.connectionId}
+        defaultCatalog={schemaCompareDefaults.catalog}
+        defaultSchema={schemaCompareDefaults.schema}
       />
 
       <RunSqlScriptDialog

@@ -1,4 +1,4 @@
-import { Download, Eraser, FileCode2, FileText, FolderCog, FolderInput, FolderOpen, FolderPlus, ListFilter, MessageSquare, Pencil, Play, Plus, Table, Table2, Trash2, Upload, Waypoints } from 'lucide-react';
+import { Download, Eraser, FileCode2, FileText, FolderCog, FolderInput, FolderOpen, FolderPlus, GitCompareArrows, ListFilter, MessageSquare, Pencil, Play, Plus, Table, Table2, Trash2, Upload, Waypoints } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import {
   ContextMenuContent,
@@ -24,6 +24,7 @@ interface NodeContextMenuContentProps {
   onGenerateSql: (node: ExplorerNode, statementType: SqlStatementType) => void;
   onCreateTable: (node: ExplorerNode) => void;
   onOpenErDiagram: (node: ExplorerNode) => void;
+  onSchemaCompare: (node: ExplorerNode) => void;
   onViewDdl: (node: ExplorerNode) => void;
   onViewData: (node: ExplorerNode, highlightColumn?: string) => void;
   onTableComment: (node: ExplorerNode) => void;
@@ -52,6 +53,7 @@ export function NodeContextMenuContent({
   onGenerateSql,
   onCreateTable,
   onOpenErDiagram,
+  onSchemaCompare,
   onViewDdl,
   onViewData,
   onTableComment,
@@ -182,6 +184,14 @@ export function NodeContextMenuContent({
         <ContextMenuItem onSelect={() => onOpenErDiagram(node)}>
           <Waypoints className="w-3.5 h-3.5 mr-2" />
           {t(I18N_KEYS.EXPLORER.ER_DIAGRAM)}
+        </ContextMenuItem>
+      )}
+
+      {/* 1.4 Schema compare - read-only structure diff between two databases/schemas */}
+      {isConnected && (isDb || isSchema) && (
+        <ContextMenuItem onSelect={() => onSchemaCompare(node)}>
+          <GitCompareArrows className="w-3.5 h-3.5 mr-2" />
+          {t(I18N_KEYS.EXPLORER.SCHEMA_COMPARE)}
         </ContextMenuItem>
       )}
 

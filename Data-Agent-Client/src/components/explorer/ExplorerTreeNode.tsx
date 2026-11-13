@@ -48,6 +48,7 @@ export interface ExplorerTreeNodeProps {
   onExportTablesWizard: (node: ExplorerNode) => void;
   onImportTablesWizard: (node: ExplorerNode) => void;
   onOpenErDiagram: (node: ExplorerNode) => void;
+  onSchemaCompare: (node: ExplorerNode) => void;
   onCreateGroup: (node: ExplorerNode) => void;
   onCreateRuleGroup: (node: ExplorerNode) => void;
   onRenameGroup: (node: ExplorerNode) => void;
@@ -84,6 +85,7 @@ export function ExplorerTreeNode({
   onExportTablesWizard,
   onImportTablesWizard,
   onOpenErDiagram,
+  onSchemaCompare,
   onCreateGroup,
   onCreateRuleGroup,
   onRenameGroup,
@@ -274,6 +276,7 @@ export function ExplorerTreeNode({
           onGenerateSql={onGenerateSql}
           onCreateTable={onCreateTable}
           onOpenErDiagram={onOpenErDiagram}
+          onSchemaCompare={onSchemaCompare}
           onViewDdl={onViewDdl}
           onViewData={onViewData}
           onTableComment={onTableComment}

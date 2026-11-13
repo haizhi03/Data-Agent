@@ -34,6 +34,7 @@ interface ExplorerTreeProps {
   onExportTablesWizard: (node: ExplorerNode) => void;
   onImportTablesWizard: (node: ExplorerNode) => void;
   onOpenErDiagram: (node: ExplorerNode) => void;
+  onSchemaCompare: (node: ExplorerNode) => void;
   onCreateGroup: (node: ExplorerNode) => void;
   onCreateRuleGroup: (node: ExplorerNode) => void;
   onRenameGroup: (node: ExplorerNode) => void;
@@ -129,6 +130,7 @@ export const ExplorerTree = forwardRef<ExplorerTreeHandle, ExplorerTreeProps>(fu
   onExportTablesWizard,
   onImportTablesWizard,
   onOpenErDiagram,
+  onSchemaCompare,
   onCreateGroup,
   onCreateRuleGroup,
   onRenameGroup,
@@ -264,6 +266,7 @@ export const ExplorerTree = forwardRef<ExplorerTreeHandle, ExplorerTreeProps>(fu
         onExportTablesWizard={onExportTablesWizard}
         onImportTablesWizard={onImportTablesWizard}
         onOpenErDiagram={onOpenErDiagram}
+        onSchemaCompare={onSchemaCompare}
         onCreateGroup={onCreateGroup}
         onCreateRuleGroup={onCreateRuleGroup}
         onRenameGroup={onRenameGroup}
