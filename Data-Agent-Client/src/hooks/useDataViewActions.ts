@@ -443,6 +443,32 @@ export function useDataViewActions({
     setCreateTableDialogOpen(true);
   }, [setSelectedCreateTableNode, setCreateTableDialogOpen]);
 
+  const handleDesignTable = useCallback((node: ExplorerNode) => {
+    if (!node.connectionId || node.type !== ExplorerNodeType.TABLE) return;
+    const connectionId = Number(node.connectionId);
+    const connection = node.dbConnection ?? getConnection(connectionId);
+    const catalog = node.catalog ?? '';
+    const schema = node.schema ?? '';
+    const objectName = node.tableName || node.objectName || node.name;
+    openTab({
+      id: `structure-${connectionId}-${catalog}-${schema}-${objectName}`,
+      name: objectName,
+      type: 'structure',
+      content: '',
+      metadata: {
+        connectionId,
+        dbType: connection?.dbType,
+        connectionName: connection?.name || 'Unknown',
+        databaseName: catalog || schema || null,
+        schemaName: schema || null,
+        objectName,
+        objectType: 'table',
+        catalog: catalog || undefined,
+        schema: schema || undefined,
+      },
+    });
+  }, [getConnection, openTab]);
+
   const handleOpenErDiagram = useCallback((node: ExplorerNode) => {
     if (!node.connectionId) return;
     const connectionId = Number(node.connectionId);
@@ -475,6 +501,7 @@ export function useDataViewActions({
     handleTableOrViewDoubleClick,
     handleOpenQueryConsole,
     handleCreateTable,
+    handleDesignTable,
     handleOpenErDiagram,
     getDdlConfig,
     resolveConsoleContext,

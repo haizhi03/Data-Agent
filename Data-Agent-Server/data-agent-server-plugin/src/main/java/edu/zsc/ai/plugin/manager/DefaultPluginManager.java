@@ -18,6 +18,7 @@ import edu.zsc.ai.plugin.capability.SqlSplitter;
 import edu.zsc.ai.plugin.capability.SqlAnalyzer;
 import edu.zsc.ai.plugin.capability.SqlValidator;
 import edu.zsc.ai.plugin.capability.TableManager;
+import edu.zsc.ai.plugin.capability.TableStructureManager;
 import edu.zsc.ai.plugin.capability.TriggerManager;
 import edu.zsc.ai.plugin.capability.ViewManager;
 import edu.zsc.ai.plugin.model.command.sql.SqlCommandRequest;
@@ -272,6 +273,15 @@ public class DefaultPluginManager implements PluginManager {
     @Override
     public ConstraintManager getConstraintManagerByPluginId(@NotBlank String pluginId) {
         return PluginCapabilityResolver.getManagerByPluginId(pluginMap, pluginId, ConstraintManager.class);
+    }
+
+    @Override
+    public TableStructureManager getTableStructureManagerByPluginId(@NotBlank String pluginId) {
+        Plugin plugin = pluginMap.get(pluginId);
+        if (plugin == null) {
+            throw new IllegalArgumentException("No plugin found with ID: " + pluginId);
+        }
+        return plugin instanceof TableStructureManager manager ? manager : null;
     }
 
     @Override

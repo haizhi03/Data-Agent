@@ -16,6 +16,7 @@ import edu.zsc.ai.plugin.capability.SqlAnalyzer;
 import edu.zsc.ai.plugin.capability.SqlValidator;
 import edu.zsc.ai.plugin.capability.SqlIdentifierEscaper;
 import edu.zsc.ai.plugin.capability.TableManager;
+import edu.zsc.ai.plugin.capability.TableStructureManager;
 import edu.zsc.ai.plugin.capability.TriggerManager;
 import edu.zsc.ai.plugin.capability.ViewManager;
 import edu.zsc.ai.plugin.connection.ConnectionConfig;
@@ -29,6 +30,7 @@ import edu.zsc.ai.plugin.dm.manager.DmIndexManager;
 import edu.zsc.ai.plugin.dm.manager.DmProcedureManager;
 import edu.zsc.ai.plugin.dm.manager.DmSequenceManager;
 import edu.zsc.ai.plugin.dm.manager.DmTableManager;
+import edu.zsc.ai.plugin.dm.manager.DmTableStructureManager;
 import edu.zsc.ai.plugin.dm.manager.DmTriggerManager;
 import edu.zsc.ai.plugin.dm.manager.DmViewManager;
 import edu.zsc.ai.plugin.dm.support.DmMetadataSupport;
@@ -45,6 +47,8 @@ import edu.zsc.ai.plugin.model.metadata.IndexMetadata;
 import edu.zsc.ai.plugin.model.metadata.ProcedureMetadata;
 import edu.zsc.ai.plugin.model.metadata.SequenceMetadata;
 import edu.zsc.ai.plugin.model.metadata.TriggerMetadata;
+import edu.zsc.ai.plugin.model.structure.StructurePreview;
+import edu.zsc.ai.plugin.model.structure.TableStructure;
 import edu.zsc.ai.plugin.dm.parser.DmCompletionParser;
 import edu.zsc.ai.plugin.dm.parser.DmSqlParser;
 import edu.zsc.ai.plugin.dm.util.DmIdentifierEscaper;
@@ -75,7 +79,8 @@ public abstract class DefaultDmPlugin extends AbstractDatabasePlugin
         implements ConnectionManager, CommandExecutor<SqlCommandRequest, SqlCommandResult>,
         SchemaManager, TableManager, ViewManager, ColumnManager, IndexManager,
         FunctionManager, ProcedureManager, TriggerManager, SqlSplitter, SqlValidator, SqlAnalyzer,
-        SqlCompleter, SqlIdentifierEscaper, ValueProcessor, SequenceManager, ConstraintManager {
+        SqlCompleter, SqlIdentifierEscaper, ValueProcessor, SequenceManager, ConstraintManager,
+        TableStructureManager {
 
     private final ConnectionManager connectionManager = new DmConnectionManager(
             this::getDriverClassName,
@@ -95,6 +100,7 @@ public abstract class DefaultDmPlugin extends AbstractDatabasePlugin
     private final TriggerManager triggerManager = new DmTriggerManager(objectQuerySupport);
     private final SequenceManager sequenceManager = new DmSequenceManager(objectQuerySupport);
     private final ConstraintManager constraintManager = new DmConstraintManager(objectQuerySupport);
+    private final TableStructureManager tableStructureManager = new DmTableStructureManager(metadataSupport, objectQuerySupport);
 
     @Override
     public boolean supportDatabase() {
@@ -434,6 +440,16 @@ public abstract class DefaultDmPlugin extends AbstractDatabasePlugin
     @Override
     public List<IndexMetadata> getIndexes(Connection connection, String catalog, String schema, String tableName) {
         return indexManager.getIndexes(connection, catalog, schema, tableName);
+    }
+
+    @Override
+    public TableStructure load(Connection connection, String catalog, String schema, String tableName) {
+        return tableStructureManager.load(connection, catalog, schema, tableName);
+    }
+
+    @Override
+    public StructurePreview preview(String catalog, String schema, TableStructure baseline, TableStructure draft) {
+        return tableStructureManager.preview(catalog, schema, baseline, draft);
     }
 
     // ========== FunctionManager ==========

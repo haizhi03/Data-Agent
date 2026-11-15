@@ -1,4 +1,4 @@
-import { Download, Eraser, FileCode2, FileText, FolderCog, FolderInput, FolderOpen, FolderPlus, ListFilter, MessageSquare, Pencil, Play, Plus, Table, Table2, Trash2, Upload, Waypoints } from 'lucide-react';
+import { Download, Eraser, FileCode2, FileText, FolderCog, FolderInput, FolderOpen, FolderPlus, ListFilter, MessageSquare, Pencil, Play, Plus, Table, Table2, TableProperties, Trash2, Upload, Waypoints } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import {
   ContextMenuContent,
@@ -23,6 +23,7 @@ interface NodeContextMenuContentProps {
   onSqlGenerator: (node: ExplorerNode) => void;
   onGenerateSql: (node: ExplorerNode, statementType: SqlStatementType) => void;
   onCreateTable: (node: ExplorerNode) => void;
+  onDesignTable: (node: ExplorerNode) => void;
   onOpenErDiagram: (node: ExplorerNode) => void;
   onViewDdl: (node: ExplorerNode) => void;
   onViewData: (node: ExplorerNode, highlightColumn?: string) => void;
@@ -51,6 +52,7 @@ export function NodeContextMenuContent({
   onSqlGenerator,
   onGenerateSql,
   onCreateTable,
+  onDesignTable,
   onOpenErDiagram,
   onViewDdl,
   onViewData,
@@ -237,6 +239,13 @@ export function NodeContextMenuContent({
             </ContextMenuItem>
           </ContextMenuSubContent>
         </ContextMenuSub>
+      )}
+
+      {isConnected && node.type === ExplorerNodeType.TABLE && (
+        <ContextMenuItem onSelect={() => onDesignTable(node)}>
+          <TableProperties className="w-3.5 h-3.5 mr-2" />
+          {t(I18N_KEYS.EXPLORER.DESIGN_TABLE)}
+        </ContextMenuItem>
       )}
 
       {/* 3. View Data - for tables/views and their children */}

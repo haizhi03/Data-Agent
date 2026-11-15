@@ -6,6 +6,7 @@ import { ResultsPanel } from "../components/results/ResultsPanel";
 import { Toolbar } from "../components/workspace/Toolbar";
 import { TableDataTab } from "../components/workspace/TableDataTab";
 import { ErDiagramTab } from "../components/workspace/ErDiagramTab";
+import { TableStructureTab } from "../components/workspace/TableStructureTab";
 import { EmptyState } from "../components/workspace/EmptyState";
 import { PlanConsole } from "../components/plan/PlanConsole";
 import { SubAgentConsole } from "../components/subagent/SubAgentConsole";
@@ -56,7 +57,8 @@ export default function Home() {
 
     const activeTab = tabs.find(t => t.id === activeTabId);
     const erTabs = tabs.filter((tab) => tab.type === 'er' && tab.metadata);
-    const isSpecialTab = activeTab?.type === 'plan' || activeTab?.type === 'subagent-console' || activeTab?.type === 'er';
+    const structureTabs = tabs.filter((tab) => tab.type === 'structure' && tab.metadata);
+    const isSpecialTab = activeTab?.type === 'plan' || activeTab?.type === 'subagent-console' || activeTab?.type === 'er' || activeTab?.type === 'structure';
     const sqlContext = !isSpecialTab
         ? activeTab?.metadata as import('../types/tab').ConsoleTabMetadata | undefined
         : undefined;
@@ -208,6 +210,20 @@ export default function Home() {
                 layer through the semi-transparent insert row and Output panel. inert keeps
                 the hidden diagram out of keyboard Tab order. */}
             <div className="relative min-h-0 flex-1">
+                {structureTabs.map((tab) => {
+                    const retained = activeTabId !== tab.id;
+                    return (
+                        <div
+                            key={tab.id}
+                            className={`absolute inset-0 isolate overflow-hidden bg-background ${retained ? 'z-0 opacity-0 pointer-events-none' : 'z-10'}`}
+                            ref={(node) => {
+                                if (node) node.inert = retained;
+                            }}
+                        >
+                            <TableStructureTab tabId={tab.id} metadata={tab.metadata as TableTabMetadata} />
+                        </div>
+                    );
+                })}
                 {erTabs.map((tab) => {
                     const retained = activeTabId !== tab.id;
                     return (
@@ -236,7 +252,7 @@ export default function Home() {
                             metadata={activeTab.metadata as SubAgentConsoleTabMetadata}
                         />
                     </div>
-                ) : activeTab?.type === 'er' ? null : (
+                ) : activeTab?.type === 'er' || activeTab?.type === 'structure' ? null : (
                     <div className="absolute inset-0 z-10 flex h-full min-h-0 flex-col overflow-hidden">
                         <ResultsPanel
                             isVisible={isResultsVisible}

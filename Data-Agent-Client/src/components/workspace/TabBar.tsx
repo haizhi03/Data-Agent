@@ -1,7 +1,8 @@
-import { Braces, Database, FileCode, ListTodo, Table as TableIcon, Waypoints, X } from 'lucide-react';
+import { Braces, Database, FileCode, ListTodo, Table as TableIcon, TableProperties, Waypoints, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '../../lib/utils';
 import { useTabStore } from '../../store/tabStore';
+import { useStructureEditorStore } from '../../store/structureEditorStore';
 import { useWorkspaceStore } from '../../store/workspaceStore';
 import { I18N_KEYS } from '../../constants/i18nKeys';
 import {
@@ -32,10 +33,11 @@ import { SUB_AGENT_TYPES, type SubAgentType } from '../ai/blocks/subAgentTypes';
 interface SortableTabProps {
   tabId: string;
   name: string;
-  type: 'file' | 'table' | 'plan' | 'subagent-console' | 'er';
+  type: 'file' | 'table' | 'plan' | 'subagent-console' | 'er' | 'structure';
   connectionName?: string;
   databaseName?: string | null;
   isActive: boolean;
+  dirty?: boolean;
   onSwitch: (id: string) => void;
   onClose: (id: string) => void;
   onCloseLeft: (id: string) => void;
@@ -53,6 +55,7 @@ function SortableTab({
   connectionName,
   databaseName,
   isActive,
+  dirty,
   onSwitch,
   onClose,
   onCloseLeft,
@@ -75,7 +78,7 @@ function SortableTab({
   const tabLabel =
     type === 'plan' || type === 'subagent-console'
       ? name
-      : type === 'table' || type === 'er'
+      : type === 'table' || type === 'er' || type === 'structure'
         ? name
         : connectionName
           ? `${connectionName}${databaseName ? '_' + databaseName : ''}`
@@ -142,11 +145,14 @@ function SortableTab({
                   <FileCode className="w-3 h-3 text-blue-400" />
                 ) : type === 'er' ? (
                   <Waypoints className="w-3 h-3 text-sky-400" />
+                ) : type === 'structure' ? (
+                  <TableProperties className="w-3 h-3 text-emerald-400" />
                 ) : (
                   <TableIcon className="w-3 h-3 text-green-400" />
                 )}
               </span>
               <span className={cn('flex-1 truncate mr-1', labelClass)}>
+                {dirty ? <span className="mr-1 text-amber-500">●</span> : null}
                 {tabLabel}
               </span>
               <button
@@ -195,9 +201,14 @@ function SortableTab({
 }
 
 export function TabBar() {
+  const { t } = useTranslation();
   const { tabs } = useTabStore();
+  const dirtyIds = useStructureEditorStore((state) => state.dirtyIds);
   const { switchTab, closeTab, closeTabsToLeft, closeTabsToRight, closeOtherTabs, closeAllTabs, reorderTabs } =
     useWorkspaceStore();
+  const allowClose = (ids: string[]) => (
+    !ids.some((id) => dirtyIds[id]) || window.confirm(t(I18N_KEYS.EXPLORER.STRUCTURE_DISCARD))
+  );
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } } as any)
@@ -235,12 +246,21 @@ export function TabBar() {
                 subAgentType={tab.type === 'subagent-console' ? (tab.metadata as SubAgentConsoleTabMetadata | undefined)?.agentType : undefined}
                 subAgentStatus={tab.type === 'subagent-console' ? (tab.metadata as SubAgentConsoleTabMetadata | undefined)?.status : undefined}
                 isActive={tab.active}
+                dirty={Boolean(dirtyIds[tab.id])}
                 onSwitch={switchTab}
-                onClose={closeTab}
-                onCloseLeft={closeTabsToLeft}
-                onCloseRight={closeTabsToRight}
-                onCloseOthers={closeOtherTabs}
-                onCloseAll={closeAllTabs}
+                onClose={(id) => { if (allowClose([id])) closeTab(id); }}
+                onCloseLeft={(id) => {
+                  const index = tabs.findIndex((item) => item.id === id);
+                  if (allowClose(tabs.slice(0, Math.max(index, 0)).map((item) => item.id))) closeTabsToLeft(id);
+                }}
+                onCloseRight={(id) => {
+                  const index = tabs.findIndex((item) => item.id === id);
+                  if (allowClose(tabs.slice(index + 1).map((item) => item.id))) closeTabsToRight(id);
+                }}
+                onCloseOthers={(id) => {
+                  if (allowClose(tabs.filter((item) => item.id !== id).map((item) => item.id))) closeOtherTabs(id);
+                }}
+                onCloseAll={() => { if (allowClose(tabs.map((item) => item.id))) closeAllTabs(); }}
               />
             ))}
           </SortableContext>

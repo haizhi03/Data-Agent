@@ -43,6 +43,7 @@ export interface ExplorerTreeNodeProps {
   onSqlGenerator: (node: ExplorerNode) => void;
   onGenerateSql: (node: ExplorerNode, statementType: SqlStatementType) => void;
   onCreateTable: (node: ExplorerNode) => void;
+  onDesignTable: (node: ExplorerNode) => void;
   onImportData: (node: ExplorerNode) => void;
   onExportData: (node: ExplorerNode) => void;
   onExportTablesWizard: (node: ExplorerNode) => void;
@@ -79,6 +80,7 @@ export function ExplorerTreeNode({
   onSqlGenerator,
   onGenerateSql,
   onCreateTable,
+  onDesignTable,
   onImportData,
   onExportData,
   onExportTablesWizard,
@@ -273,6 +275,7 @@ export function ExplorerTreeNode({
           onSqlGenerator={onSqlGenerator}
           onGenerateSql={onGenerateSql}
           onCreateTable={onCreateTable}
+          onDesignTable={onDesignTable}
           onOpenErDiagram={onOpenErDiagram}
           onViewDdl={onViewDdl}
           onViewData={onViewData}
