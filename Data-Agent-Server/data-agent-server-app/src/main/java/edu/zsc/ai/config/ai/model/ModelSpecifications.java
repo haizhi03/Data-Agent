@@ -13,11 +13,19 @@ public final class ModelSpecifications {
             return mode == MultiProviderProperties.ThinkingMode.DISABLED ? maxOutputTokens : maxThinkingOutputTokens;
         }
     }
+    private static final List<Specification> KIMI = List.of(
+            kimi("kimi-k3.1-pro", "https://platform.kimi.com/docs/guide/kimi-k3-1-pro-quickstart"),
+            kimi("kimi-k3", "https://platform.kimi.com/docs/guide/kimi-k3-quickstart"));
+    private static Specification kimi(String id,String source) {
+        // API reference: max_completion_tokens <= 1,048,576; application-wide output cap is 1,000,000.
+        return new Specification(id,List.of(),1_048_576,1_048_576,1_048_576,source,"2026-11-19",
+                "kimi-chat-v1","kimi-reasoning-tools-v1");
+    }
     private static Specification qwen(QwenModelSpecifications.Specification s) {
         return new Specification(s.modelId(),s.aliases(),s.contextTokens(),s.maxOutputTokens(),s.maxThinkingOutputTokens(),
                 s.sourceUrl(),s.verifiedAt(),"qwen-chat-v1","qwen-tools-v1");
     }
-    private static final List<Specification> MODELS = QwenModelSpecifications.all().stream().map(ModelSpecifications::qwen).toList();
+    private static final List<Specification> MODELS = java.util.stream.Stream.concat(QwenModelSpecifications.all().stream().map(ModelSpecifications::qwen),KIMI.stream()).toList();
     public static List<Specification> all() { return MODELS; }
     public static List<Specification> all(String compatibility) { return all().stream().filter(s->s.compatibilityProfile().equals(compatibility)).toList(); }
     public static Specification find(String modelId) {

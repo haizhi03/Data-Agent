@@ -1230,6 +1230,7 @@
       "name_placeholder": "例如：工作用 Qwen；留空使用模型 ID",
       "model_id": "默认模型",
       "model_placeholder": "例如：qwen3.8-max",
+      "moonshot_key_hint": "此入口使用 Kimi 开放平台 API Key；Kimi Code 的 Key、地址和模型 ID 与开放平台不同，不能混用。",
       "candidate_model_placeholder": "选择模型，或输入其他模型 ID",
       "candidate_models": "预置模型",
       "candidate_presets_hint": "预置候选，支持手动输入其他 ID；是否可用请测试连接。",
@@ -1265,6 +1266,7 @@
       "capabilities": {
         "text-tools-v1": "通用文本与工具",
         "qwen-tools-v1": "Qwen 文本、思考与工具",
+        "kimi-reasoning-tools-v1": "Kimi 思考与工具（始终开启思考）",
         "responses-tools-v1": "OpenAI 文本与工具",
         "responses-reasoning-v1": "OpenAI 推理与工具",
         "anthropic-tools-v1": "Claude 文本与工具",
@@ -1329,6 +1331,7 @@
       "OPENAI": "OpenAI",
       "QWEN": "通义千问（Qwen）",
       "ANTHROPIC": "Anthropic（Claude）",
+      "MOONSHOT": "Kimi 开放平台",
       "CUSTOM": "自定义服务"
     },
     "provider_hints": {

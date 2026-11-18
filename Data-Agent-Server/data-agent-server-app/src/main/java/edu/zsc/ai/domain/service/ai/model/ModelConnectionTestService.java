@@ -84,7 +84,7 @@ public class ModelConnectionTestService {
                 input.provider().trim(), input.apiStyle(), input.modelId().trim(), "Connection test", ModelEndpointPolicy.normalize(input.endpoint()),
                 input.apiKey() != null ? "transient:" + id : "credential:" + existing.credentialId(), existing == null ? 0 : existing.credentialVersion(),
                 profile.capabilityProfile(), input.compatibilityProfile(), new ResolvedModelConfig.EffectiveOptions(options.getThinkingMode(), options.getThinkingBudget(), null, profile.optionRules().testMaxOutputTokens(),effort),
-                32768, 24000, false, allowed);
+                ModelTokenPolicy.context(input.modelId(),null), 24000, false, allowed);
     }
 
     private FileModelState.Connection saved(ModelAccessContext scope, ModelManagementRequests.ConnectionTest input) {

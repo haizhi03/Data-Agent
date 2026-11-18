@@ -46,17 +46,21 @@ public final class ProtocolStateCodec {
     }
 
     static boolean matches(JsonNode state, ResolvedModelConfig config) {
+        // Chat Completions reasoning is ordinary assistant content, not a signed provider block.
+        // Preserve it across effort changes and key rotation on the same model/connection.
+        boolean preservedChat = config.apiStyle() == ModelApiStyle.OPENAI_CHAT_COMPLETIONS
+                && OpenAiChatCompatibility.rules(config).preserveThinking();
         return state.path("apiStyle").asText().equals(config.apiStyle().name())
                 && state.path("connectionId").asText().equals(config.connectionId())
                 && state.path("modelId").asText().equals(config.modelId())
                 && state.path("endpoint").asText().equals(config.endpoint().toString())
                 && state.path("ownerId").asText().equals(Long.toString(config.access().ownerId()))
                 && state.path("workspaceType").asText().equals(config.access().workspaceType().name())
-                && state.path("connectionVersion").asLong(-1) == config.connectionVersion()
-                && state.path("credentialVersion").asLong(-1) == config.credentialVersion()
+                && (preservedChat || state.path("connectionVersion").asLong(-1) == config.connectionVersion())
+                && (preservedChat || state.path("credentialVersion").asLong(-1) == config.credentialVersion())
                 && state.path("compatibilityProfile").asText().equals(config.compatibilityProfile())
                 && state.path("capabilityProfile").asText().equals(config.capabilityProfile())
-                && state.path("optionsDigest").asText().equals(optionsDigest(config))
+                && (preservedChat || state.path("optionsDigest").asText().equals(optionsDigest(config)))
                 && state.path("thinkingMode").asText().equals(config.options().thinkingMode().name());
     }
 

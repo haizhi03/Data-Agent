@@ -73,6 +73,38 @@ class FileModelManagementTest {
         diagnostics=new ModelDiagnosticService(service,new ModelManagementAccess(organizations),registry,repository,clock);
     }
     @AfterEach void cleanup() { diagnostics.close(); RequestContext.clear();AgentRequestContext.clear(); }
+    @Test void kimiSetupDefaultsAndBothModelsShareTheConnectionWithoutMixingProviderPresets() throws Exception {
+        var mvc=MockMvcBuilders.standaloneSetup(new ModelManagementController(service,diagnostics,mock(ModelConnectionTestService.class)))
+                .setControllerAdvice(new ModelManagementErrorHandler()).build();
+        mvc.perform(post("/api/ai/model-setups").contentType("application/json").content("""
+                {"provider":"MOONSHOT","apiStyle":"OPENAI_CHAT_COMPLETIONS","endpoint":"https://api.moonshot.cn/v1",
+                 "compatibilityProfile":"kimi-chat-v1","apiKey":"kimi-fixture-key","modelId":"kimi-k3.1-pro"}
+                """))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.model.capabilityProfile").value("kimi-reasoning-tools-v1"))
+                .andExpect(jsonPath("$.data.model.defaultOptions.thinkingMode").value("ENABLED"))
+                .andExpect(jsonPath("$.data.model.defaultOptions.reasoningEffort").value("max"));
+        var model=service.models().get(0);var connection=service.connections().get(0);
+        for(var purpose:ModelPurpose.values()) {
+            var configured=resolver.resolveRun(null,null).model(purpose);
+            assertEquals(16384,configured.options().maxOutputTokens());
+            assertEquals(1_048_576,configured.maxContextTokens());
+        }
+        var choices=resolver.listAvailable();
+        assertEquals(Set.of("kimi-k3","kimi-k3.1-pro"),choices.stream().map(ResolvedModelConfig::modelId).collect(java.util.stream.Collectors.toSet()));
+        var k3=choices.stream().filter(choice->choice.modelId().equals("kimi-k3")).findFirst().orElseThrow();
+        assertEquals(connection.id(),k3.connectionId());assertTrue(k3.modelConfigId().startsWith("model-preset/"));
+        assertEquals("kimi-k3",resolver.resolveRun(k3.modelConfigId(),null).model(ModelPurpose.MAIN_CHAT).modelId());
+        assertEquals(1,service.models().size()); // Listing chat choices is read-only.
+        var binding=service.bindings().stream().filter(item->item.purpose()==ModelPurpose.EXPLORER).findFirst().orElseThrow();
+        var selected=service.bindPreset(ModelPurpose.EXPLORER,new ModelManagementRequests.PresetBinding(binding.version(),connection.id(),connection.version(),"kimi-k3",MultiProviderProperties.ThinkingMode.ENABLED));
+        assertEquals("kimi-k3",service.model(selected.modelConfigId()).modelId());
+        assertEquals(16384,resolver.resolveRun(null,null).model(ModelPurpose.EXPLORER).options().maxOutputTokens());
+        assertThrows(ModelManagementException.class,()->service.bindPreset(ModelPurpose.EXPLORER,
+                new ModelManagementRequests.PresetBinding(selected.version(),connection.id(),connection.version(),"qwen-plus",null)));
+        assertThrows(ModelIntegrationException.class,()->resolver.resolveRun(model.id(),null,MultiProviderProperties.ThinkingMode.DISABLED));
+        mvc.perform(get("/api/ai/model-profiles")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[?(@.compatibilityProfile == 'kimi-chat-v1')].optionRules.defaultReasoningEffort").value(org.hamcrest.Matchers.contains("max")));
+    }
     @Test void simpleSetupCreatesAUsableModelCredentialAndAllDefaultsInOneWrite() throws Exception {
         var mvc=MockMvcBuilders.standaloneSetup(new ModelManagementController(service,diagnostics,mock(ModelConnectionTestService.class))).setControllerAdvice(new ModelManagementErrorHandler()).build();
         String response=mvc.perform(post("/api/ai/model-setups").contentType("application/json").content("{\"provider\":\"QWEN\",\"apiStyle\":\"OPENAI_CHAT_COMPLETIONS\",\"endpoint\":\"https://dashscope.aliyuncs.com/compatible-mode/v1\",\"compatibilityProfile\":\"qwen-chat-v1\",\"apiKey\":\"setup-fixture-key\",\"modelId\":\"qwen3.8-max\"}"))
@@ -378,7 +410,7 @@ class FileModelManagementTest {
     @Test void servesTheSameOfficialSpecificationsUsedByTheRuntime() throws Exception {
         var mvc=MockMvcBuilders.standaloneSetup(new ModelManagementController(service,diagnostics,mock(ModelConnectionTestService.class))).setControllerAdvice(new ModelManagementErrorHandler()).build();
         mvc.perform(get("/api/ai/model-specifications")).andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.length()").value(4)).andExpect(jsonPath("$.data[0].modelId").value("qwen3.8-max"))
+                .andExpect(jsonPath("$.data.length()").value(6)).andExpect(jsonPath("$.data[0].modelId").value("qwen3.8-max"))
                 .andExpect(jsonPath("$.data[0].contextTokens").value(1_000_000)).andExpect(jsonPath("$.data[0].maxOutputTokens").value(131072))
                 .andExpect(jsonPath("$.data[1].modelId").value("qwen3.6-flash"))
                 .andExpect(jsonPath("$.data[1].contextTokens").value(1_000_000))

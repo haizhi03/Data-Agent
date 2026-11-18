@@ -82,6 +82,14 @@ class ModelConnectionTestServiceTest {
             verify(probe).test(argThat(config->config.modelId().equals(model) && config.compatibilityProfile().equals("qwen-chat-v1")),eq("fixture-key"));
         }
     }
+    @Test void alwaysThinkingConnectionsUseTheirCapabilityDefaultsAndAnAdequateProbeBudget() {
+        var input=new ModelManagementRequests.ConnectionTest(null,null,"MOONSHOT",ModelApiStyle.OPENAI_CHAT_COMPLETIONS,
+                "https://api.moonshot.cn/v1","kimi-chat-v1","kimi-k3.1-pro","kimi-draft-key");
+        assertTrue(tests.test(input).success());
+        verify(probe).test(argThat(config->config.options().thinkingMode()==MultiProviderProperties.ThinkingMode.ENABLED
+                && "low".equals(config.options().reasoningEffort()) && config.options().maxOutputTokens()==16384
+                && config.maxContextTokens()==1_048_576),eq("kimi-draft-key"));
+    }
     @Test void invalidFieldsReturnSpecificSafeMessagesWithoutBlamingTheModelName() throws Exception {
         var mvc=MockMvcBuilders.standaloneSetup(new ModelManagementController(management,mock(ModelDiagnosticService.class),tests))
                 .setControllerAdvice(new ModelManagementErrorHandler()).build();

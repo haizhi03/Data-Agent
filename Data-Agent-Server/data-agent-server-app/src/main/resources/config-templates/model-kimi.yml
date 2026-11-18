@@ -1,0 +1,50 @@
+# Optional startup configuration; not loaded automatically.
+# Replace owner-id with the authorized user/workspace and provide MOONSHOT_API_KEY.
+ai:
+  model-routing:
+    enabled: true
+  model-connections:
+    - code: moonshot
+      workspace-type: PERSONAL
+      owner-id: 1
+      provider: MOONSHOT
+      api-style: OPENAI_CHAT_COMPLETIONS
+      endpoint: https://api.moonshot.cn/v1
+      credential-ref: env:MOONSHOT_API_KEY
+      compatibility-profile: kimi-chat-v1
+  model-configs:
+    - code: kimi-k31
+      workspace-type: PERSONAL
+      owner-id: 1
+      connection-code: moonshot
+      name: Kimi K3.1 Pro
+      model-id: kimi-k3.1-pro
+      capability-profile: kimi-reasoning-tools-v1
+      default-options:
+        thinking-mode: ENABLED
+        reasoning-effort: max # low / high / max; K3 always thinks.
+        max-output-tokens: 16384
+      max-context-tokens: 1048576
+      memory-threshold: 24000
+    - code: kimi-k3
+      workspace-type: PERSONAL
+      owner-id: 1
+      connection-code: moonshot
+      name: Kimi K3
+      model-id: kimi-k3
+      capability-profile: kimi-reasoning-tools-v1
+      default-options:
+        thinking-mode: ENABLED
+        reasoning-effort: max
+        max-output-tokens: 16384
+      max-context-tokens: 1048576
+      memory-threshold: 24000
+  model-bindings:
+    - workspace-type: PERSONAL
+      owner-id: 1
+      purposes:
+        MAIN_CHAT: kimi-k31
+        EXPLORER: kimi-k31
+        PLANNER: kimi-k31
+        COMPRESSION: kimi-k3
+        MEMORY_WRITER: kimi-k3
