@@ -19,6 +19,13 @@ enum OpenAiChatCompatibility {
             if (options.thinkingMode() == ENABLED && options.thinkingBudget() != null) parameters.put("thinking_budget", options.thinkingBudget());
             builder.customParameters(parameters);
         }
+    },
+    KIMI("kimi-chat-v1") {
+        void configure(OpenAiChatRequestParameters.Builder builder, ResolvedModelConfig config) {
+            // K3 always thinks. Do not send Qwen's flags, a thinking switch, or sampling parameters.
+            builder.temperature(null).maxOutputTokens(null).maxCompletionTokens(config.options().maxOutputTokens())
+                    .reasoningEffort(config.options().reasoningEffort() == null ? rules(config).defaultReasoningEffort() : config.options().reasoningEffort());
+        }
     };
 
     private final String profile;

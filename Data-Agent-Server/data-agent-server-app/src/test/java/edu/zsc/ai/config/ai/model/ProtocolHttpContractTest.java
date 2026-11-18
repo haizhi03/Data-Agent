@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.node.*;
 import com.sun.net.httpserver.*;
 import dev.langchain4j.agent.tool.*;
 import dev.langchain4j.data.message.*;
+import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.http.client.HttpClient;
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 import dev.langchain4j.model.chat.request.ChatRequest;
@@ -72,7 +73,8 @@ class ProtocolHttpContractTest {
             try {
                 requests.add(ProtocolJson.parse(new String(exchange.getRequestBody().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)));
                 requestHeaders.add(exchange.getRequestHeaders());
-                assertTrue(exchange.getRequestURI().getPath().endsWith("/responses") || exchange.getRequestURI().getPath().endsWith("/messages"));
+                assertTrue(exchange.getRequestURI().getPath().endsWith("/responses") || exchange.getRequestURI().getPath().endsWith("/messages")
+                        || exchange.getRequestURI().getPath().endsWith("/chat/completions"));
                 Reply reply = replies.poll(5, TimeUnit.SECONDS); if (reply == null) throw new AssertionError("Unexpected upstream request");
                 exchange.getResponseHeaders().set("Content-Type", reply.contentType());
                 if (reply.status() == 302) exchange.getResponseHeaders().set("Location", "https://unapproved.example/credential-leak");
@@ -89,6 +91,111 @@ class ProtocolHttpContractTest {
         RequestContext.clear(); AgentRequestContext.clear();
         server.stop(0); executor.shutdownNow();
         assertNull(serverFailure.get(), () -> "Fixture server failed: " + serverFailure.get());
+    }
+
+    @Test void kimiPreservesSyncAndStreamingReasoningThroughToolLoopsAndStoredHistory() throws Exception {
+        var config=kimiConfig("kimi-k3.1-pro","max");
+        var clients=kimiClients(config);
+        List<ChatMessage> history=new ArrayList<>(List.of(UserMessage.from("Use echo twice, then answer.")));
+        replies.add(json(kimiResponse("call-1","first plan",null)));
+        var first=clients.chatModel().chat(request().toBuilder().messages(history).build());
+        assertEquals("first plan",first.aiMessage().thinking());
+        history.add(first.aiMessage());history.add(ToolExecutionResultMessage.from("call-1","echo","first result"));
+        assertKimiRequest(requests.poll(2,TimeUnit.SECONDS),"max");
+
+        replies.add(sse(kimiStream("call-2","second plan",null)));
+        var second=kimiStreamed(clients,request().toBuilder().messages(history).build());
+        assertEquals("second plan",second.aiMessage().thinking());
+        assertEquals("call-2",second.aiMessage().toolExecutionRequests().get(0).id());
+        assertEquals("first plan",requests.poll(2,TimeUnit.SECONDS).path("messages").get(1).path("reasoning_content").asText());
+        history.add(second.aiMessage());history.add(ToolExecutionResultMessage.from("call-2","echo","second result"));
+
+        replies.add(json(kimiResponse(null,"final plan","done")));
+        var answer=clients.chatModel().chat(request().toBuilder().messages(history).build());
+        assertEquals("done",answer.aiMessage().text());history.add(answer.aiMessage());
+        var finalRequest=requests.poll(2,TimeUnit.SECONDS);
+        assertEquals("second plan",finalRequest.path("messages").get(3).path("reasoning_content").asText());
+
+        var restored=new ArrayList<>(ChatMessageDeserializer.messagesFromJson(ChatMessageSerializer.messagesToJson(history)));
+        restored.add(UserMessage.from("Continue after restoring history."));
+        // Changing effort must preserve earlier reasoning from this same model and connection.
+        replies.add(sse(kimiStream(null,"resumed plan","resumed")));
+        var resumed=kimiStreamed(kimiClients(kimiConfig("kimi-k3.1-pro","low")),request().toBuilder().messages(restored).build());
+        assertEquals("resumed",resumed.aiMessage().text());assertEquals("resumed plan",resumed.aiMessage().thinking());
+        var replay=requests.poll(2,TimeUnit.SECONDS);assertKimiRequest(replay,"low");
+        for(int i:new int[]{1,3,5})assertFalse(replay.path("messages").get(i).path("reasoning_content").asText().isBlank());
+        assertFalse(ChatMessageSerializer.messagesToJson(ProtocolHistory.forSummary(history)).contains("first plan"));
+        assertEquals(0,ProtocolHistory.safeSplit(history,3));
+        assertEquals(6,ProtocolHistory.safeSplit(restored,6));
+        var otherModel=kimiConfig("kimi-k3","max");
+        assertNull(((AiMessage)ProtocolHistory.forTarget(history,otherModel).get(1)).thinking());
+    }
+
+    @Test void draftKimiProbeUsesTheRegisteredAdapterAndNeverCachesTheDraftCredential() throws Exception {
+        var config=kimiConfig("kimi-k3","low");
+        var factory=kimiFactory();
+        var probe=new ModelConnectionProbe(List.of(factory));
+        replies.add(json(kimiResponse(null,"check","OK")));
+        probe.test(config,"draft-kimi-fixture");
+        assertEquals("Bearer draft-kimi-fixture",requestHeaders.poll(2,TimeUnit.SECONDS).getFirst("Authorization"));
+        assertKimiRequest(requests.poll(2,TimeUnit.SECONDS),"low");
+        replies.add(json(kimiResponse(null,"check again","OK")));
+        factory.create(config).chatModel().chat("hello");
+        assertEquals("Bearer fixture-key",requestHeaders.poll(2,TimeUnit.SECONDS).getFirst("Authorization"));
+    }
+
+    private OpenAiChatClientFactory kimiFactory() {
+        return new OpenAiChatClientFactory(credentials) {
+            @Override protected dev.langchain4j.http.client.HttpClientBuilder httpClientBuilder(ResolvedModelConfig config) {
+                return new PolicyHttpClientBuilder(config,()->new OkHttpClient.Builder().sslSocketFactory(tls.getSocketFactory(),trust));
+            }
+        };
+    }
+    private ModelClientBundle kimiClients(ResolvedModelConfig config) {
+        var registry=new ModelClientRegistry(List.of(kimiFactory()),mock(ModelConfigResolver.class),credentials);
+        return registry.clients(new ModelRunSnapshot(Map.of(ModelPurpose.MAIN_CHAT,config),20),ModelPurpose.MAIN_CHAT);
+    }
+    private ResolvedModelConfig kimiConfig(String model,String effort) {
+        return new ResolvedModelConfig("kimi-config",1,"kimi-connection",1,new ModelAccessContext(1,WorkspaceTypeEnum.PERSONAL,1),
+                "MOONSHOT",ModelApiStyle.OPENAI_CHAT_COMPLETIONS,model,"Kimi",URI.create("https://127.0.0.1:"+server.getAddress().getPort()+"/gateway/v1/"),
+                "deployment:qwen",1,"kimi-reasoning-tools-v1","kimi-chat-v1",
+                new ResolvedModelConfig.EffectiveOptions(MultiProviderProperties.ThinkingMode.ENABLED,null,null,16384,effort),
+                1_048_576,24000,true,Set.of("127.0.0.1"));
+    }
+    private static ObjectNode kimiResponse(String call,String thinking,String text) {
+        var message=ProtocolJson.object().put("role","assistant").put("reasoning_content",thinking);
+        if(text!=null)message.put("content",text);else message.putNull("content");
+        if(call!=null)message.set("tool_calls",ProtocolJson.array().add(ProtocolJson.object().put("id",call).put("type","function")
+                .set("function",ProtocolJson.object().put("name","echo").put("arguments","{\"nonce\":\"fixture\"}"))));
+        return ProtocolJson.object().put("id","fixture-kimi").put("object","chat.completion").put("model","kimi-k3.1-pro")
+                .set("choices",ProtocolJson.array().add(ProtocolJson.object().put("index",0).put("finish_reason",call==null?"stop":"tool_calls").set("message",message)));
+    }
+    private static String kimiStream(String call,String thinking,String text) {
+        var delta=ProtocolJson.object();
+        if(text!=null)delta.put("content",text);
+        if(call!=null)delta.set("tool_calls",ProtocolJson.array().add(ProtocolJson.object().put("index",0).put("id",call).put("type","function")
+                .set("function",ProtocolJson.object().put("name","echo").put("arguments","{\"nonce\":\"fixture\"}"))));
+        return kimiChunk(ProtocolJson.object().put("role","assistant").put("reasoning_content",thinking),null)
+                +kimiChunk(delta,null)+kimiChunk(ProtocolJson.object(),call==null?"stop":"tool_calls")+"data: [DONE]\n\n";
+    }
+    private static String kimiChunk(ObjectNode delta,String finish) {
+        return "data: "+ProtocolJson.object().put("id","fixture-kimi").put("object","chat.completion.chunk").put("model","kimi-k3.1-pro")
+                .set("choices",ProtocolJson.array().add(ProtocolJson.object().put("index",0).put("finish_reason",finish).set("delta",delta)))+"\n\n";
+    }
+    private static ChatResponse kimiStreamed(ModelClientBundle clients,ChatRequest request) throws Exception {
+        var result=new CompletableFuture<ChatResponse>();var thinking=new StringBuilder();
+        clients.streamingChatModel().chat(request,new StreamingChatResponseHandler() {
+            public void onPartialResponse(String text) {}
+            public void onPartialThinking(PartialThinking partial) { thinking.append(partial.text()); }
+            public void onCompleteResponse(ChatResponse response) { result.complete(response); }
+            public void onError(Throwable error) { result.completeExceptionally(error); }
+        });
+        var response=result.get(5,TimeUnit.SECONDS);assertEquals(response.aiMessage().thinking(),thinking.toString());return response;
+    }
+    private static void assertKimiRequest(JsonNode request,String effort) {
+        assertNotNull(request);assertEquals(effort,request.path("reasoning_effort").asText());
+        assertEquals(16384,request.path("max_completion_tokens").asInt());
+        for(var field:List.of("max_tokens","temperature","thinking","enable_thinking","thinking_budget"))assertFalse(request.has(field),field);
     }
 
     @ParameterizedTest @EnumSource(value = ModelApiStyle.class, names = {"OPENAI_RESPONSES", "ANTHROPIC_MESSAGES"})

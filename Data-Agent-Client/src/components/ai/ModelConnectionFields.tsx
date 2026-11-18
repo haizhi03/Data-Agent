@@ -63,6 +63,7 @@ export function ModelConnectionFields({ value, preset, profiles, secret, editing
     {row('endpoint', 'Endpoint', <>
       <Input className={inputClass} id={`${id}-endpoint`} required type="url" readOnly={value.apiStyle === 'DASHSCOPE_CHAT'} value={value.endpoint} onChange={(e) => onChange({ ...value, endpoint: e.target.value })} />
       <p className="text-xs text-muted-foreground">{tr(value.apiStyle === 'DASHSCOPE_CHAT' ? 'dashscope_endpoint_hint' : 'setup.endpoint_hint')}</p>
+      {preset === 'MOONSHOT' && <p className="text-xs text-muted-foreground">{tr('setup.moonshot_key_hint')}</p>}
     </>)}
     {row('model', tr('setup.model_id'), <>
       {candidates.length ? <ModelIdInput id={`${id}-model`} value={modelId} onChange={onModelIdChange} specifications={modelSpecifications} candidates={candidates} />
