@@ -4,6 +4,7 @@ import dev.langchain4j.model.openai.OpenAiChatRequestParameters;
 import edu.zsc.ai.domain.service.ai.model.ModelProfiles;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
 import static edu.zsc.ai.config.ai.model.MultiProviderProperties.ThinkingMode.ENABLED;
 
 /** Wire differences for providers sharing Chat Completions; no extra client factory is required. */
@@ -18,6 +19,17 @@ enum OpenAiChatCompatibility {
             parameters.put("enable_thinking", options.thinkingMode() == ENABLED);
             if (options.thinkingMode() == ENABLED && options.thinkingBudget() != null) parameters.put("thinking_budget", options.thinkingBudget());
             builder.customParameters(parameters);
+        }
+    },
+    DEEPSEEK("deepseek-chat-v1") {
+        void configure(OpenAiChatRequestParameters.Builder builder, ResolvedModelConfig config) {
+            var options = config.options();
+            boolean thinking = options.thinkingMode() == ENABLED;
+            // The switch is always sent: the provider thinks by default, so omitting it would make "off" a no-op.
+            // Temperature and sampling penalties are ignored while thinking, so only non-thinking requests carry one.
+            builder.temperature(thinking ? null : options.temperature())
+                    .reasoningEffort(thinking ? Objects.requireNonNullElse(options.reasoningEffort(), rules(config).defaultReasoningEffort()) : null)
+                    .customParameters(Map.of("thinking", Map.of("type", thinking ? "enabled" : "disabled")));
         }
     };
 

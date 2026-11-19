@@ -378,12 +378,17 @@ class FileModelManagementTest {
     @Test void servesTheSameOfficialSpecificationsUsedByTheRuntime() throws Exception {
         var mvc=MockMvcBuilders.standaloneSetup(new ModelManagementController(service,diagnostics,mock(ModelConnectionTestService.class))).setControllerAdvice(new ModelManagementErrorHandler()).build();
         mvc.perform(get("/api/ai/model-specifications")).andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.length()").value(4)).andExpect(jsonPath("$.data[0].modelId").value("qwen3.8-max"))
+                .andExpect(jsonPath("$.data.length()").value(6)).andExpect(jsonPath("$.data[0].modelId").value("qwen3.8-max"))
                 .andExpect(jsonPath("$.data[0].contextTokens").value(1_000_000)).andExpect(jsonPath("$.data[0].maxOutputTokens").value(131072))
                 .andExpect(jsonPath("$.data[1].modelId").value("qwen3.6-flash"))
                 .andExpect(jsonPath("$.data[1].contextTokens").value(1_000_000))
                 .andExpect(jsonPath("$.data[1].maxOutputTokens").value(65536))
-                .andExpect(jsonPath("$.data[1].maxThinkingOutputTokens").value(65536));
+                .andExpect(jsonPath("$.data[1].maxThinkingOutputTokens").value(65536))
+                .andExpect(jsonPath("$.data[4].modelId").value("deepseek-flash"))
+                .andExpect(jsonPath("$.data[4].contextTokens").value(1_000_000))
+                .andExpect(jsonPath("$.data[4].compatibilityProfile").value("deepseek-chat-v1"))
+                .andExpect(jsonPath("$.data[5].modelId").value("deepseek-v4-pro"))
+                .andExpect(jsonPath("$.data[5].maxThinkingOutputTokens").value(393_216));
     }
     @Test void rejectsOfficialModelCeilingViolationsWithoutPartialWrites() throws Exception {
         var first=service.saveSetup(setup(null,null,"official-limits-fixture","qwen3-max",false,null));

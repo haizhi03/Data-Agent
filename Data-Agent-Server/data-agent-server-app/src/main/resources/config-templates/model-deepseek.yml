@@ -1,0 +1,51 @@
+# Optional startup configuration; not loaded automatically.
+# Replace owner-id with the authorized user/workspace and provide DEEPSEEK_API_KEY.
+# Thinking is switchable per model; both current models share a 1M window and a 384K ceiling.
+ai:
+  model-routing:
+    enabled: true
+  model-connections:
+    - code: deepseek
+      workspace-type: PERSONAL
+      owner-id: 1
+      provider: DEEPSEEK
+      api-style: OPENAI_CHAT_COMPLETIONS
+      endpoint: https://api.deepseek.com
+      credential-ref: env:DEEPSEEK_API_KEY
+      compatibility-profile: deepseek-chat-v1
+  model-configs:
+    - code: deepseek-pro
+      workspace-type: PERSONAL
+      owner-id: 1
+      connection-code: deepseek
+      name: DeepSeek V4 Pro
+      model-id: deepseek-v4-pro
+      capability-profile: deepseek-thinking-tools-v1
+      default-options:
+        thinking-mode: ENABLED
+        reasoning-effort: high # low / high / max
+        max-output-tokens: 16384
+      max-context-tokens: 1000000
+      memory-threshold: 700000
+    - code: deepseek-flash
+      workspace-type: PERSONAL
+      owner-id: 1
+      connection-code: deepseek
+      name: DeepSeek Flash
+      model-id: deepseek-flash
+      capability-profile: deepseek-thinking-tools-v1
+      default-options:
+        thinking-mode: ENABLED
+        reasoning-effort: high
+        max-output-tokens: 16384
+      max-context-tokens: 1000000
+      memory-threshold: 700000
+  model-bindings:
+    - workspace-type: PERSONAL
+      owner-id: 1
+      purposes:
+        MAIN_CHAT: deepseek-pro
+        EXPLORER: deepseek-pro
+        PLANNER: deepseek-pro
+        COMPRESSION: deepseek-flash
+        MEMORY_WRITER: deepseek-flash

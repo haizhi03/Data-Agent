@@ -9,7 +9,7 @@ import static edu.zsc.ai.config.ai.model.MultiProviderProperties.*;
 
 class ModelProfilesTest {
     @Test void existingProtocolsAndCapabilityDefaultsRemainUnchanged() {
-        assertEquals(10,ModelProfiles.all().size());
+        assertEquals(11,ModelProfiles.all().size());
         assertEquals(Set.of(ModelApiStyle.OPENAI_CHAT_COMPLETIONS,ModelApiStyle.OPENAI_RESPONSES,
                 ModelApiStyle.ANTHROPIC_MESSAGES,ModelApiStyle.DASHSCOPE_CHAT),
                 ModelProfiles.all().stream().map(profile->profile.apiStyle()).collect(java.util.stream.Collectors.toSet()));
@@ -25,6 +25,8 @@ class ModelProfilesTest {
             for(var mode:profile.thinkingModes()) {
                 var model=new Model();model.setCapabilityProfile(profile.capabilityProfile());
                 var options=ModelProfiles.defaultOptions(profile);options.setThinkingMode(mode);
+                // Mirrors the settings form: effort and budget only exist while thinking is on.
+                if(mode!=ThinkingMode.ENABLED) { options.setReasoningEffort(null);options.setThinkingBudget(null); }
                 if(mode==ThinkingMode.ENABLED && profile.optionRules().thinkingBudgetRequired())options.setThinkingBudget(profile.optionRules().minThinkingBudget());
                 model.setDefaultOptions(options);
                 assertDoesNotThrow(()->ProviderCompatibilityPolicy.validate(model,connection),profile.capabilityProfile()+"/"+mode);
@@ -51,5 +53,23 @@ class ModelProfilesTest {
         assertNull(ModelSpecifications.find("qwen-plus","openai-chat-v1"));
         assertNull(ModelSpecifications.find("account-specific-model"));
         assertEquals(32768,ModelTokenPolicy.context("account-specific-model",null));
+    }
+    @Test void deepSeekKeepsThinkingSwitchableAndPublishesOfficialLimits() {
+        var profile=ModelProfiles.defaults(ModelApiStyle.OPENAI_CHAT_COMPLETIONS,"deepseek-chat-v1");
+        assertEquals("deepseek-thinking-tools-v1",profile.capabilityProfile());
+        assertEquals(List.of(ThinkingMode.ENABLED,ThinkingMode.DISABLED),profile.thinkingModes());
+        var rules=profile.optionRules();
+        assertEquals(List.of("low","high","max"),rules.reasoningEfforts());assertEquals("high",rules.defaultReasoningEffort());
+        assertEquals(List.of(ThinkingMode.DISABLED),rules.temperatureModes());assertTrue(rules.preserveThinking());
+        for(var id:List.of("deepseek-flash","deepseek-v4-pro")) {
+            var spec=ModelSpecifications.find(id,"deepseek-chat-v1");
+            assertEquals(1_000_000,spec.contextTokens());assertEquals(393_216,spec.maxThinkingOutputTokens());
+            assertEquals(1_000_000,ModelTokenPolicy.context(id,null));
+        }
+        assertEquals("deepseek-flash",ModelSpecifications.find("deepseek-v4-flash","deepseek-chat-v1").modelId());
+        assertNull(ModelSpecifications.find("deepseek-flash","qwen-chat-v1"));
+        // Compression follows the window: a small model keeps the old cadence, a 1M window is not cut at 24K.
+        assertEquals(22938,ModelTokenPolicy.memoryThreshold(32_768));
+        assertEquals(700_000,ModelTokenPolicy.memoryThreshold(1_000_000));
     }
 }

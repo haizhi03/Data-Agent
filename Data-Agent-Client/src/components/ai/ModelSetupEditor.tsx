@@ -7,7 +7,7 @@ import { ModelSettingRow, modelSettingColumns } from './ModelSettingRow';
 import { ConnectionTestPanel } from './ConnectionTestPanel';
 import { inferProvider, selectProvider, type ProviderPreset } from '../../lib/modelProviderPresets';
 import { changeSetupConnection, profileOptions, setupConnection } from '../../lib/modelSetup';
-import { findModelSpecification, modelOutputCeiling, specificationsForProfile } from '../../lib/modelSpecifications';
+import { AUTO_THRESHOLD_RATIO, findModelSpecification, formatTokenBudget, modelOutputCeiling, specificationsForProfile } from '../../lib/modelSpecifications';
 import type { ConnectionTestInput, ConnectionTestResult, ModelProfile, ModelSetupInput, ModelSpecification, ThinkingMode } from '../../types/modelManagement';
 
 interface Props {
@@ -32,6 +32,8 @@ export function ModelSetupEditor({ value, profiles, hasCredential, credentialSto
   const specification = findModelSpecification(specificationsForProfile(specifications, value.compatibilityProfile), value.modelId);
   const rules = selected?.optionRules;
   const outputCeiling = specification ? modelOutputCeiling(specification, value.defaultOptions.thinkingMode) : 1000000;
+  const contextLimit = value.maxContextTokens ?? specification?.contextTokens ?? null;
+  const autoThreshold = contextLimit ? Math.max(1, Math.min(contextLimit - 1, Math.round(contextLimit * AUTO_THRESHOLD_RATIO))) : null;
   const sourceLink = specification && <a href={specification.sourceUrl} target="_blank" rel="noreferrer" className="underline underline-offset-2 ml-1">
     {tr('setup.spec_source', { date: specification.verifiedAt })}</a>;
   const setThinking = (mode: ThinkingMode) => onChange({ ...value, defaultOptions: {
@@ -42,7 +44,7 @@ export function ModelSetupEditor({ value, profiles, hasCredential, credentialSto
       ? { thinkingBudget: value.defaultOptions.thinkingBudget } : {}),
   } });
   const limits = <>
-      <Field title={tr('context')} hint={specification ? <>{tr('setup.known_context_hint', { context: specification.contextTokens.toLocaleString() })}{sourceLink}</> : tr('setup.context_hint')}>{(id) => <Input id={id} className="h-11 rounded-lg" type="number" min={2} max={specification?.contextTokens ?? 100000000}
+      <Field title={tr('context')} hint={specification ? <>{tr('setup.known_context_hint', { context: formatTokenBudget(specification.contextTokens) })}{sourceLink}</> : tr('setup.context_hint')}>{(id) => <Input id={id} className="h-11 rounded-lg" type="number" min={2} max={specification?.contextTokens ?? 100000000}
         placeholder={tr('setup.context_placeholder')} value={value.maxContextTokens ?? ''}
         onChange={(e) => onChange({ ...value, maxContextTokens: e.target.value ? Number(e.target.value) : null,
           ...(!e.target.value ? { memoryThreshold: null } : {}) })} onBlur={(e) => {
@@ -51,9 +53,12 @@ export function ModelSetupEditor({ value, profiles, hasCredential, credentialSto
         if (limit < 2) return;
         onChange({ ...value, maxContextTokens: limit, memoryThreshold: value.memoryThreshold == null ? null : Math.max(1, Math.min(value.memoryThreshold, limit - 1)) });
       }} />}</Field>
-      <Field title={tr('max_output')} hint={specification ? <>{tr('setup.known_output_hint', { output: outputCeiling.toLocaleString() })}{sourceLink}</> : tr('setup.output_hint')}>{(id) => <Input id={id} className="h-11 rounded-lg" type="number" min={256} max={Math.min(outputCeiling, value.maxContextTokens == null ? outputCeiling : value.maxContextTokens - 1)}
+      <Field title={tr('max_output')} hint={specification ? <>{tr('setup.known_output_hint', { output: formatTokenBudget(outputCeiling) })}{sourceLink}</> : tr('setup.output_hint')}>{(id) => <Input id={id} className="h-11 rounded-lg" type="number" min={256} max={Math.min(outputCeiling, value.maxContextTokens == null ? outputCeiling : value.maxContextTokens - 1)}
         placeholder={tr('setup.output_placeholder')} value={value.defaultOptions.maxOutputTokens ?? ''}
         onChange={(e) => onChange({ ...value, defaultOptions: { ...value.defaultOptions, maxOutputTokens: e.target.value ? Number(e.target.value) : null } })} />}</Field>
+      <Field title={tr('threshold')} hint={autoThreshold ? tr('setup.threshold_hint', { percent: Math.round(AUTO_THRESHOLD_RATIO * 100), value: autoThreshold.toLocaleString() }) : undefined}>{(id) => <Input id={id} type="number" min={1} max={contextLimit == null ? undefined : contextLimit - 1}
+        placeholder={tr('setup.threshold_placeholder')} value={value.memoryThreshold ?? ''}
+        onChange={(e) => onChange({ ...value, memoryThreshold: e.target.value ? Number(e.target.value) : null })} />}</Field>
   </>;
   const advanced = <div className="space-y-7 border-t border-border pt-6">
       <Field title={tr('setup.capability')}>{(id) => <select id={id} className={selectClass} value={value.capabilityProfile} onChange={(e) => {
@@ -63,9 +68,6 @@ export function ModelSetupEditor({ value, profiles, hasCredential, credentialSto
       <Field title={tr('thinking')}>{(id) => <select id={id} className={selectClass} disabled={selected?.thinkingModes.length === 1} value={value.defaultOptions.thinkingMode} onChange={(e) => setThinking(e.target.value as ThinkingMode)}>
         {selected?.thinkingModes.map((mode) => <option key={mode} value={mode}>{tr(`thinking_modes.${mode}`)}</option>)}
       </select>}</Field>
-      <Field title={tr('threshold')}>{(id) => <Input id={id} type="number" min={1} max={value.maxContextTokens == null ? undefined : value.maxContextTokens - 1}
-        placeholder={tr('setup.threshold_placeholder')} value={value.memoryThreshold ?? ''}
-        onChange={(e) => onChange({ ...value, memoryThreshold: e.target.value ? Number(e.target.value) : null })} />}</Field>
       {(rules?.temperatureModes ?? ['DISABLED']).includes(value.defaultOptions.thinkingMode) && <Field title={tr('temperature')}>{(id) => <Input id={id} type="number" step="0.1" min={0} max={rules?.maxTemperature ?? 2}
         value={value.defaultOptions.temperature ?? ''} onChange={(e) => onChange({ ...value, defaultOptions: { ...value.defaultOptions, temperature: e.target.value ? Number(e.target.value) : null } })} />}</Field>}
       {value.defaultOptions.thinkingMode === 'ENABLED' && rules?.minThinkingBudget != null && <Field title={tr('thinking_budget')}>{(id) => <Input id={id} type="number"
