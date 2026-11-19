@@ -7,7 +7,6 @@ import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.nio.file.*;
-import java.nio.file.attribute.PosixFilePermissions;
 import java.security.SecureRandom;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
@@ -46,7 +45,7 @@ final class ModelCredentialKeyStore {
             rejectLink(lockPath);
             try (var channel = FileChannel.open(lockPath,
                     Set.of(StandardOpenOption.CREATE, StandardOpenOption.WRITE, LinkOption.NOFOLLOW_LINKS),
-                    PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")))) {
+                    ModelStorageFiles.attributes(lockPath,false))) {
                 ownerOnly(lockPath, false);
                 try (var ignored = acquire(channel)) {
                     Path key = directory.resolve(version + ".key");
@@ -92,7 +91,7 @@ final class ModelCredentialKeyStore {
 
     private static void secureDirectory(Path path, boolean create) throws IOException {
         rejectLink(path);
-        if (create) Files.createDirectories(path, PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")));
+        if (create) ModelStorageFiles.createDirectories(path);
         if (!Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS)) throw ModelManagementException.unavailable();
         ownerOnly(path, true);
     }
@@ -118,8 +117,7 @@ final class ModelCredentialKeyStore {
     }
 
     private static void save(Path target, byte[] key) throws IOException {
-        Path temporary = Files.createTempFile(target.getParent(), ".credential-key-", ".tmp",
-                PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")));
+        Path temporary = ModelStorageFiles.temporary(target.getParent(), ".credential-key-");
         byte[] encoded = Base64.getEncoder().encode(key);
         try {
             try (var output = FileChannel.open(temporary, StandardOpenOption.WRITE, LinkOption.NOFOLLOW_LINKS)) {
@@ -133,7 +131,7 @@ final class ModelCredentialKeyStore {
     }
 
     private static void markInitialized(Path marker) throws IOException {
-        try { Files.createFile(marker, PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------"))); }
+        try { Files.createFile(marker, ModelStorageFiles.attributes(marker,false)); }
         catch (FileAlreadyExistsException e) {
             if (!Files.isRegularFile(marker, LinkOption.NOFOLLOW_LINKS)) throw e;
         }
@@ -187,7 +185,7 @@ final class ModelCredentialKeyStore {
         catch (IOException | UnsupportedOperationException ignored) { }
     }
     private static void ownerOnly(Path path, boolean directory) throws IOException {
-        Files.setPosixFilePermissions(path, PosixFilePermissions.fromString(directory ? "rwx------" : "rw-------"));
+        ModelStorageFiles.ownerOnly(path,directory);
     }
     private static void rejectLink(Path path) {
         if (Files.isSymbolicLink(path)) throw ModelManagementException.unavailable();

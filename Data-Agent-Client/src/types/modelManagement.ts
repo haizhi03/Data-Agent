@@ -28,10 +28,17 @@ export interface ManagedModel {
 }
 export interface PurposeBinding { purpose: ModelPurpose; modelConfigId: string | null; version: number; thinkingMode?: ThinkingMode | null; thinkingModes?: ThinkingMode[] }
 export interface PresetBindingInput { expectedVersion: number; connectionId: string; connectionExpectedVersion: number; modelId: string; thinkingMode?: ThinkingMode }
-export interface ModelProfile { apiStyle: ApiStyle; compatibilityProfile: string; capabilityProfile: string; thinkingModes: ThinkingMode[]; resource: string }
+export interface ModelOptionRules {
+  reasoningEfforts: string[]; defaultReasoningEffort: string | null;
+  minThinkingBudget: number | null; thinkingBudgetRequired: boolean;
+  temperatureModes: ThinkingMode[]; maxTemperature: number; preserveThinking: boolean;
+  defaultMaxOutputTokens: number | null; testMaxOutputTokens: number; minimumThinkingOutputTokens: number;
+}
+export interface ModelProfile { apiStyle: ApiStyle; compatibilityProfile: string; capabilityProfile: string; thinkingModes: ThinkingMode[]; resource: string; optionRules?: ModelOptionRules }
 export interface ModelSpecification {
   modelId: string; aliases: string[]; contextTokens: number; maxOutputTokens: number; maxThinkingOutputTokens: number;
   sourceUrl: string; verifiedAt: string;
+  compatibilityProfile?: string; capabilityProfile?: string;
 }
 export type ConnectionInput = Omit<ModelConnection, 'id' | 'version' | 'credentialVersion' | 'credentialKind' | 'authType' | 'hasCredential' | 'requestUrl'> & { expectedVersion?: number; apiKey?: string };
 export type ModelInput = Omit<ManagedModel, 'id' | 'version' | 'available' | 'tokenLimits' | 'taskPreset'> & { expectedVersion?: number };

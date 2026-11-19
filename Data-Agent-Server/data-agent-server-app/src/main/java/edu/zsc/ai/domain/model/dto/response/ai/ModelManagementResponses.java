@@ -25,7 +25,7 @@ public final class ModelManagementResponses {
         public Binding(ModelPurpose purpose,String modelConfigId,long version){this(purpose,modelConfigId,version,null,List.of());}
     }
     public record Profile(ModelApiStyle apiStyle, String compatibilityProfile, String capabilityProfile,
-                          List<MultiProviderProperties.ThinkingMode> thinkingModes, String resource) {}
+                          List<MultiProviderProperties.ThinkingMode> thinkingModes, String resource, ModelOptionRules optionRules) {}
     public record Test(String id, String modelConfigId, long configVersion, long connectionVersion, long credentialVersion,
                        String capabilityProfile, String compatibilityProfile, String sdkVersion, String requestedLevel,
                        String status, String result, String createdAt, String finishedAt, boolean current) {}

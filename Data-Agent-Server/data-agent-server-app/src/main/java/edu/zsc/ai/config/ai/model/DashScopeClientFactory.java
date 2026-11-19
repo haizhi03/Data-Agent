@@ -12,6 +12,9 @@ public class DashScopeClientFactory implements ModelClientFactory {
     private final CredentialService credentials;
     public boolean supports(ModelApiStyle style) { return style == ModelApiStyle.DASHSCOPE_CHAT; }
     public ModelClientBundle create(ResolvedModelConfig config) {
+        return create(config, credentials);
+    }
+    @Override public ModelClientBundle create(ResolvedModelConfig config, CredentialService credentials) {
         // The locked native SDK does not expose per-client DNS/HTTP transport controls.
         // Only its fixed official endpoint is accepted in M1; custom deployments use the compatible factory.
         if (!"https://dashscope.aliyuncs.com/api/v1/".equals(config.endpoint().toString())) throw ModelIntegrationException.capability();

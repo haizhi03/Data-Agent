@@ -18,7 +18,7 @@ public class ModelManagementController {
     private final ModelConnectionTestService connectionTests;
     @GetMapping("/model-management") public ApiResponse<Status> status(){return ApiResponse.success(service.status());}
     @GetMapping("/model-profiles") public ApiResponse<List<Profile>> profiles(){service.scope(false);return ApiResponse.success(ModelProfiles.all());}
-    @GetMapping("/model-specifications") public ApiResponse<List<edu.zsc.ai.config.ai.model.QwenModelSpecifications.Specification>> specifications(){service.scope(false);return ApiResponse.success(edu.zsc.ai.config.ai.model.QwenModelSpecifications.all());}
+    @GetMapping("/model-specifications") public ApiResponse<List<edu.zsc.ai.config.ai.model.ModelSpecifications.Specification>> specifications(){service.scope(false);return ApiResponse.success(edu.zsc.ai.config.ai.model.ModelSpecifications.all());}
     @GetMapping("/model-connections") public ApiResponse<List<Connection>> connections(){return ApiResponse.success(service.connections());}
     @GetMapping("/model-connections/{id}") public ApiResponse<Connection> connection(@PathVariable String id){return ApiResponse.success(service.connection(id));}
     @PostMapping("/model-connections") public ApiResponse<Connection> createConnection(@RequestBody ModelManagementRequests.Connection input){return ApiResponse.success(service.createConnection(input));}

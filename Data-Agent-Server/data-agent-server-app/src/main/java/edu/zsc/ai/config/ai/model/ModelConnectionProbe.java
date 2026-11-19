@@ -7,10 +7,15 @@ import dev.langchain4j.model.output.FinishReason;
 import java.util.function.Function;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Autowired;
+import java.util.List;
 
 /** One text request through the production adapters. Draft credentials and clients are never cached. */
 @Component
 public class ModelConnectionProbe {
+    private final List<ModelClientFactory> factories;
+    @Autowired public ModelConnectionProbe(List<ModelClientFactory> factories) { this.factories = List.copyOf(factories); }
+    protected ModelConnectionProbe() { this(List.of()); }
     public void test(ResolvedModelConfig config, String apiKey) {
         // This credential provider is local to this invocation and can only serve its exact snapshot.
         var ephemeral = new CredentialService(null, null) {
@@ -29,14 +34,7 @@ public class ModelConnectionProbe {
     }
     /** Transport seam for local TLS fixtures; production always selects the same adapters as normal calls. */
     protected ModelClientBundle createClients(ResolvedModelConfig config, CredentialService ephemeral) {
-        ModelClientFactory factory = switch (config.apiStyle()) {
-            case OPENAI_CHAT_COMPLETIONS -> new OpenAiChatClientFactory(ephemeral);
-            case OPENAI_RESPONSES -> new ResponsesClientFactory(ephemeral);
-            case ANTHROPIC_MESSAGES -> new AnthropicMessagesClientFactory(ephemeral);
-            case DASHSCOPE_CHAT -> new DashScopeClientFactory(ephemeral);
-            default -> throw ModelIntegrationException.capability();
-        };
-        return factory.create(config);
+        return ModelClientFactory.select(factories, config.apiStyle()).create(config, ephemeral);
     }
     private static ModelIntegrationException protocolError() {
         return new ModelIntegrationException("MODEL_PROTOCOL_ERROR", HttpStatus.BAD_GATEWAY);

@@ -1301,6 +1301,9 @@
       "name_placeholder": "e.g. Work Qwen; defaults to the model ID",
       "model_id": "Default model",
       "model_placeholder": "e.g. qwen3.8-max",
+      "candidate_model_placeholder": "Choose a model or enter another model ID",
+      "candidate_models": "Model presets",
+      "candidate_presets_hint": "Preset suggestions; other IDs are welcome. Test the connection to check availability.",
       "qwen_model_placeholder": "Choose a Qwen model or enter another model ID",
       "qwen_models": "Qwen model presets",
       "choose_models": "Show model list",
@@ -1345,7 +1348,7 @@
       "set_default": "Set as default",
       "make_default": "Also use as the default for chat and other AI tasks",
       "task_defaults": "Choose models by task (advanced)",
-      "defaults_hint": "Qwen connections offer four preset models using the same URL and API key. Each selection updates only its task; Set as default applies one model to all tasks.",
+      "defaults_hint": "Preset models share their connection’s URL and API key. Each selection updates only its task; Set as default applies one model to all tasks.",
       "incomplete": "Add a model ID to finish this configuration.",
       "complete": "Complete configuration",
       "more": "More checks"

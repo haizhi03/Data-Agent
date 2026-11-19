@@ -2,18 +2,18 @@ import { useRef, useState, type KeyboardEvent } from 'react';
 import { Check, ChevronDown } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Input } from '../ui/Input';
-import { filterQwenModels } from '../../lib/qwenModelPresets';
+import { filterModelCandidates } from '../../lib/modelSpecifications';
 import type { ModelSpecification } from '../../types/modelManagement';
 
 /** Editable combobox: choosing a candidate and entering a custom ID share the same field. */
-export function QwenModelInput({ id, value, onChange, specifications = [] }: { id: string; value: string; onChange: (value: string) => void; specifications?: ModelSpecification[] }) {
+export function ModelIdInput({ id, value, onChange, specifications = [], candidates }: { id: string; value: string; onChange: (value: string) => void; specifications?: ModelSpecification[]; candidates: readonly string[] }) {
   const { t } = useTranslation();
   const tr = (key: string, values?: Record<string, string | number>) => t(`model_settings.setup.${key}`, values);
   const input = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
   const [query, setQuery] = useState('');
-  const models = filterQwenModels(query, specifications.length ? specifications.map((s) => s.modelId) : undefined);
+  const models = filterModelCandidates(query, candidates);
   const listId = `${id}-suggestions`;
 
   const close = () => { setOpen(false);setActive(-1);setQuery(''); };
@@ -36,7 +36,7 @@ export function QwenModelInput({ id, value, onChange, specifications = [] }: { i
     if (!event.currentTarget.contains(event.relatedTarget as Node | null)) close();
   }}>
     <Input ref={input} id={id} className="h-11 rounded-lg pr-12" required maxLength={256} value={value} autoComplete="off" spellCheck={false}
-      placeholder={tr('qwen_model_placeholder')} role="combobox" aria-autocomplete="list" aria-expanded={open} aria-controls={listId}
+      placeholder={tr('candidate_model_placeholder')} role="combobox" aria-autocomplete="list" aria-expanded={open} aria-controls={listId}
       aria-activedescendant={open && active >= 0 && models[active] ? `${listId}-${active}` : undefined}
       onFocus={() => { setQuery('');setActive(-1);setOpen(true); }} onClick={() => setOpen(true)} onKeyDown={onKeyDown}
       onChange={(event) => { onChange(event.target.value);setQuery(event.target.value);setOpen(true);setActive(-1); }} />
@@ -46,7 +46,7 @@ export function QwenModelInput({ id, value, onChange, specifications = [] }: { i
       <ChevronDown size={17} className={open ? 'rotate-180 transition-transform' : 'transition-transform'} />
     </button>
     <div hidden={!open} className="absolute z-30 mt-1 w-full rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-lg">
-      <div role="listbox" id={listId} aria-label={tr('qwen_models')} className="max-h-60 overflow-y-auto">
+      <div role="listbox" id={listId} aria-label={tr('candidate_models')} className="max-h-60 overflow-y-auto">
         {models.map((model, index) => {
           const specification = specifications.find((s) => s.modelId === model);
           return <button key={model} type="button" tabIndex={-1} role="option" id={`${listId}-${index}`}
@@ -60,7 +60,7 @@ export function QwenModelInput({ id, value, onChange, specifications = [] }: { i
         })}
       </div>
       {!models.length && <p className="px-3 py-3 text-sm text-muted-foreground">{tr('custom_model_hint')}</p>}
-      <p className="border-t border-border px-3 py-2 text-xs text-muted-foreground">{tr('qwen_presets_hint')}</p>
+      <p className="border-t border-border px-3 py-2 text-xs text-muted-foreground">{tr('candidate_presets_hint')}</p>
     </div>
   </div>;
 }

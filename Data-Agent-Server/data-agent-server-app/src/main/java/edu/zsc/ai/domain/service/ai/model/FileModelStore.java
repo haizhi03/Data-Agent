@@ -5,7 +5,6 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.*;
 import java.nio.file.*;
-import java.nio.file.attribute.PosixFilePermissions;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.*;
@@ -46,7 +45,7 @@ public class FileModelStore {
             mutex=MUTEXES[(lock.hashCode() & Integer.MAX_VALUE)%MUTEXES.length];
             if(!(held=mutex.tryLock(5,TimeUnit.SECONDS))) throw ModelManagementException.unavailable();
             rejectLink(lock); rejectLink(target);
-            try(FileChannel channel=FileChannel.open(lock,Set.of(StandardOpenOption.CREATE,StandardOpenOption.WRITE,LinkOption.NOFOLLOW_LINKS),PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")))) {
+            try(FileChannel channel=FileChannel.open(lock,Set.of(StandardOpenOption.CREATE,StandardOpenOption.WRITE,LinkOption.NOFOLLOW_LINKS),ModelStorageFiles.attributes(lock,false))) {
                 ownerOnly(lock,false);
                 try(FileLock ignored=acquire(channel)) {
                     var state=load(target,scope); String before=write?ModelManagementJson.write(state):null;
@@ -81,11 +80,11 @@ public class FileModelStore {
         if(configured==null || configured.isBlank())throw ModelManagementException.unavailable();
         Path root=Path.of(configured).normalize();
         if(!root.isAbsolute() || root.getParent()==null)throw ModelManagementException.unavailable();
-        rejectLink(root); Files.createDirectories(root,PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")));
+        rejectLink(root); ModelStorageFiles.createDirectories(root);
         root=root.toRealPath(); ownerOnly(root,true);
         for(String part:List.of(scope.workspaceType().name(),Long.toString(scope.ownerId()))) {
             root=root.resolve(part);rejectLink(root);
-            try { Files.createDirectory(root,PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------"))); }
+            try { ModelStorageFiles.createDirectory(root); }
             catch(FileAlreadyExistsException e) { if(!Files.isDirectory(root,LinkOption.NOFOLLOW_LINKS))throw e; }
             ownerOnly(root,true);
         }
@@ -110,7 +109,7 @@ public class FileModelStore {
         var state=ModelManagementJson.read(json,FileModelState.class); validate(state,scope);return state;
     }
     private void save(Path target,byte[] bytes) throws IOException {
-        Path temporary=Files.createTempFile(target.getParent(),".models-",".tmp",PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")));
+        Path temporary=ModelStorageFiles.temporary(target.getParent(),".models-");
         try {
             try(var output=FileChannel.open(temporary,StandardOpenOption.WRITE,LinkOption.NOFOLLOW_LINKS)) {
                 var buffer=ByteBuffer.wrap(bytes);while(buffer.hasRemaining())output.write(buffer);output.force(true);
@@ -123,7 +122,7 @@ public class FileModelStore {
     }
     /** Separate seam for fault-injection tests; production never falls back to a non-atomic write. */
     protected void replace(Path temporary,Path target) throws IOException { Files.move(temporary,target,StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING); }
-    private static void ownerOnly(Path path,boolean directory) throws IOException { Files.setPosixFilePermissions(path,PosixFilePermissions.fromString(directory?"rwx------":"rw-------")); }
+    private static void ownerOnly(Path path,boolean directory) throws IOException { ModelStorageFiles.ownerOnly(path,directory); }
     private static void rejectLink(Path path) throws IOException { if(Files.isSymbolicLink(path))throw new IOException("Invalid model storage path"); }
     private static void validate(FileModelState s,ModelAccessContext a) {
         try {
@@ -154,7 +153,7 @@ public class FileModelStore {
                 if(m.tokenLimits()!=null) {
                     var limits=m.tokenLimits();
                     if(limits.maxContextTokens()!=null && ModelTokenPolicy.context(m.modelId(),limits.maxContextTokens())!=m.maxContextTokens())throw new IllegalArgumentException();
-                    if(!Objects.equals(m.options().maxOutputTokens(),ModelTokenPolicy.output(limits.maxOutputTokens(),m.maxContextTokens(),m.options().thinkingMode(),m.options().thinkingBudget(),ModelPurpose.MAIN_CHAT)))throw new IllegalArgumentException();
+                    if(!Objects.equals(m.options().maxOutputTokens(),ModelTokenPolicy.effectiveOutput(source.compatibilityProfile(),limits.maxOutputTokens(),m.maxContextTokens(),m.options().thinkingMode(),m.options().thinkingBudget(),ModelPurpose.MAIN_CHAT)))throw new IllegalArgumentException();
                 }
                 if(!Objects.equals(m.options().maxOutputTokens(),ProviderCompatibilityPolicy.effectiveOutputLimit(definition,connection))
                         || !Objects.equals(m.options().reasoningEffort(),ProviderCompatibilityPolicy.effectiveReasoningEffort(definition,connection)))throw new IllegalArgumentException();

@@ -121,12 +121,11 @@ public class ModelManagementService {
             s.connections.put(c.id(),c);
 
             String capability=input.capabilityProfile();
-            if(capability==null || capability.isBlank())capability=ModelProfiles.all().stream()
-                    .filter(p->p.apiStyle()==c.apiStyle() && p.compatibilityProfile().equals(c.compatibilityProfile())
-                            && p.thinkingModes().contains(MultiProviderProperties.ThinkingMode.DISABLED))
-                    .findFirst().orElseThrow(ModelManagementException::invalid).capabilityProfile();
+            if(capability==null || capability.isBlank())capability=ModelProfiles.defaults(c.apiStyle(),c.compatibilityProfile()).capabilityProfile();
+            var profile=ModelProfiles.find(c.apiStyle(),c.compatibilityProfile(),capability);
+            if(profile==null)throw ModelManagementException.invalid();
             int context;
-            var source=input.defaultOptions()==null?new MultiProviderProperties.Options():input.defaultOptions();
+            var source=input.defaultOptions()==null?ModelProfiles.defaultOptions(profile):input.defaultOptions();
             var limits=new ConfiguredTokenLimits(input.maxContextTokens(),source.getMaxOutputTokens());
             var options=new MultiProviderProperties.Options();
             options.setThinkingMode(source.getThinkingMode());options.setThinkingBudget(source.getThinkingBudget());
@@ -205,9 +204,9 @@ public class ModelManagementService {
             version(input.expectedVersion(),true);var previous=s.bindings.get(purpose);
             if(input.expectedVersion()!=(previous==null?0:previous.version()))throw ModelManagementException.conflict();
             var c=connection(s,input.connectionId());expected(input.connectionExpectedVersion(),c.version());
-            if(!c.enabled() || !s.credentials.containsKey(c.credentialId()) || !"qwen-chat-v1".equals(c.compatibilityProfile())
+            if(!c.enabled() || !s.credentials.containsKey(c.credentialId()) || ModelSpecifications.all(c.compatibilityProfile()).isEmpty()
                     || s.models.values().stream().noneMatch(m->!m.taskPreset() && m.enabled() && m.connectionId().equals(c.id())))throw ModelManagementException.invalid();
-            var spec=QwenModelSpecifications.all().stream().filter(candidate->candidate.modelId().equals(input.modelId())).findFirst().orElseThrow(ModelManagementException::invalid);
+            var spec=ModelSpecifications.all(c.compatibilityProfile()).stream().filter(candidate->candidate.modelId().equals(input.modelId())).findFirst().orElseThrow(ModelManagementException::invalid);
             var selected=s.models.values().stream().filter(m->m.connectionId().equals(c.id()) && m.modelId().equals(spec.modelId()) && m.enabled()
                     && (purpose!=ModelPurpose.MAIN_CHAT || m.chatVisible()))
                     .sorted(Comparator.comparing(FileModelState.Model::taskPreset)).findFirst().orElse(null);
@@ -215,8 +214,9 @@ public class ModelManagementService {
                 var reusable=s.models.values().stream().filter(m->m.taskPreset() && m.connectionId().equals(c.id()) && m.modelId().equals(spec.modelId())).findFirst().orElse(null);
                 if(reusable!=null && reusable.version()==Long.MAX_VALUE)throw ModelManagementException.unavailable();
                 String id=reusable==null?ModelResourceId.create('m',scope):reusable.id();
-                var options=new MultiProviderProperties.Options();options.setMaxOutputTokens(ModelTokenPolicy.output(spec.modelId(),c.compatibilityProfile(),null,spec.contextTokens(),options.getThinkingMode(),null,ModelPurpose.MAIN_CHAT));
-                var modelInput=new ModelManagementRequests.Model(null,reusable==null?"model-"+UUID.randomUUID():reusable.code(),c.id(),spec.modelId(),spec.modelId(),"qwen-tools-v1",options,
+                var options=ModelProfiles.defaultOptions(ModelProfiles.find(c.apiStyle(),c.compatibilityProfile(),spec.capabilityProfile()));
+                options.setMaxOutputTokens(ModelTokenPolicy.output(spec.modelId(),c.compatibilityProfile(),null,spec.contextTokens(),options.getThinkingMode(),options.getThinkingBudget(),ModelPurpose.MAIN_CHAT));
+                var modelInput=new ModelManagementRequests.Model(null,reusable==null?"model-"+UUID.randomUUID():reusable.code(),c.id(),spec.modelId(),spec.modelId(),spec.capabilityProfile(),options,
                         spec.contextTokens(),Math.min(24000,spec.contextTokens()-1),purpose==ModelPurpose.MAIN_CHAT || reusable!=null && reusable.chatVisible(),true);
                 selected=modelData(id,reusable==null?1:reusable.version()+1,modelInput,validate(modelInput,connectionResponse(s,c)))
                         .withTokenLimits(new ConfiguredTokenLimits(null,null)).withTaskPreset(true);
@@ -267,7 +267,7 @@ public class ModelManagementService {
         var o=new MultiProviderProperties.Options();o.setThinkingMode(m.options().thinkingMode());o.setThinkingBudget(m.options().thinkingBudget());o.setTemperature(m.options().temperature());o.setMaxOutputTokens(m.options().maxOutputTokens());o.setReasoningEffort(m.options().reasoningEffort());
         if(m.tokenLimits()!=null)o.setMaxOutputTokens(m.tokenLimits().maxOutputTokens());
         int context=m.tokenLimits()!=null && m.tokenLimits().maxContextTokens()==null?ModelTokenPolicy.context(m.modelId(),null):m.maxContextTokens();
-        var specification=QwenModelSpecifications.find(m.modelId(),s.connections.get(m.connectionId()).compatibilityProfile());
+        var specification=ModelSpecifications.find(m.modelId(),s.connections.get(m.connectionId()).compatibilityProfile());
         if(specification!=null)context=Math.min(context,specification.contextTokens());
         return new Model(m.id(),m.code(),m.connectionId(),m.name(),m.modelId(),m.capabilityProfile(),o,context,Math.min(m.memoryThreshold(),context-1),m.chatVisible(),m.version(),m.enabled(),available(s,m,s.connections.get(m.connectionId())),m.tokenLimits(),m.taskPreset());
     }
@@ -288,7 +288,7 @@ public class ModelManagementService {
         var m=new MultiProviderProperties.Model(); m.setCapabilityProfile(model.capabilityProfile()); m.setDefaultOptions(model.defaultOptions()); m.setMaxContextTokens(model.maxContextTokens());
         var c=new MultiProviderProperties.Connection(); c.setApiStyle(style); c.setCompatibilityProfile(compatibility); c.setEndpoint(endpoint);
         try { ProviderCompatibilityPolicy.validate(m,c); } catch(RuntimeException e) { throw ModelManagementException.invalid(); }
-        var specification=QwenModelSpecifications.find(model.modelId(),compatibility);
+        var specification=ModelSpecifications.find(model.modelId(),compatibility);
         if(specification!=null && (model.maxContextTokens()>specification.contextTokens()
                 || (model.defaultOptions().getMaxOutputTokens()!=null && model.defaultOptions().getMaxOutputTokens()>specification.outputLimit(model.defaultOptions().getThinkingMode()))))
             throw new ModelManagementException("MODEL_TOKEN_LIMITS_INVALID",org.springframework.http.HttpStatus.BAD_REQUEST);
