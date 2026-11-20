@@ -51,6 +51,8 @@ import {
   CARD_WIDTH,
   ER_MAX_ZOOM,
   ER_MIN_ZOOM,
+  minZoomForCanvas,
+  panExtentForDiagram,
   cardHeight,
   clearStoredLayout,
   shiftCardsForResize,
@@ -191,6 +193,7 @@ function ErDiagramCanvas({ metadata }: ErDiagramTabProps) {
   const catalogGeneration = useRef(0);
   const catalogRequestStarted = useRef(false);
   const framedToken = useRef(-1);
+  const layoutCause = useRef({ collapse: collapseJunctionTables, diagram });
   const [layoutVersion, setLayoutVersion] = useState(0);
   const [frameReady, setFrameReady] = useState(false);
   const storageKey = layoutStorageKey(metadata.connectionId, metadata.catalog, metadata.schema);
@@ -378,14 +381,17 @@ function ErDiagramCanvas({ metadata }: ErDiagramTabProps) {
   }, [exporting, getNodes, layouting, setNodes, storageKey]);
 
   useEffect(() => {
+    const previous = layoutCause.current;
+    const onlyFolding = previous.diagram === diagram && previous.collapse !== collapseJunctionTables;
+    layoutCause.current = { collapse: collapseJunctionTables, diagram };
     if (!shown || shown.tables.length === 0) {
       requestId.current += 1;
       setNodes([]);
       setLayouting(false);
       return;
     }
-    void placeNodes(shown, true);
-  }, [placeNodes, setNodes, shown]);
+    void placeNodes(shown, true, undefined, false, !onlyFolding);
+  }, [collapseJunctionTables, diagram, placeNodes, setNodes, shown]);
 
   const linkedColumns = useMemo(() => {
     const linked = new Set<string>();
@@ -725,6 +731,35 @@ function ErDiagramCanvas({ metadata }: ErDiagramTabProps) {
   const limitNotice = erDiagramLimitNotice(tableChoice, diagram?.truncated === true);
   const showTablePicker = showErDiagramTablePicker(diagram?.tableCount);
   const showCanvas = !error && !!shown && shown.tables.length > 0;
+  const [paneSize, setPaneSize] = useState({ width: 0, height: 0 });
+  useLayoutEffect(() => {
+    const pane = flowRef.current;
+    if (!pane) return;
+    const publish = () => {
+      const width = pane.clientWidth;
+      const height = pane.clientHeight;
+      setPaneSize((current) => (current.width === width && current.height === height ? current : { width, height }));
+    };
+    publish();
+    const observer = new ResizeObserver(publish);
+    observer.observe(pane);
+    return () => observer.disconnect();
+  }, [showCanvas]);
+  const canvasBounds = useMemo(() => {
+    if (nodes.length === 0) return null;
+    return layoutBounds(nodes.map((node) => ({
+      x: node.position.x,
+      y: node.position.y,
+      width: node.measured?.width || node.width || CARD_WIDTH,
+      height: node.measured?.height || node.height || cardHeight(node.data.table.columns.length, node.data.expanded),
+    })));
+  }, [nodes]);
+  const translateExtent = useMemo(() => (
+    canvasBounds ? panExtentForDiagram(canvasBounds, paneSize.width, paneSize.height) ?? undefined : undefined
+  ), [canvasBounds, paneSize.height, paneSize.width]);
+  const minZoom = translateExtent
+    ? minZoomForCanvas(translateExtent, paneSize.width, paneSize.height)
+    : ER_MIN_ZOOM;
 
   return (
     <ErDiagramInteractionContext.Provider value={interaction}>
@@ -732,86 +767,89 @@ function ErDiagramCanvas({ metadata }: ErDiagramTabProps) {
         <div className="flex h-full min-h-0 flex-col">
           <div className="shrink-0 border-b theme-border text-xs theme-text-secondary">
             <div className="flex min-h-10 flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">
-              <span className="theme-text-primary font-medium">{t(I18N_KEYS.EXPLORER.ER_DIAGRAM)}</span>
-              <span>{metadata.databaseName || metadata.schemaName || metadata.connectionName}</span>
-              {shown && (
-                <span>
-                  {t(I18N_KEYS.EXPLORER.ER_DIAGRAM_SUMMARY, {
-                    tables: shown.tables.length,
-                    relations: shown.relations.length,
-                  })}
-                </span>
-              )}
-              {limitNotice === 'truncated' && (
-                <span>{t(I18N_KEYS.EXPLORER.ER_DIAGRAM_TRUNCATED, { count: localTableCount })}</span>
-              )}
-              {limitNotice === 'selected' && (
-                <span>{t(I18N_KEYS.EXPLORER.ER_DIAGRAM_SELECT_TABLES_STATUS, { count: localTableCount })}</span>
-              )}
-              {showTablePicker && (
-                <button
-                  type="button"
-                  className="rounded border theme-border px-2 py-0.5 theme-text-primary disabled:opacity-40"
-                  disabled={loading}
-                  onClick={openTablePicker}
-                >
-                  {t(I18N_KEYS.EXPLORER.ER_DIAGRAM_SELECT_TABLES)}
-                </button>
-              )}
-              {diagram?.externalTruncated && (
-                <span>{t(I18N_KEYS.EXPLORER.ER_DIAGRAM_EXTERNAL_TRUNCATED, {
-                  count: diagram.tables.filter((table) => table.external).length,
-                })}</span>
-              )}
-              {junctionTables.size > 0 && (
-                <label className="inline-flex items-center gap-1">
-                  <input
-                    type="checkbox"
-                    className="accent-violet-600"
-                    checked={collapseJunctionTables}
-                    onChange={(event) => setCollapseJunctionTables(event.target.checked)}
-                  />
-                  {t(I18N_KEYS.EXPLORER.ER_DIAGRAM_COLLAPSE_JUNCTIONS)}
-                </label>
-              )}
-              {diagram && diagram.tables.length > 0 && (
-                <>
-                  <input
-                    type="search"
-                    value={tableNameFilter}
-                    onChange={(event) => setTableNameFilter(event.target.value)}
-                    placeholder={t(I18N_KEYS.EXPLORER.ER_DIAGRAM_FILTER)}
-                    aria-label={t(I18N_KEYS.EXPLORER.ER_DIAGRAM_FILTER)}
-                    className="h-6 w-52 rounded border theme-border bg-transparent px-2 text-[11px] theme-text-primary outline-none"
-                  />
+              <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+                <span className="font-medium theme-text-primary">{t(I18N_KEYS.EXPLORER.ER_DIAGRAM)}</span>
+                <span>{metadata.databaseName || metadata.schemaName || metadata.connectionName}</span>
+                {shown && (
+                  <span>
+                    {t(I18N_KEYS.EXPLORER.ER_DIAGRAM_SUMMARY, {
+                      tables: shown.tables.length,
+                      relations: shown.relations.length,
+                    })}
+                  </span>
+                )}
+                {limitNotice === 'truncated' && (
+                  <span>{t(I18N_KEYS.EXPLORER.ER_DIAGRAM_TRUNCATED, { count: localTableCount })}</span>
+                )}
+                {limitNotice === 'selected' && (
+                  <span>{t(I18N_KEYS.EXPLORER.ER_DIAGRAM_SELECT_TABLES_STATUS, { count: localTableCount })}</span>
+                )}
+                {diagram?.externalTruncated && (
+                  <span>{t(I18N_KEYS.EXPLORER.ER_DIAGRAM_EXTERNAL_TRUNCATED, {
+                    count: diagram.tables.filter((table) => table.external).length,
+                  })}</span>
+                )}
+              </div>
+              <div className="ml-auto flex flex-wrap items-center gap-x-2 gap-y-1">
+                {diagram && diagram.tables.length > 0 && (
+                  <div className="flex h-6 items-center rounded border theme-border">
+                    <input
+                      type="search"
+                      value={tableNameFilter}
+                      onChange={(event) => setTableNameFilter(event.target.value)}
+                      placeholder={t(I18N_KEYS.EXPLORER.ER_DIAGRAM_FILTER)}
+                      aria-label={t(I18N_KEYS.EXPLORER.ER_DIAGRAM_FILTER)}
+                      className="h-full w-44 bg-transparent px-2 text-[11px] theme-text-primary outline-none"
+                    />
+                    <label
+                      className="inline-flex h-full shrink-0 items-center gap-1 border-l theme-border px-1.5"
+                      title={t(I18N_KEYS.EXPLORER.ER_DIAGRAM_FILTER_EXACT)}
+                    >
+                      <input
+                        type="checkbox"
+                        className="accent-violet-600"
+                        checked={exactTableFilter}
+                        aria-label={t(I18N_KEYS.EXPLORER.ER_DIAGRAM_FILTER_EXACT)}
+                        onChange={(event) => setExactTableFilter(event.target.checked)}
+                      />
+                      {t(I18N_KEYS.EXPLORER.ER_DIAGRAM_FILTER_EXACT_SHORT)}
+                    </label>
+                  </div>
+                )}
+                {showTablePicker && (
+                  <button
+                    type="button"
+                    className="rounded border theme-border px-2 py-0.5 theme-text-primary disabled:opacity-40"
+                    disabled={loading}
+                    onClick={openTablePicker}
+                  >
+                    {t(I18N_KEYS.EXPLORER.ER_DIAGRAM_SELECT_TABLES)}
+                  </button>
+                )}
+                {junctionTables.size > 0 && (
                   <label className="inline-flex items-center gap-1">
                     <input
                       type="checkbox"
                       className="accent-violet-600"
-                      checked={exactTableFilter}
-                      onChange={(event) => setExactTableFilter(event.target.checked)}
+                      checked={collapseJunctionTables}
+                      onChange={(event) => setCollapseJunctionTables(event.target.checked)}
                     />
-                    {t(I18N_KEYS.EXPLORER.ER_DIAGRAM_FILTER_EXACT)}
+                    {t(I18N_KEYS.EXPLORER.ER_DIAGRAM_COLLAPSE_JUNCTIONS)}
                   </label>
-                </>
-              )}
-              {showCanvas && (
-                <button
-                  type="button"
-                  aria-pressed={showAllLines}
-                  className={`rounded border px-2 py-0.5 disabled:opacity-40 ${showAllLines ? 'border-rose-500 text-rose-600' : 'theme-border theme-text-primary'}`}
-                  disabled={!shown || shown.relations.length === 0}
-                  onClick={() => setShowAllLines((current) => !current)}
-                >
-                  {t(I18N_KEYS.EXPLORER.ER_DIAGRAM_SHOW_ALL_LINES)}
-                </button>
-              )}
-              {showCanvas && (
-                <button type="button" className="rounded border theme-border px-2 py-0.5 theme-text-primary" onClick={fitToWindow}>
-                  {t(I18N_KEYS.EXPLORER.ER_DIAGRAM_FIT)}
-                </button>
-              )}
-              {showCanvas && (
+                )}
+                {showCanvas && (
+                  <button
+                    type="button"
+                    aria-pressed={showAllLines}
+                    className={`rounded border px-2 py-0.5 disabled:opacity-40 ${showAllLines ? 'border-rose-500 text-rose-600' : 'theme-border theme-text-primary'}`}
+                    disabled={!shown || shown.relations.length === 0}
+                    onClick={() => setShowAllLines((current) => !current)}
+                  >
+                    {t(I18N_KEYS.EXPLORER.ER_DIAGRAM_SHOW_ALL_LINES)}
+                  </button>
+                )}
+                {showCanvas && <span className="mx-0.5 h-4 shrink-0 border-l theme-border" aria-hidden="true" />}
+                {showCanvas && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <button
@@ -855,18 +893,19 @@ function ErDiagramCanvas({ metadata }: ErDiagramTabProps) {
                   {t(I18N_KEYS.EXPLORER.ER_DIAGRAM_RESET_LAYOUT)}
                 </button>
               )}
+              </div>
+            </div>
+            <div className="flex h-7 min-w-0 items-center overflow-hidden border-t theme-border px-3">
               {showCanvas && (
-                <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1 border-l theme-border pl-3">
+                <span className="mr-3 inline-flex shrink-0 items-center gap-x-3 border-r theme-border pr-3">
                   <LegendSample mark="one" label={t(I18N_KEYS.EXPLORER.ER_DIAGRAM_LEGEND_ONE)} color={ER_ROSE} />
                   <LegendSample mark="many" label={t(I18N_KEYS.EXPLORER.ER_DIAGRAM_LEGEND_MANY)} color={ER_ROSE} />
                   <LegendSample mark="many" label={t(I18N_KEYS.EXPLORER.ER_DIAGRAM_LEGEND_MANY_TO_MANY)} color={ER_VIOLET} />
                   <LegendSample label={t(I18N_KEYS.EXPLORER.ER_DIAGRAM_LEGEND_CROSS)} dashed />
                 </span>
               )}
-            </div>
-            <div className="flex h-7 min-w-0 items-center overflow-hidden border-t theme-border px-3" title={statusText}>
               {activeRelations.length > 0 ? (
-                <span className="min-w-0 truncate theme-text-primary">
+                <span className="min-w-0 flex-1 truncate theme-text-primary" title={statusText}>
                   {activeRelations.map((relation, index) => {
                     const via = viaTableName(relation);
                     return (
@@ -883,7 +922,7 @@ function ErDiagramCanvas({ metadata }: ErDiagramTabProps) {
                   })}
                 </span>
               ) : (
-                <span className="min-w-0 truncate">{statusText}</span>
+                <span className="min-w-0 flex-1 truncate" title={statusText}>{statusText}</span>
               )}
             </div>
           </div>
@@ -920,8 +959,9 @@ function ErDiagramCanvas({ metadata }: ErDiagramTabProps) {
                   edgeTypes={edgeTypes}
                   onNodeDragStart={onNodeDragStart}
                   onNodeDragStop={onNodeDragStop}
-                  minZoom={ER_MIN_ZOOM}
+                  minZoom={minZoom}
                   maxZoom={ER_MAX_ZOOM}
+                  translateExtent={translateExtent}
                   deleteKeyCode={null}
                   nodesConnectable={false}
                   nodesDraggable={!layouting && !exporting}
@@ -932,7 +972,7 @@ function ErDiagramCanvas({ metadata }: ErDiagramTabProps) {
                 >
                   <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="var(--border-color)" />
                   <ErDiagramMiniMap ready={frameReady} disabled={layouting || exporting} />
-                  <ErDiagramZoomBar disabled={layouting || exporting} />
+                  <ErDiagramZoomBar disabled={layouting || exporting} minZoom={minZoom} onFit={fitToWindow} />
                 </ReactFlow>
                 {layouting && nodes.length === 0 && (
                   <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm theme-text-secondary">

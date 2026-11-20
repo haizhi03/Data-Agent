@@ -540,6 +540,7 @@
     "er_diagram_open_external": "Double-click to open this schema's ER diagram",
     "er_diagram_filter": "Names, comma-separated",
     "er_diagram_filter_exact": "Exact names",
+    "er_diagram_filter_exact_short": "Exact",
     "er_diagram_filter_empty": "No matching tables",
     "er_diagram_drag_table": "Drag the header to move this table",
     "er_diagram_expand_columns": "Show {{count}} more columns",
