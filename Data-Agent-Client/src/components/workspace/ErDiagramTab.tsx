@@ -193,6 +193,7 @@ function ErDiagramCanvas({ metadata }: ErDiagramTabProps) {
   const catalogGeneration = useRef(0);
   const catalogRequestStarted = useRef(false);
   const framedToken = useRef(-1);
+  const layoutCause = useRef({ collapse: collapseJunctionTables, diagram });
   const [layoutVersion, setLayoutVersion] = useState(0);
   const [frameReady, setFrameReady] = useState(false);
   const storageKey = layoutStorageKey(metadata.connectionId, metadata.catalog, metadata.schema);
@@ -380,14 +381,17 @@ function ErDiagramCanvas({ metadata }: ErDiagramTabProps) {
   }, [exporting, getNodes, layouting, setNodes, storageKey]);
 
   useEffect(() => {
+    const previous = layoutCause.current;
+    const onlyFolding = previous.diagram === diagram && previous.collapse !== collapseJunctionTables;
+    layoutCause.current = { collapse: collapseJunctionTables, diagram };
     if (!shown || shown.tables.length === 0) {
       requestId.current += 1;
       setNodes([]);
       setLayouting(false);
       return;
     }
-    void placeNodes(shown, true);
-  }, [placeNodes, setNodes, shown]);
+    void placeNodes(shown, true, undefined, false, !onlyFolding);
+  }, [collapseJunctionTables, diagram, placeNodes, setNodes, shown]);
 
   const linkedColumns = useMemo(() => {
     const linked = new Set<string>();
