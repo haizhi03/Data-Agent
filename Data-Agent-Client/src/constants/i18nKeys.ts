@@ -312,6 +312,7 @@ export const I18N_KEYS = {
     ER_DIAGRAM_OPEN_EXTERNAL: 'explorer.er_diagram_open_external',
     ER_DIAGRAM_FILTER: 'explorer.er_diagram_filter',
     ER_DIAGRAM_FILTER_EXACT: 'explorer.er_diagram_filter_exact',
+    ER_DIAGRAM_FILTER_EXACT_SHORT: 'explorer.er_diagram_filter_exact_short',
     ER_DIAGRAM_FILTER_EMPTY: 'explorer.er_diagram_filter_empty',
     ER_DIAGRAM_DRAG_TABLE: 'explorer.er_diagram_drag_table',
     ER_DIAGRAM_EXPAND_COLUMNS: 'explorer.er_diagram_expand_columns',
