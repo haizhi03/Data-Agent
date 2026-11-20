@@ -24,7 +24,7 @@ import java.util.Map;
 
 public abstract class DefaultMysqlPlugin extends AbstractDatabasePlugin
         implements ConnectionManager, CommandExecutor<SqlCommandRequest, SqlCommandResult>, DatabaseManager,
-        TableManager, ViewManager, ColumnManager, IndexManager,
+        TableManager, ViewManager, ColumnManager, IndexManager, TableStructureManager,
         FunctionManager, ProcedureManager, TriggerManager, SqlSplitter, SqlValidator, SqlAnalyzer {
 
     private final ConnectionManager connectionManager = new MysqlConnectionManager(
@@ -40,6 +40,7 @@ public abstract class DefaultMysqlPlugin extends AbstractDatabasePlugin
     private final ViewManager viewManager = new MysqlViewManager(capabilitySupport);
     private final ColumnManager columnManager = new MysqlColumnManager(capabilitySupport);
     private final IndexManager indexManager = new MysqlIndexManager();
+    private final TableStructureManager tableStructureManager = new MysqlTableStructureManager();
     private final FunctionManager functionManager = new MysqlFunctionManager(capabilitySupport);
     private final ProcedureManager procedureManager = new MysqlProcedureManager(capabilitySupport);
     private final TriggerManager triggerManager = new MysqlTriggerManager(capabilitySupport);
@@ -316,6 +317,18 @@ public abstract class DefaultMysqlPlugin extends AbstractDatabasePlugin
     @Override
     public List<IndexMetadata> getIndexes(Connection connection, String catalog, String schema, String tableName) {
         return indexManager.getIndexes(connection, catalog, schema, tableName);
+    }
+
+    @Override
+    public edu.zsc.ai.plugin.model.structure.TableStructure load(Connection connection, String catalog, String schema, String tableName) {
+        return tableStructureManager.load(connection, catalog, schema, tableName);
+    }
+
+    @Override
+    public edu.zsc.ai.plugin.model.structure.StructurePreview preview(String catalog, String schema,
+                                                                      edu.zsc.ai.plugin.model.structure.TableStructure baseline,
+                                                                      edu.zsc.ai.plugin.model.structure.TableStructure draft) {
+        return tableStructureManager.preview(catalog, schema, baseline, draft);
     }
 
     @Override

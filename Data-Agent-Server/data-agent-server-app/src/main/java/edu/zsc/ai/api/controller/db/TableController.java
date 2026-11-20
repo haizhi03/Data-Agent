@@ -17,9 +17,14 @@ import edu.zsc.ai.domain.model.dto.response.db.ErDiagramResponse;
 import edu.zsc.ai.domain.model.dto.response.db.ExecuteSqlResponse;
 import edu.zsc.ai.domain.model.dto.response.db.ImportTableDataResponse;
 import edu.zsc.ai.domain.model.dto.response.db.TableDataResponse;
+import edu.zsc.ai.domain.model.dto.request.db.TableStructureDraftRequest;
+import edu.zsc.ai.domain.model.dto.response.db.ApplyTableStructureResponse;
 import edu.zsc.ai.domain.service.db.ErDiagramService;
 import edu.zsc.ai.domain.service.db.SqlTemplateService;
 import edu.zsc.ai.domain.service.db.TableService;
+import edu.zsc.ai.domain.service.db.TableStructureService;
+import edu.zsc.ai.plugin.model.structure.StructurePreview;
+import edu.zsc.ai.plugin.model.structure.TableStructure;
 import edu.zsc.ai.domain.service.db.transfer.TableDataExporter;
 import edu.zsc.ai.plugin.model.db.TableRowValue;
 import jakarta.validation.Valid;
@@ -56,6 +61,7 @@ public class TableController {
     private final TableService tableService;
     private final ErDiagramService erDiagramService;
     private final SqlTemplateService sqlTemplateService;
+    private final TableStructureService tableStructureService;
 
     @GetMapping("/er-diagram")
     public ApiResponse<ErDiagramResponse> erDiagram(
@@ -116,6 +122,36 @@ public class TableController {
         DbContext db = new DbContext(connectionId, catalog, schema);
         String ddl = tableService.getTableDdl(db, tableName);
         return ApiResponse.success(ddl);
+    }
+
+    @GetMapping("/structure")
+    public ApiResponse<TableStructure> getStructure(
+            @RequestParam @NotNull(message = "connectionId is required") Long connectionId,
+            @RequestParam @NotNull(message = "tableName is required") String tableName,
+            @RequestParam(required = false) String catalog,
+            @RequestParam(required = false) String schema) {
+        log.info("Loading table structure: connectionId={}, tableName={}, catalog={}, schema={}",
+                connectionId, tableName, catalog, schema);
+        return ApiResponse.success(tableStructureService.load(
+                new DbContext(connectionId, catalog, schema), tableName));
+    }
+
+    @PostMapping("/structure/preview")
+    public ApiResponse<StructurePreview> previewStructure(@Valid @RequestBody TableStructureDraftRequest request) {
+        log.info("Previewing table structure: connectionId={}, table={}",
+                request.getConnectionId(), request.getBaseline().name());
+        return ApiResponse.success(tableStructureService.preview(
+                new DbContext(request.getConnectionId(), request.getCatalog(), request.getSchema()),
+                request.getBaseline(), request.getDraft()));
+    }
+
+    @PostMapping("/structure/apply")
+    public ApiResponse<ApplyTableStructureResponse> applyStructure(@Valid @RequestBody TableStructureDraftRequest request) {
+        log.info("Applying table structure: connectionId={}, table={}",
+                request.getConnectionId(), request.getBaseline().name());
+        return ApiResponse.success(tableStructureService.apply(
+                new DbContext(request.getConnectionId(), request.getCatalog(), request.getSchema()),
+                request.getBaseline(), request.getDraft()));
     }
 
     @GetMapping("/sql-template")

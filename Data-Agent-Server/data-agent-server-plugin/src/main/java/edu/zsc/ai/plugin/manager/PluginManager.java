@@ -17,6 +17,7 @@ import edu.zsc.ai.plugin.capability.DatabaseManager;
 import edu.zsc.ai.plugin.capability.SchemaManager;
 import edu.zsc.ai.plugin.capability.SequenceManager;
 import edu.zsc.ai.plugin.capability.TableManager;
+import edu.zsc.ai.plugin.capability.TableStructureManager;
 import edu.zsc.ai.plugin.capability.ViewManager;
 import edu.zsc.ai.plugin.model.command.sql.SqlCommandRequest;
 import edu.zsc.ai.plugin.model.command.sql.SqlCommandResult;
@@ -92,6 +93,11 @@ public interface PluginManager {
     SequenceManager getSequenceManagerByPluginId(@NotBlank String pluginId);
 
     ConstraintManager getConstraintManagerByPluginId(@NotBlank String pluginId);
+
+    /**
+     * Table structure editor for this plugin, or null when the dialect has no editor yet.
+     */
+    TableStructureManager getTableStructureManagerByPluginId(@NotBlank String pluginId);
 
     CommandExecutor<SqlCommandRequest, SqlCommandResult> getSqlCommandExecutorByPluginId(@NotBlank String pluginId);
 
