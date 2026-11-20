@@ -119,6 +119,37 @@ public final class MysqlTableStructureDialect {
             warnings.add("Two draft columns point at the same original column");
             blocked = true;
         }
+        for (Column loaded : base.columns()) {
+            if (loaded.generationExpression() == null) {
+                continue;
+            }
+            Column draft = next.columns().stream()
+                    .filter(column -> loaded.name().equals(column.originalName()))
+                    .findFirst()
+                    .orElse(null);
+            if (draft == null || !loaded.name().equals(draft.name()) || !sameStructure(loaded, draft)) {
+                warnings.add("Generated columns cannot change structure: " + loaded.name());
+                blocked = true;
+                continue;
+            }
+            if (StringUtils.isBlank(loaded.generationExpression()) && !blankEquals(loaded.comment(), draft.comment())) {
+                warnings.add("Generated column cannot be edited: " + loaded.name());
+                blocked = true;
+            }
+        }
+        for (Index index : base.indexes()) {
+            if (!expressionIndex(index)) {
+                continue;
+            }
+            Index draft = next.indexes().stream()
+                    .filter(item -> index.name().equals(item.originalName()))
+                    .findFirst()
+                    .orElse(null);
+            if (draft == null || !sameIndex(index, draft)) {
+                warnings.add("Expression indexes cannot be edited: " + index.name());
+                blocked = true;
+            }
+        }
         return blocked;
     }
 
@@ -383,13 +414,24 @@ public final class MysqlTableStructureDialect {
         if (StringUtils.isNotBlank(column.collation()) && SIMPLE_NAME.matcher(column.collation().trim()).matches()) {
             sql.append(" COLLATE ").append(column.collation().trim());
         }
-        sql.append(column.nullable() ? " NULL" : " NOT NULL");
-        sql.append(defaultClause(column));
-        if (column.autoIncrement()) {
-            sql.append(" AUTO_INCREMENT");
+        boolean generated = column.generationExpression() != null;
+        if (generated && StringUtils.isNotBlank(column.generationExpression())) {
+            String expression = column.generationExpression().trim();
+            if (!expression.startsWith("(")) {
+                expression = "(" + expression + ")";
+            }
+            sql.append(" GENERATED ALWAYS AS ").append(expression);
+            sql.append(column.generationStored() ? " STORED" : " VIRTUAL");
         }
-        if (StringUtils.isNotBlank(column.onUpdate()) && column.onUpdate().indexOf(';') < 0) {
-            sql.append(" ON UPDATE ").append(column.onUpdate().trim());
+        sql.append(column.nullable() ? " NULL" : " NOT NULL");
+        if (!generated) {
+            sql.append(defaultClause(column));
+            if (column.autoIncrement()) {
+                sql.append(" AUTO_INCREMENT");
+            }
+            if (StringUtils.isNotBlank(column.onUpdate()) && column.onUpdate().indexOf(';') < 0) {
+                sql.append(" ON UPDATE ").append(column.onUpdate().trim());
+            }
         }
         if (StringUtils.isNotEmpty(column.comment())) {
             sql.append(" COMMENT '").append(ESCAPER.escapeStringLiteral(column.comment())).append("'");
@@ -426,10 +468,27 @@ public final class MysqlTableStructureDialect {
         if (value == null) {
             return "";
         }
-        if (NUMERIC_LITERAL.matcher(value).matches() || "true".equalsIgnoreCase(value) || "false".equalsIgnoreCase(value)) {
+        if (unquotedDefault(column, value)) {
             return " DEFAULT " + value;
         }
         return " DEFAULT '" + ESCAPER.escapeStringLiteral(value) + "'";
+    }
+
+    private static boolean unquotedDefault(Column column, String value) {
+        String type = StringUtils.defaultIfBlank(column.typeName(), column.columnType()).toLowerCase(Locale.ROOT);
+        if (type.startsWith("bool")) {
+            return "true".equalsIgnoreCase(value) || "false".equalsIgnoreCase(value) || NUMERIC_LITERAL.matcher(value).matches();
+        }
+        if (type.startsWith("bit")) {
+            return NUMERIC_LITERAL.matcher(value).matches() || value.toLowerCase(Locale.ROOT).startsWith("b'");
+        }
+        if (type.startsWith("tinyint") || type.startsWith("smallint") || type.startsWith("mediumint")
+                || type.startsWith("int") || type.startsWith("integer") || type.startsWith("bigint")
+                || type.startsWith("decimal") || type.startsWith("numeric") || type.startsWith("float")
+                || type.startsWith("double") || type.startsWith("real") || type.startsWith("year")) {
+            return NUMERIC_LITERAL.matcher(value).matches();
+        }
+        return false;
     }
 
     private static String position(String previous) {
@@ -494,7 +553,13 @@ public final class MysqlTableStructureDialect {
                 && left.autoIncrement() == right.autoIncrement()
                 && blankEquals(normalizeKind(left.defaultKind()), normalizeKind(right.defaultKind()))
                 && blankEquals(left.defaultValue(), right.defaultValue())
-                && equalsIgnoreCase(left.onUpdate(), right.onUpdate());
+                && equalsIgnoreCase(left.onUpdate(), right.onUpdate())
+                && Objects.equals(left.generationExpression(), right.generationExpression())
+                && left.generationStored() == right.generationStored();
+    }
+
+    private static boolean expressionIndex(Index index) {
+        return index.columns() == null || index.columns().stream().anyMatch(StringUtils::isBlank);
     }
 
     private static boolean sameIndex(Index left, Index right) {

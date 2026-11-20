@@ -16,6 +16,8 @@ export interface StructureColumn {
   comment: string;
   charset: string | null;
   collation: string | null;
+  generationExpression: string | null;
+  generationStored: boolean;
 }
 
 export interface StructurePrimaryKey {
@@ -91,6 +93,7 @@ export interface ColumnDraft extends StructureColumn {
 export interface IndexDraft extends StructureIndex {
   clientId: string;
   columnText: string;
+  expression: boolean;
 }
 
 export interface ForeignKeyDraft extends StructureForeignKey {

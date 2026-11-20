@@ -32,7 +32,7 @@ public final class MysqlTableStructureLoader {
     private static final String COLUMN_SQL = """
             SELECT COLUMN_NAME, ORDINAL_POSITION, COLUMN_DEFAULT, IS_NULLABLE, DATA_TYPE, COLUMN_TYPE,
                    EXTRA, COLUMN_COMMENT, CHARACTER_MAXIMUM_LENGTH, NUMERIC_PRECISION, NUMERIC_SCALE,
-                   CHARACTER_SET_NAME, COLLATION_NAME
+                   CHARACTER_SET_NAME, COLLATION_NAME, GENERATION_EXPRESSION
             FROM information_schema.COLUMNS
             WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
             ORDER BY ORDINAL_POSITION
@@ -143,7 +143,8 @@ public final class MysqlTableStructureLoader {
             length = integer(resultSet, "NUMERIC_PRECISION");
             scale = integer(resultSet, "NUMERIC_SCALE");
         }
-        String charset = resultSet.getString("CHARACTER_SET_NAME");
+        String loadedCharset = resultSet.getString("CHARACTER_SET_NAME");
+        String charset = loadedCharset;
         if (charset != null && charset.equalsIgnoreCase(tableCharset)) {
             charset = null;
         }
@@ -167,8 +168,48 @@ public final class MysqlTableStructureLoader {
                 onUpdate,
                 StringUtils.defaultString(resultSet.getString("COLUMN_COMMENT")),
                 charset,
-                charset == null ? null : resultSet.getString("COLLATION_NAME")
+                retainedCollation(loadedCharset, tableCharset, resultSet.getString("COLLATION_NAME")),
+                generationExpression(extra, resultSet.getString("GENERATION_EXPRESSION")),
+                generationStored(extra)
         );
+    }
+
+    /**
+     * A column can use the table character set and still have its own collation.
+     * Changing only the comment rewrites the column, so the collation has to stay on the snapshot.
+     */
+    static String retainedCollation(String columnCharset, String tableCharset, String collationName) {
+        String collation = StringUtils.trimToNull(collationName);
+        if (collation == null) {
+            return null;
+        }
+        if (columnCharset != null && columnCharset.equalsIgnoreCase(StringUtils.defaultString(tableCharset))) {
+            return collation;
+        }
+        return collation;
+    }
+
+    /** Blank means the column is generated but the expression could not be read. */
+    static String generationExpression(String extra, String expression) {
+        if (!generatedColumn(extra)) {
+            return null;
+        }
+        if (expression == null || expression.indexOf(';') >= 0) {
+            return "";
+        }
+        return expression;
+    }
+
+    static boolean generationStored(String extra) {
+        return extra != null && extra.toLowerCase(Locale.ROOT).contains("stored generated");
+    }
+
+    private static boolean generatedColumn(String extra) {
+        if (extra == null) {
+            return false;
+        }
+        String lower = extra.toLowerCase(Locale.ROOT);
+        return lower.contains("virtual generated") || lower.contains("stored generated");
     }
 
     private IndexBundle queryIndexes(Connection connection, String database, String tableName) throws SQLException {

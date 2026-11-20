@@ -23,6 +23,7 @@ import java.util.regex.Pattern;
 /**
  * Renders a structure draft as DM statements.
  * Indexes and comments are separate statements. Column order is not changed.
+ * Drops run before column changes. New keys and indexes run after the columns they use.
  * An unchanged draft produces no statements.
  */
 public final class DmTableStructureDialect {
@@ -58,12 +59,31 @@ public final class DmTableStructureDialect {
         }
 
         List<Change> changes = new ArrayList<>();
+        List<String> dropForeignKeys = new ArrayList<>();
+        List<String> addForeignKeys = new ArrayList<>();
+        diffForeignKeys(owner, table, base, next, changes, dropForeignKeys, addForeignKeys, warnings);
+        List<String> dropChecks = new ArrayList<>();
+        List<String> addChecks = new ArrayList<>();
+        diffChecks(table, base, next, changes, dropChecks, addChecks, warnings);
+        List<String> dropIndexes = new ArrayList<>();
+        List<String> addIndexes = new ArrayList<>();
+        diffIndexes(owner, table, base, next, named, changes, dropIndexes, addIndexes, warnings);
+        List<String> dropPrimaryKey = new ArrayList<>();
+        List<String> addPrimaryKey = new ArrayList<>();
+        diffPrimaryKey(table, base, next, named, changes, dropPrimaryKey, addPrimaryKey, warnings);
+        List<String> columnStatements = new ArrayList<>();
+        diffColumns(owner, table, base, named, draftByOriginal, changes, columnStatements, warnings);
+
         List<String> statements = new ArrayList<>();
-        diffForeignKeys(owner, table, base, next, changes, statements, warnings);
-        diffChecks(table, base, next, changes, statements, warnings);
-        diffIndexes(owner, table, base, next, changes, statements, warnings);
-        diffPrimaryKey(table, base, next, named, changes, statements, warnings);
-        diffColumns(owner, table, base, named, draftByOriginal, changes, statements, warnings);
+        statements.addAll(dropForeignKeys);
+        statements.addAll(dropChecks);
+        statements.addAll(dropIndexes);
+        statements.addAll(dropPrimaryKey);
+        statements.addAll(columnStatements);
+        statements.addAll(addPrimaryKey);
+        statements.addAll(addIndexes);
+        statements.addAll(addChecks);
+        statements.addAll(addForeignKeys);
         diffTableComment(table, base, next, changes, statements);
         return new StructurePreview(List.copyOf(statements), List.copyOf(changes), List.copyOf(warnings));
     }
@@ -134,7 +154,7 @@ public final class DmTableStructureDialect {
     }
 
     private static void diffPrimaryKey(String table, TableStructure base, TableStructure next, List<Column> named,
-                                       List<Change> changes, List<String> statements, List<String> warnings) {
+                                       List<Change> changes, List<String> drops, List<String> adds, List<String> warnings) {
         List<String> before = keyColumns(base.primaryKey());
         List<String> after = keyColumns(next.primaryKey());
         if (before.equals(after)) {
@@ -151,19 +171,20 @@ public final class DmTableStructureDialect {
         if (!before.isEmpty()) {
             changes.add(new Change("PRIMARY_KEY", after.isEmpty() ? "DROP" : "MODIFY", constraint, true,
                     String.join(", ", before)));
-            statements.add("ALTER TABLE " + table + " DROP CONSTRAINT " + quote(constraint));
+            drops.add("ALTER TABLE " + table + " DROP CONSTRAINT " + quote(constraint));
         }
         if (!after.isEmpty()) {
             if (before.isEmpty()) {
                 changes.add(new Change("PRIMARY_KEY", "ADD", constraint, false, String.join(", ", after)));
             }
-            statements.add("ALTER TABLE " + table + " ADD CONSTRAINT " + quote(constraint)
+            adds.add("ALTER TABLE " + table + " ADD CONSTRAINT " + quote(constraint)
                     + " PRIMARY KEY (" + quoteList(after) + ")");
         }
     }
 
     private static void diffIndexes(String owner, String table, TableStructure base, TableStructure next,
-                                    List<Change> changes, List<String> statements, List<String> warnings) {
+                                    List<Column> named, List<Change> changes, List<String> drops, List<String> adds,
+                                    List<String> warnings) {
         Map<String, Index> draftByOriginal = new LinkedHashMap<>();
         for (Index index : next.indexes()) {
             if (StringUtils.isNotBlank(index.originalName())) {
@@ -176,7 +197,7 @@ public final class DmTableStructureDialect {
                 if (draft == null) {
                     changes.add(new Change("INDEX", "DROP", index.name(), true, null));
                 }
-                statements.add("DROP INDEX " + qualify(owner, index.name()));
+                drops.add("DROP INDEX " + qualify(owner, index.name()));
             }
         }
         for (Index index : next.indexes()) {
@@ -186,23 +207,32 @@ public final class DmTableStructureDialect {
                 }
                 continue;
             }
-            if (index.prefixLengths() != null && index.prefixLengths().stream().anyMatch(prefix -> prefix != null && prefix > 0)) {
-                warnings.add("DM indexes do not keep a MySQL-style prefix length: " + index.name());
-            }
             Index loaded = StringUtils.isBlank(index.originalName()) ? null : findIndex(base, index.originalName());
+            boolean prefixed = index.prefixLengths() != null && index.prefixLengths().stream().anyMatch(prefix -> prefix != null && prefix > 0);
             if (loaded != null && sameIndex(loaded, index)) {
+                if (prefixed) {
+                    warnings.add("DM indexes do not keep a MySQL-style prefix length: " + index.name());
+                }
+                continue;
+            }
+            if (prefixed) {
+                warnings.add("DM indexes do not keep a MySQL-style prefix length: " + StringUtils.defaultIfBlank(index.name(), index.originalName()));
+                continue;
+            }
+            if (index.columns().stream().anyMatch(column -> named.stream().noneMatch(item -> column.equals(item.name())))) {
+                warnings.add("Index references a missing column: " + StringUtils.defaultIfBlank(index.name(), index.originalName()));
                 continue;
             }
             String name = StringUtils.defaultIfBlank(index.name(), generatedName("IDX", next.name(), index.columns().get(0)));
             changes.add(new Change("INDEX", loaded == null ? "ADD" : "MODIFY", name, loaded != null,
                     String.join(", ", index.columns())));
-            statements.add("CREATE " + (index.unique() ? "UNIQUE " : "") + "INDEX " + qualify(owner, name)
+            adds.add("CREATE " + (index.unique() ? "UNIQUE " : "") + "INDEX " + qualify(owner, name)
                     + " ON " + table + " (" + quoteList(index.columns()) + ")");
         }
     }
 
     private static void diffForeignKeys(String owner, String table, TableStructure base, TableStructure next,
-                                        List<Change> changes, List<String> statements, List<String> warnings) {
+                                        List<Change> changes, List<String> drops, List<String> adds, List<String> warnings) {
         Map<String, ForeignKey> draftByOriginal = new LinkedHashMap<>();
         for (ForeignKey foreignKey : next.foreignKeys()) {
             if (StringUtils.isNotBlank(foreignKey.originalName())) {
@@ -215,7 +245,7 @@ public final class DmTableStructureDialect {
                 if (draft == null) {
                     changes.add(new Change("FOREIGN_KEY", "DROP", foreignKey.name(), true, null));
                 }
-                statements.add("ALTER TABLE " + table + " DROP CONSTRAINT " + quote(foreignKey.name()));
+                drops.add("ALTER TABLE " + table + " DROP CONSTRAINT " + quote(foreignKey.name()));
             }
         }
         for (ForeignKey foreignKey : next.foreignKeys()) {
@@ -235,7 +265,7 @@ public final class DmTableStructureDialect {
             changes.add(new Change("FOREIGN_KEY", loaded == null ? "ADD" : "MODIFY", name, loaded != null,
                     foreignKey.referencedTable()));
             String referencedOwner = StringUtils.firstNonBlank(foreignKey.referencedSchema(), owner);
-            statements.add("ALTER TABLE " + table + " ADD CONSTRAINT " + quote(name)
+            adds.add("ALTER TABLE " + table + " ADD CONSTRAINT " + quote(name)
                     + " FOREIGN KEY (" + quoteList(foreignKey.columns()) + ") REFERENCES "
                     + qualify(referencedOwner, foreignKey.referencedTable())
                     + " (" + quoteList(foreignKey.referencedColumns()) + ")"
@@ -245,7 +275,7 @@ public final class DmTableStructureDialect {
     }
 
     private static void diffChecks(String table, TableStructure base, TableStructure next,
-                                   List<Change> changes, List<String> statements, List<String> warnings) {
+                                   List<Change> changes, List<String> drops, List<String> adds, List<String> warnings) {
         Map<String, Check> draftByOriginal = new LinkedHashMap<>();
         for (Check check : next.checks()) {
             if (StringUtils.isNotBlank(check.originalName())) {
@@ -258,7 +288,7 @@ public final class DmTableStructureDialect {
                 if (draft == null) {
                     changes.add(new Change("CHECK", "DROP", check.name(), true, null));
                 }
-                statements.add("ALTER TABLE " + table + " DROP CONSTRAINT " + quote(check.name()));
+                drops.add("ALTER TABLE " + table + " DROP CONSTRAINT " + quote(check.name()));
             }
         }
         for (Check check : next.checks()) {
@@ -280,7 +310,7 @@ public final class DmTableStructureDialect {
             if (!expression.startsWith("(")) {
                 expression = "(" + expression + ")";
             }
-            statements.add("ALTER TABLE " + table + " ADD CONSTRAINT " + quote(name) + " CHECK " + expression);
+            adds.add("ALTER TABLE " + table + " ADD CONSTRAINT " + quote(name) + " CHECK " + expression);
         }
     }
 

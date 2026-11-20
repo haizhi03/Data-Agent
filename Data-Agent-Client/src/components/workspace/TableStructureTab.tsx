@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronDown, ChevronUp, Copy, Database, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { DatabaseTypeIcon } from '../common/DatabaseTypeIcon';
@@ -9,16 +9,20 @@ import { useToast } from '../../hooks/useToast';
 import { resolveErrorMessage } from '../../lib/errorMessage';
 import { isDmDbType } from '../../lib/sqlComment';
 import {
+  acceptPreview,
   adoptStructure,
   applyColumnLength,
   applyColumnType,
+  canExecute,
   emptyCheck,
   emptyColumn,
   emptyForeignKey,
   emptyIndex,
+  renameColumnReferences,
   structuresEqual,
   togglePrimaryKey,
   toStructurePayload,
+  type BoundPreview,
 } from '../../lib/tableStructureDraft';
 import { tableService } from '../../services/table.service';
 import { tableStructureService } from '../../services/tableStructure.service';
@@ -50,7 +54,9 @@ export function TableStructureTab({ tabId, metadata }: TableStructureTabProps) {
   const setDirty = useStructureEditorStore((state) => state.setDirty);
   const [baseline, setBaseline] = useState<TableStructure | null>(null);
   const [draft, setDraft] = useState<TableDraft | null>(null);
-  const [preview, setPreview] = useState<StructurePreview | null>(null);
+  const [revision, setRevision] = useState(0);
+  const revisionRef = useRef(0);
+  const [boundPreview, setBoundPreview] = useState<BoundPreview | null>(null);
   const [section, setSection] = useState<SectionId>('columns');
   const [loading, setLoading] = useState(true);
   const [previewing, setPreviewing] = useState(false);
@@ -70,9 +76,12 @@ export function TableStructureTab({ tabId, metadata }: TableStructureTabProps) {
   };
 
   const adopt = useCallback((structure: TableStructure) => {
+    revisionRef.current += 1;
+    setRevision(revisionRef.current);
     setBaseline(structure);
     setDraft(adoptStructure(structure));
-    setPreview(null);
+    setBoundPreview(null);
+    setPreviewing(true);
     setError(null);
   }, []);
 
@@ -117,24 +126,28 @@ export function TableStructureTab({ tabId, metadata }: TableStructureTabProps) {
 
   useEffect(() => {
     if (!baseline || !draft) return;
+    const requestRevision = revisionRef.current;
+    const payload = toStructurePayload(draft);
     let cancelled = false;
     const timer = window.setTimeout(() => {
       setPreviewing(true);
-      tableStructureService.preview({ ...scope, baseline, draft: toStructurePayload(draft) })
+      tableStructureService.preview({ ...scope, baseline, draft: payload })
         .then((result) => {
-          if (!cancelled) {
-            setPreview(result);
+          if (cancelled) return;
+          const accepted = acceptPreview(requestRevision, revisionRef.current, result);
+          if (accepted) {
+            setBoundPreview({ revision: requestRevision, payload, result: accepted });
             setError(null);
           }
         })
         .catch((err) => {
-          if (!cancelled) {
-            setPreview(null);
+          if (!cancelled && revisionRef.current === requestRevision) {
+            setBoundPreview(null);
             setError(resolveErrorMessage(err, t(I18N_KEYS.EXPLORER.STRUCTURE_PREVIEW_FAILED)));
           }
         })
         .finally(() => {
-          if (!cancelled) setPreviewing(false);
+          if (!cancelled && revisionRef.current === requestRevision) setPreviewing(false);
         });
     }, 300);
     return () => {
@@ -144,6 +157,9 @@ export function TableStructureTab({ tabId, metadata }: TableStructureTabProps) {
   }, [baseline, draft, scope.catalog, scope.connectionId, scope.schema, scope.tableName, t]);
 
   const updateDraft = (recipe: (current: TableDraft) => TableDraft) => {
+    revisionRef.current += 1;
+    setRevision(revisionRef.current);
+    setPreviewing(true);
     setDraft((current) => (current ? recipe(current) : current));
   };
 
@@ -153,15 +169,17 @@ export function TableStructureTab({ tabId, metadata }: TableStructureTabProps) {
   };
 
   const execute = async () => {
-    if (!baseline || !draft || !preview || preview.statements.length === 0) return;
-    const destructive = preview.changes.filter((change) => change.destructive);
+    if (!baseline || !boundPreview || !canExecute(revision, boundPreview, boundPreview.result.statements.length)) return;
+    const confirmed = boundPreview.result;
+    const payload = boundPreview.payload;
+    const destructive = confirmed.changes.filter((change) => change.destructive);
     if (destructive.length > 0) {
       const lines = destructive.map((change) => changeLabel(change, t)).join('\n');
       if (!window.confirm(`${t(I18N_KEYS.EXPLORER.STRUCTURE_EXECUTE_CONFIRM)}\n\n${lines}`)) return;
     }
     setApplying(true);
     try {
-      const result = await tableStructureService.apply({ ...scope, baseline, draft: toStructurePayload(draft) });
+      const result = await tableStructureService.apply({ ...scope, baseline, draft: payload });
       if (result.structure) adopt(result.structure);
       await loadSavedObjects();
       if (result.errorMessage) {
@@ -186,8 +204,12 @@ export function TableStructureTab({ tabId, metadata }: TableStructureTabProps) {
     }
   };
 
+  const currentPreview = boundPreview?.revision === revision ? boundPreview.result : null;
+  const executable = canExecute(revision, boundPreview, currentPreview?.statements.length ?? 0);
+  const previewPending = currentPreview == null && previewing;
+
   const copySql = async () => {
-    const sql = preview?.statements.join(';\n\n') ?? '';
+    const sql = currentPreview?.statements.join(';\n\n') ?? '';
     if (!sql) return;
     await navigator.clipboard.writeText(`${sql};`);
     toast.success(t(I18N_KEYS.EXPLORER.STRUCTURE_COPIED));
@@ -273,7 +295,7 @@ export function TableStructureTab({ tabId, metadata }: TableStructureTabProps) {
             onClick={() => setSection(item.id)}
           >
             {item.label}
-            {item.id === 'diff' && preview?.changes.length ? ` (${preview.changes.length})` : ''}
+            {item.id === 'diff' && currentPreview?.changes.length ? ` (${currentPreview.changes.length})` : ''}
           </button>
         ))}
       </div>
@@ -314,7 +336,7 @@ export function TableStructureTab({ tabId, metadata }: TableStructureTabProps) {
           <CheckSection draft={draft} updateDraft={updateDraft} />
         ) : null}
         {section === 'diff' ? (
-          <DiffSection preview={preview} previewing={previewing} />
+          <DiffSection preview={currentPreview} previewing={previewPending} />
         ) : null}
       </div>
 
@@ -322,25 +344,29 @@ export function TableStructureTab({ tabId, metadata }: TableStructureTabProps) {
         <div className="flex items-center justify-between px-3 py-1.5">
           <span className="text-xs theme-text-secondary">
             {t(I18N_KEYS.EXPLORER.STRUCTURE_SQL_PREVIEW)}
-            {previewing ? ` · ${t(I18N_KEYS.EXPLORER.STRUCTURE_PREVIEWING)}` : ''}
+            {previewPending ? ` · ${t(I18N_KEYS.EXPLORER.STRUCTURE_PREVIEWING)}` : ''}
           </span>
           <div className="flex gap-2">
-            <Button size="sm" variant="outline" onClick={() => void copySql()} disabled={!preview?.statements.length}>
+            <Button size="sm" variant="outline" onClick={() => void copySql()} disabled={!currentPreview?.statements.length}>
               <Copy className="mr-1 h-3.5 w-3.5" />
               {t(I18N_KEYS.EXPLORER.STRUCTURE_COPY_SQL)}
             </Button>
-            <Button size="sm" onClick={() => void execute()} disabled={applying || previewing || !preview?.statements.length}>
+            <Button size="sm" onClick={() => void execute()} disabled={applying || !executable}>
               {applying ? t(I18N_KEYS.EXPLORER.STRUCTURE_EXECUTING) : t(I18N_KEYS.EXPLORER.STRUCTURE_EXECUTE)}
             </Button>
           </div>
         </div>
-        {preview?.warnings.length ? (
+        {currentPreview?.warnings.length ? (
           <div className="mx-3 mb-1 rounded border border-amber-500/40 px-2 py-1 text-[11px] text-amber-600">
-            {preview.warnings.join(' · ')}
+            {currentPreview.warnings.join(' · ')}
           </div>
         ) : null}
         <pre className="min-h-0 flex-1 overflow-auto px-3 pb-2 font-mono text-[11px] leading-5 theme-text-secondary">
-          {preview?.statements.length ? `${preview.statements.join(';\n\n')};` : t(I18N_KEYS.EXPLORER.STRUCTURE_NO_CHANGES)}
+          {previewPending
+            ? t(I18N_KEYS.EXPLORER.STRUCTURE_PREVIEWING)
+            : currentPreview?.statements.length
+              ? `${currentPreview.statements.join(';\n\n')};`
+              : t(I18N_KEYS.EXPLORER.STRUCTURE_NO_CHANGES)}
         </pre>
       </div>
     </div>
@@ -386,6 +412,8 @@ function ColumnSection({ draft, updateDraft }: { draft: TableDraft; updateDraft:
           <tbody>
             {draft.columns.map((column, index) => {
               const inPrimaryKey = draft.primaryKey?.columns.includes(column.name) ?? false;
+              const generated = column.generationExpression != null;
+              const commentLocked = generated && column.generationExpression?.trim() === '';
               return (
                 <tr key={column.clientId} className="border-b border-border/60">
                   <td className="py-1 theme-text-secondary">{index + 1}</td>
@@ -393,63 +421,60 @@ function ColumnSection({ draft, updateDraft }: { draft: TableDraft; updateDraft:
                     <input
                       className={FIELD}
                       value={column.name}
+                      disabled={generated}
                       onChange={(event) => {
                         const nextName = event.target.value;
-                        updateDraft((current) => ({
+                        updateDraft((current) => renameColumnReferences({
                           ...current,
                           columns: current.columns.map((item) => (item.clientId === column.clientId ? { ...item, name: nextName } : item)),
-                          primaryKey: current.primaryKey
-                            ? {
-                              ...current.primaryKey,
-                              columns: current.primaryKey.columns.flatMap((name) => (name === column.name ? (nextName ? [nextName] : []) : [name])),
-                            }
-                            : null,
-                        }));
+                        }, column.name, nextName));
                       }}
                     />
                   </td>
-                  <td className="py-1 pr-2"><input className={FIELD} value={column.columnType} onChange={(event) => patch(column.clientId, (item) => applyColumnType(item, event.target.value))} /></td>
+                  <td className="py-1 pr-2"><input className={FIELD} value={column.columnType} disabled={generated} onChange={(event) => patch(column.clientId, (item) => applyColumnType(item, event.target.value))} /></td>
                   <td className="py-1 pr-2">
                     <input
                       className={FIELD}
                       type="number"
                       value={column.length ?? ''}
+                      disabled={generated}
                       onChange={(event) => patch(column.clientId, (item) => applyColumnLength(item, event.target.value === '' ? null : Number(event.target.value)))}
                     />
                   </td>
-                  <td className="py-1 text-center"><input type="checkbox" checked={column.nullable} onChange={(event) => patch(column.clientId, (item) => ({ ...item, nullable: event.target.checked }))} /></td>
+                  <td className="py-1 text-center"><input type="checkbox" checked={column.nullable} disabled={generated} onChange={(event) => patch(column.clientId, (item) => ({ ...item, nullable: event.target.checked }))} /></td>
                   <td className="py-1 text-center">
                     <input
                       type="checkbox"
                       checked={inPrimaryKey}
-                      disabled={!column.name}
+                      disabled={generated || !column.name}
                       onChange={(event) => updateDraft((current) => ({
                         ...current,
                         primaryKey: togglePrimaryKey(current.primaryKey, column.name, event.target.checked),
                       }))}
                     />
                   </td>
-                  <td className="py-1 text-center"><input type="checkbox" checked={column.autoIncrement} onChange={(event) => patch(column.clientId, (item) => ({ ...item, autoIncrement: event.target.checked }))} /></td>
+                  <td className="py-1 text-center"><input type="checkbox" checked={column.autoIncrement} disabled={generated} onChange={(event) => patch(column.clientId, (item) => ({ ...item, autoIncrement: event.target.checked }))} /></td>
                   <td className="py-1 pr-2">
                     <div className="flex gap-1">
                       <select
                         className={`${FIELD} w-24`}
                         value={column.defaultKind}
+                        disabled={generated}
                         onChange={(event) => patch(column.clientId, (item) => ({ ...item, defaultKind: event.target.value as StructureDefaultKind }))}
                       >
                         {DEFAULT_KINDS.map((kind) => <option key={kind} value={kind}>{t(defaultKindKey(kind))}</option>)}
                       </select>
                       {column.defaultKind === 'VALUE' || column.defaultKind === 'EXPRESSION' ? (
-                        <input className={FIELD} value={column.defaultValue ?? ''} onChange={(event) => patch(column.clientId, (item) => ({ ...item, defaultValue: event.target.value }))} />
+                        <input className={FIELD} value={column.defaultValue ?? ''} disabled={generated} onChange={(event) => patch(column.clientId, (item) => ({ ...item, defaultValue: event.target.value }))} />
                       ) : null}
                     </div>
                   </td>
-                  <td className="py-1 pr-2"><input className={FIELD} value={column.comment} onChange={(event) => patch(column.clientId, (item) => ({ ...item, comment: event.target.value }))} /></td>
+                  <td className="py-1 pr-2"><input className={FIELD} value={column.comment} disabled={commentLocked} onChange={(event) => patch(column.clientId, (item) => ({ ...item, comment: event.target.value }))} /></td>
                   <td className="py-1">
                     <div className="flex">
-                      <IconButton label={t(I18N_KEYS.EXPLORER.STRUCTURE_MOVE_UP)} onClick={() => move(index, -1)}><ChevronUp className="h-3.5 w-3.5" /></IconButton>
-                      <IconButton label={t(I18N_KEYS.EXPLORER.STRUCTURE_MOVE_DOWN)} onClick={() => move(index, 1)}><ChevronDown className="h-3.5 w-3.5" /></IconButton>
-                      <IconButton label={t(I18N_KEYS.EXPLORER.STRUCTURE_REMOVE)} onClick={() => updateDraft((current) => ({ ...current, columns: current.columns.filter((item) => item.clientId !== column.clientId) }))}><Trash2 className="h-3.5 w-3.5" /></IconButton>
+                      <IconButton label={t(I18N_KEYS.EXPLORER.STRUCTURE_MOVE_UP)} disabled={generated} onClick={() => move(index, -1)}><ChevronUp className="h-3.5 w-3.5" /></IconButton>
+                      <IconButton label={t(I18N_KEYS.EXPLORER.STRUCTURE_MOVE_DOWN)} disabled={generated} onClick={() => move(index, 1)}><ChevronDown className="h-3.5 w-3.5" /></IconButton>
+                      <IconButton label={t(I18N_KEYS.EXPLORER.STRUCTURE_REMOVE)} disabled={generated} onClick={() => updateDraft((current) => ({ ...current, columns: current.columns.filter((item) => item.clientId !== column.clientId) }))}><Trash2 className="h-3.5 w-3.5" /></IconButton>
                     </div>
                   </td>
                 </tr>
@@ -494,13 +519,13 @@ function IndexSection({ draft, updateDraft }: { draft: TableDraft; updateDraft: 
     <div className="space-y-2">
       {draft.indexes.map((index) => (
         <div key={index.clientId} className="grid grid-cols-[1fr_1.4fr_auto_auto] items-center gap-2">
-          <input className={FIELD} placeholder={t(I18N_KEYS.EXPLORER.STRUCTURE_NAME)} value={index.name} onChange={(event) => updateDraft((current) => ({ ...current, indexes: current.indexes.map((item) => item.clientId === index.clientId ? { ...item, name: event.target.value } : item) }))} />
-          <input className={FIELD} placeholder={t(I18N_KEYS.EXPLORER.STRUCTURE_COLUMNS_LIST)} value={index.columnText} onChange={(event) => updateDraft((current) => ({ ...current, indexes: current.indexes.map((item) => item.clientId === index.clientId ? { ...item, columnText: event.target.value } : item) }))} />
+          <input className={FIELD} placeholder={t(I18N_KEYS.EXPLORER.STRUCTURE_NAME)} value={index.name} disabled={index.expression} onChange={(event) => updateDraft((current) => ({ ...current, indexes: current.indexes.map((item) => item.clientId === index.clientId ? { ...item, name: event.target.value } : item) }))} />
+          <input className={FIELD} placeholder={t(I18N_KEYS.EXPLORER.STRUCTURE_COLUMNS_LIST)} value={index.columnText} disabled={index.expression} onChange={(event) => updateDraft((current) => ({ ...current, indexes: current.indexes.map((item) => item.clientId === index.clientId ? { ...item, columnText: event.target.value } : item) }))} />
           <label className="flex items-center gap-1 text-xs theme-text-secondary">
-            <input type="checkbox" checked={index.unique} onChange={(event) => updateDraft((current) => ({ ...current, indexes: current.indexes.map((item) => item.clientId === index.clientId ? { ...item, unique: event.target.checked } : item) }))} />
+            <input type="checkbox" checked={index.unique} disabled={index.expression} onChange={(event) => updateDraft((current) => ({ ...current, indexes: current.indexes.map((item) => item.clientId === index.clientId ? { ...item, unique: event.target.checked } : item) }))} />
             {t(I18N_KEYS.EXPLORER.STRUCTURE_UNIQUE)}
           </label>
-          <IconButton label={t(I18N_KEYS.EXPLORER.STRUCTURE_REMOVE)} onClick={() => updateDraft((current) => ({ ...current, indexes: current.indexes.filter((item) => item.clientId !== index.clientId) }))}><Trash2 className="h-3.5 w-3.5" /></IconButton>
+          <IconButton label={t(I18N_KEYS.EXPLORER.STRUCTURE_REMOVE)} disabled={index.expression} onClick={() => updateDraft((current) => ({ ...current, indexes: current.indexes.filter((item) => item.clientId !== index.clientId) }))}><Trash2 className="h-3.5 w-3.5" /></IconButton>
         </div>
       ))}
       <Button size="sm" variant="outline" onClick={() => updateDraft((current) => ({ ...current, indexes: [...current.indexes, emptyIndex()] }))}>
@@ -583,9 +608,9 @@ function DiffSection({ preview, previewing }: { preview: StructurePreview | null
   );
 }
 
-function IconButton({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
+function IconButton({ label, onClick, disabled, children }: { label: string; onClick: () => void; disabled?: boolean; children: ReactNode }) {
   return (
-    <button type="button" title={label} aria-label={label} className="rounded p-1 theme-text-secondary hover:bg-accent hover:theme-text-primary" onClick={onClick}>
+    <button type="button" title={label} aria-label={label} disabled={disabled} className="rounded p-1 theme-text-secondary hover:bg-accent hover:theme-text-primary disabled:opacity-40" onClick={onClick}>
       {children}
     </button>
   );

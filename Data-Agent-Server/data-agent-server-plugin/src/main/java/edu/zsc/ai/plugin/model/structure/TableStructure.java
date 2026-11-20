@@ -34,7 +34,9 @@ public record TableStructure(
             String onUpdate,
             String comment,
             String charset,
-            String collation
+            String collation,
+            String generationExpression,
+            boolean generationStored
     ) {
     }
 

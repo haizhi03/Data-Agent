@@ -151,6 +151,94 @@ class DmTableStructureDialectTest {
         assertTrue(preview.warnings().stream().anyMatch(warning -> warning.contains("character set")));
     }
 
+    @Test
+    void addsColumnBeforeIndexOnThatColumn() {
+        Column code = column("CODE", null, "VARCHAR(100)", true, "");
+        Index index = new Index("IDX_CODE", null, false, "NORMAL", List.of("CODE"), List.of());
+        TableStructure baseline = sample();
+        TableStructure draft = new TableStructure(baseline.name(), baseline.comment(), null, null, null,
+                List.of(column("ID"), column("NAME"), code), baseline.primaryKey(),
+                List.of(index), baseline.foreignKeys(), baseline.checks());
+
+        List<String> statements = DmTableStructureDialect.preview(null, "HR", baseline, draft).statements();
+
+        int addAt = indexOf(statements, "ADD \"CODE\"");
+        int indexAt = indexOf(statements, "CREATE INDEX \"HR\".\"IDX_CODE\"");
+        assertTrue(addAt >= 0 && indexAt > addAt);
+    }
+
+    @Test
+    void addsUniqueIndexOnNewColumnAfterAdd() {
+        Column code = column("CODE", null, "VARCHAR(100)", true, "");
+        Index index = new Index("UK_CODE", null, true, "NORMAL", List.of("CODE"), List.of());
+        TableStructure baseline = sample();
+        TableStructure draft = new TableStructure(baseline.name(), baseline.comment(), null, null, null,
+                List.of(column("ID"), column("NAME"), code), baseline.primaryKey(),
+                List.of(index), baseline.foreignKeys(), baseline.checks());
+
+        List<String> statements = DmTableStructureDialect.preview(null, "HR", baseline, draft).statements();
+
+        int addAt = indexOf(statements, "ADD \"CODE\"");
+        int indexAt = indexOf(statements, "CREATE UNIQUE INDEX \"HR\".\"UK_CODE\"");
+        assertTrue(addAt >= 0 && indexAt > addAt);
+    }
+
+    @Test
+    void dropsIndexBeforeDroppedColumn() {
+        Index index = new Index("IDX_NOTE", "IDX_NOTE", false, "NORMAL", List.of("NOTE"), List.of());
+        TableStructure baseline = new TableStructure(sample().name(), sample().comment(), null, null, null,
+                List.of(column("ID"), column("NAME"), column("NOTE")), sample().primaryKey(),
+                List.of(index), sample().foreignKeys(), sample().checks());
+        TableStructure draft = copy(sample(), List.of(column("ID"), column("NAME")));
+
+        List<String> statements = DmTableStructureDialect.preview(null, "HR", baseline, draft).statements();
+
+        int dropIndex = indexOf(statements, "DROP INDEX \"HR\".\"IDX_NOTE\"");
+        int dropColumn = indexOf(statements, "DROP COLUMN \"NOTE\"");
+        assertTrue(dropIndex >= 0 && dropColumn > dropIndex);
+    }
+
+    @Test
+    void prefixLengthDoesNotCreateIndex() {
+        Index index = new Index("IDX_NAME", null, false, "NORMAL", List.of("NAME"), List.of(10));
+        TableStructure baseline = sample();
+        TableStructure draft = new TableStructure(baseline.name(), baseline.comment(), null, null, null,
+                baseline.columns(), baseline.primaryKey(), List.of(index), baseline.foreignKeys(), baseline.checks());
+
+        StructurePreview preview = DmTableStructureDialect.preview(null, "HR", baseline, draft);
+
+        assertTrue(preview.statements().stream().noneMatch(sql -> sql.contains("CREATE INDEX")));
+        assertTrue(preview.warnings().stream().anyMatch(warning -> warning.contains("prefix")));
+    }
+
+    @Test
+    void indexOnMissingColumnIsNotCreated() {
+        Index index = new Index("IDX_MISSING", null, false, "NORMAL", List.of("MISSING"), List.of());
+        TableStructure baseline = sample();
+        TableStructure draft = new TableStructure(baseline.name(), baseline.comment(), null, null, null,
+                baseline.columns(), baseline.primaryKey(), List.of(index), baseline.foreignKeys(), baseline.checks());
+
+        StructurePreview preview = DmTableStructureDialect.preview(null, "HR", baseline, draft);
+
+        assertTrue(preview.statements().stream().noneMatch(sql -> sql.contains("CREATE INDEX")));
+        assertTrue(preview.warnings().stream().anyMatch(warning -> warning.contains("missing column")));
+    }
+
+    @Test
+    void primaryKeyOnNewColumnComesAfterAdd() {
+        Column code = column("CODE", null, "VARCHAR(100)", true, "");
+        TableStructure baseline = sample();
+        TableStructure draft = new TableStructure(baseline.name(), baseline.comment(), null, null, null,
+                List.of(column("ID"), column("NAME"), code), new PrimaryKey("PK_DEMO", List.of("ID", "CODE")),
+                baseline.indexes(), baseline.foreignKeys(), baseline.checks());
+
+        List<String> statements = DmTableStructureDialect.preview(null, "HR", baseline, draft).statements();
+
+        int addAt = indexOf(statements, "ADD \"CODE\"");
+        int keyAt = indexOf(statements, "PRIMARY KEY");
+        assertTrue(addAt >= 0 && keyAt > addAt);
+    }
+
     private static TableStructure sample() {
         return new TableStructure(
                 "DEMO",
@@ -208,7 +296,18 @@ class DmTableStructureDialectTest {
                 null,
                 comment,
                 null,
-                null
+                null,
+                null,
+                false
         );
+    }
+
+    private static int indexOf(List<String> statements, String part) {
+        for (int i = 0; i < statements.size(); i++) {
+            if (statements.get(i).contains(part)) {
+                return i;
+            }
+        }
+        return -1;
     }
 }

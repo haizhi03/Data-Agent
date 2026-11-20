@@ -5,12 +5,27 @@ import type {
   StructureCheck,
   StructureForeignKey,
   StructureIndex,
+  StructurePreview,
   StructurePrimaryKey,
   TableDraft,
   TableStructure,
 } from '../types/tableStructure';
 
 let sequence = 0;
+
+export interface BoundPreview {
+  revision: number;
+  payload: TableStructure;
+  result: StructurePreview;
+}
+
+export function canExecute(draftRevision: number, preview: { revision: number } | null, statementCount: number): boolean {
+  return preview?.revision === draftRevision && statementCount > 0;
+}
+
+export function acceptPreview<T>(requestedRevision: number, latestRevision: number, preview: T): T | null {
+  return requestedRevision === latestRevision ? preview : null;
+}
 
 export function newStructureClientId(): string {
   sequence += 1;
@@ -74,6 +89,16 @@ export function toStructurePayload(draft: TableDraft): TableStructure {
       ? { name: draft.primaryKey.name, columns: [...draft.primaryKey.columns] }
       : null,
     indexes: draft.indexes.map((index) => {
+      if (index.expression) {
+        return {
+          name: index.name,
+          originalName: index.originalName,
+          unique: index.unique,
+          type: index.type,
+          columns: index.columns,
+          prefixLengths: index.prefixLengths,
+        };
+      }
       const parsed = parseIndexColumns(index.columnText);
       return {
         name: index.name,
@@ -146,6 +171,8 @@ export function emptyColumn(): ColumnDraft {
     comment: '',
     charset: null,
     collation: null,
+    generationExpression: null,
+    generationStored: false,
   }, 'varchar(255)');
 }
 
@@ -159,6 +186,7 @@ export function emptyIndex(): IndexDraft {
     columns: [],
     prefixLengths: [],
     columnText: '',
+    expression: false,
   };
 }
 
@@ -182,6 +210,23 @@ export function emptyCheck(): StructureCheck & { clientId: string } {
   return { clientId: newStructureClientId(), name: '', originalName: null, expression: '' };
 }
 
+export function renameColumnReferences(draft: TableDraft, oldName: string, newName: string): TableDraft {
+  if (!oldName || oldName === newName) return draft;
+  return {
+    ...draft,
+    primaryKey: draft.primaryKey
+      ? { ...draft.primaryKey, columns: draft.primaryKey.columns.flatMap((name) => (name === oldName ? (newName ? [newName] : []) : [name])) }
+      : null,
+    indexes: draft.indexes.map((index) => (
+      index.expression ? index : { ...index, columnText: rewriteColumnList(index.columnText, oldName, newName) }
+    )),
+    foreignKeys: draft.foreignKeys.map((foreignKey) => ({
+      ...foreignKey,
+      columnsText: rewriteColumnList(foreignKey.columnsText, oldName, newName),
+    })),
+  };
+}
+
 export function togglePrimaryKey(primaryKey: StructurePrimaryKey | null, columnName: string, checked: boolean): StructurePrimaryKey | null {
   const current = primaryKey?.columns ?? [];
   const next = checked
@@ -192,11 +237,24 @@ export function togglePrimaryKey(primaryKey: StructurePrimaryKey | null, columnN
 }
 
 function toIndexDraft(index: StructureIndex): IndexDraft {
+  const expression = (index.columns ?? []).some((column) => !column);
   return {
     ...index,
     clientId: newStructureClientId(),
-    columnText: formatIndexColumns(index.columns ?? [], index.prefixLengths),
+    columnText: expression
+      ? (index.columns ?? []).map((column) => column || '(expression)').join(', ')
+      : formatIndexColumns(index.columns ?? [], index.prefixLengths),
+    expression,
   };
+}
+
+function rewriteColumnList(text: string, oldName: string, newName: string): string {
+  return text.split(',').map((part) => part.trim()).filter(Boolean).flatMap((part) => {
+    const match = part.match(/^([^(]+?)(?:\((\d+)\))?$/);
+    if (!match || match[1].trim() !== oldName) return [part];
+    if (!newName) return [];
+    return [match[2] ? `${newName}(${match[2]})` : newName];
+  }).join(', ');
 }
 
 function toForeignKeyDraft(foreignKey: StructureForeignKey): ForeignKeyDraft {

@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import type { TableStructure } from '../types/tableStructure';
-import { adoptStructure, applyColumnLength, structuresEqual, togglePrimaryKey, toStructurePayload } from './tableStructureDraft';
+import {
+  acceptPreview,
+  adoptStructure,
+  applyColumnLength,
+  canExecute,
+  renameColumnReferences,
+  structuresEqual,
+  togglePrimaryKey,
+  toStructurePayload,
+} from './tableStructureDraft';
 
 const loaded: TableStructure = {
   name: 'crm_activity',
@@ -25,6 +34,8 @@ const loaded: TableStructure = {
       comment: '',
       charset: null,
       collation: null,
+      generationExpression: null,
+      generationStored: false,
     },
     {
       name: 'name',
@@ -42,6 +53,8 @@ const loaded: TableStructure = {
       comment: '',
       charset: null,
       collation: null,
+      generationExpression: null,
+      generationStored: false,
     },
   ],
   primaryKey: { name: 'PRIMARY', columns: ['id'] },
@@ -81,5 +94,44 @@ describe('tableStructureDraft', () => {
 
   it('drops the primary key when its last column is unchecked', () => {
     expect(togglePrimaryKey(loaded.primaryKey, 'id', false)).toBeNull();
+  });
+
+  it('executes only the preview for the current draft revision', () => {
+    expect(canExecute(1, { revision: 1 }, 2)).toBe(true);
+    expect(canExecute(2, { revision: 1 }, 2)).toBe(false);
+    expect(canExecute(2, { revision: 2 }, 0)).toBe(false);
+    expect(acceptPreview(1, 2, { statements: ['drop column'] })).toBeNull();
+    expect(acceptPreview(2, 2, { statements: ['drop column'] })).toEqual({ statements: ['drop column'] });
+  });
+
+  it('renames index and foreign key columns with the column', () => {
+    const draft = adoptStructure({
+      ...loaded,
+      indexes: [{
+        name: 'idx_name',
+        originalName: 'idx_name',
+        unique: false,
+        type: 'BTREE',
+        columns: ['name'],
+        prefixLengths: [10],
+      }],
+      foreignKeys: [{
+        name: 'fk_name',
+        originalName: 'fk_name',
+        columns: ['name'],
+        referencedSchema: 'crm',
+        referencedTable: 'customer',
+        referencedColumns: ['id'],
+        onUpdate: 'RESTRICT',
+        onDelete: 'CASCADE',
+      }],
+    });
+    const next = renameColumnReferences({
+      ...draft,
+      columns: draft.columns.map((column) => (column.name === 'name' ? { ...column, name: 'title' } : column)),
+    }, 'name', 'title');
+    expect(next.indexes[0].columnText).toBe('title(10)');
+    expect(next.foreignKeys[0].columnsText).toBe('title');
+    expect(next.primaryKey?.columns).toEqual(['id']);
   });
 });

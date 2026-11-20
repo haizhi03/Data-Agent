@@ -215,7 +215,9 @@ public final class DmTableStructureLoader {
                 null,
                 comments.getOrDefault(name, ""),
                 null,
-                null
+                null,
+                null,
+                false
         );
     }
 

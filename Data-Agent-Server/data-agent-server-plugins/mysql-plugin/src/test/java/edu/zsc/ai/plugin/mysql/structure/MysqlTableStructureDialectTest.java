@@ -10,6 +10,7 @@ import edu.zsc.ai.plugin.model.structure.TableStructure.Index;
 import edu.zsc.ai.plugin.model.structure.TableStructure.PrimaryKey;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -166,6 +167,105 @@ class MysqlTableStructureDialectTest {
         assertTrue(sql.contains("ADD CONSTRAINT `chk_name` CHECK (char_length(`name`) > 0)"));
     }
 
+    @Test
+    void commentOnlyKeepsStringDefaultQuoted() {
+        TableStructure baseline = copy(sample(), List.of(column("id"), stringColumn("007", "")));
+        TableStructure draft = copy(baseline, List.of(column("id"), stringColumn("007", "客户名")));
+
+        String sql = MysqlTableStructureDialect.preview("crm", null, baseline, draft).statements().get(0);
+
+        assertTrue(sql.contains("DEFAULT '007'"));
+        assertTrue(sql.contains("COMMENT '客户名'"));
+    }
+
+    @Test
+    void commentOnlyKeepsTrueStringDefaultQuoted() {
+        TableStructure baseline = copy(sample(), List.of(column("id"), stringColumn("true", "")));
+        TableStructure draft = copy(baseline, List.of(column("id"), stringColumn("true", "客户名")));
+
+        String sql = MysqlTableStructureDialect.preview("crm", null, baseline, draft).statements().get(0);
+
+        assertTrue(sql.contains("DEFAULT 'true'"));
+    }
+
+    @Test
+    void numericDefaultStaysUnquoted() {
+        Column baselineColumn = numericColumn("");
+        Column draftColumn = numericColumn("数量");
+        TableStructure baseline = copy(sample(), List.of(column("id"), baselineColumn));
+        TableStructure draft = copy(baseline, List.of(column("id"), draftColumn));
+
+        String sql = MysqlTableStructureDialect.preview("crm", null, baseline, draft).statements().get(0);
+
+        assertTrue(sql.contains("DEFAULT 12"));
+        assertTrue(!sql.contains("DEFAULT '12'"));
+    }
+
+    @Test
+    void commentOnlyKeepsCollation() {
+        TableStructure baseline = copy(sample(), List.of(column("id"), collated("")));
+        TableStructure draft = copy(baseline, List.of(column("id"), collated("客户名")));
+
+        String sql = MysqlTableStructureDialect.preview("crm", null, baseline, draft).statements().get(0);
+
+        assertTrue(sql.contains("COLLATE utf8mb4_bin"));
+        assertTrue(sql.contains("COMMENT '客户名'"));
+    }
+
+    @Test
+    void commentOnlyKeepsStoredGeneratedColumn() {
+        TableStructure baseline = copy(sample(), List.of(column("id"), generated("varchar(100)", "concat(`first`,`last`)", true, "")));
+        TableStructure draft = copy(baseline, List.of(column("id"), generated("varchar(100)", "concat(`first`,`last`)", true, "全名")));
+
+        StructurePreview preview = MysqlTableStructureDialect.preview("crm", null, baseline, draft);
+
+        assertEquals(false, preview.changes().get(0).destructive());
+        assertTrue(preview.statements().get(0).contains("GENERATED ALWAYS AS (concat(`first`,`last`)) STORED"));
+        assertTrue(preview.statements().get(0).contains("COMMENT '全名'"));
+    }
+
+    @Test
+    void generatedColumnTypeChangeIsBlocked() {
+        TableStructure baseline = copy(sample(), List.of(column("id"), generated("varchar(100)", "concat(`first`,`last`)", true, "")));
+        TableStructure draft = copy(baseline, List.of(column("id"), generated("varchar(200)", "concat(`first`,`last`)", true, "")));
+
+        StructurePreview preview = MysqlTableStructureDialect.preview("crm", null, baseline, draft);
+
+        assertTrue(preview.statements().isEmpty());
+        assertTrue(preview.warnings().stream().anyMatch(warning -> warning.contains("cannot change structure")));
+    }
+
+    @Test
+    void expressionIndexCannotBeEdited() {
+        List<String> columns = new ArrayList<>();
+        columns.add(null);
+        Index index = new Index("idx_expr", "idx_expr", false, "BTREE", columns, List.of());
+        TableStructure baseline = new TableStructure(sample().name(), sample().comment(), sample().engine(),
+                sample().charset(), sample().collation(), sample().columns(), sample().primaryKey(),
+                List.of(index), sample().foreignKeys(), sample().checks());
+        TableStructure draft = new TableStructure(baseline.name(), baseline.comment(), baseline.engine(),
+                baseline.charset(), baseline.collation(), baseline.columns(), baseline.primaryKey(),
+                List.of(), baseline.foreignKeys(), baseline.checks());
+
+        StructurePreview preview = MysqlTableStructureDialect.preview("crm", null, baseline, draft);
+
+        assertTrue(preview.statements().isEmpty());
+        assertTrue(preview.warnings().stream().anyMatch(warning -> warning.contains("Expression indexes")));
+    }
+
+    @Test
+    void keepsCollationWhenCharsetMatchesTable() {
+        assertEquals("utf8mb4_bin", MysqlTableStructureLoader.retainedCollation("utf8mb4", "utf8mb4", "utf8mb4_bin"));
+    }
+
+    @Test
+    void defaultGeneratedIsNotAGeneratedColumn() {
+        assertEquals(null, MysqlTableStructureLoader.generationExpression("DEFAULT_GENERATED", "(uuid())"));
+        assertEquals("(`a` + `b`)", MysqlTableStructureLoader.generationExpression("STORED GENERATED", "(`a` + `b`)"));
+        assertTrue(MysqlTableStructureLoader.generationStored("STORED GENERATED"));
+        assertTrue(!MysqlTableStructureLoader.generationStored("VIRTUAL GENERATED"));
+    }
+
     private static TableStructure sample() {
         return new TableStructure(
                 "crm_activity",
@@ -229,7 +329,29 @@ class MysqlTableStructureDialectTest {
                 null,
                 comment,
                 null,
-                null
+                null,
+                null,
+                false
         );
+    }
+
+    private static Column stringColumn(String defaultValue, String comment) {
+        return new Column("name", "name", "varchar", "varchar(100)", 100, null, true, false, false,
+                StructureDefaultKind.VALUE, defaultValue, null, comment, null, null, null, false);
+    }
+
+    private static Column numericColumn(String comment) {
+        return new Column("qty", "qty", "int", "int", null, null, true, false, false,
+                StructureDefaultKind.VALUE, "12", null, comment, null, null, null, false);
+    }
+
+    private static Column collated(String comment) {
+        return new Column("name", "name", "varchar", "varchar(100)", 100, null, true, false, false,
+                StructureDefaultKind.NONE, null, null, comment, null, "utf8mb4_bin", null, false);
+    }
+
+    private static Column generated(String columnType, String expression, boolean stored, String comment) {
+        return new Column("name", "name", "varchar", columnType, null, null, true, false, false,
+                StructureDefaultKind.NONE, null, null, comment, null, null, expression, stored);
     }
 }
