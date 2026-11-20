@@ -4,7 +4,15 @@ import { useTranslation } from 'react-i18next';
 import { I18N_KEYS } from '../../constants/i18nKeys';
 import { ER_MAX_ZOOM, ER_MINIMAP_WIDTH, ER_MIN_ZOOM, ER_ZOOM_BAR_HEIGHT, formatZoomPercent } from './erDiagramLayout';
 
-export function ErDiagramZoomBar({ disabled = false, onFit }: { disabled?: boolean; onFit: () => void }) {
+export function ErDiagramZoomBar({
+  disabled = false,
+  minZoom = ER_MIN_ZOOM,
+  onFit,
+}: {
+  disabled?: boolean;
+  minZoom?: number;
+  onFit: () => void;
+}) {
   const { t } = useTranslation();
   const { zoom } = useViewport();
   const { zoomIn, zoomOut, zoomTo } = useReactFlow();
@@ -28,10 +36,10 @@ export function ErDiagramZoomBar({ disabled = false, onFit }: { disabled?: boole
         <input
           type="range"
           className="er-zoom-range w-24 shrink-0"
-          min={ER_MIN_ZOOM}
+          min={minZoom}
           max={ER_MAX_ZOOM}
           step="any"
-          value={Math.min(ER_MAX_ZOOM, Math.max(ER_MIN_ZOOM, zoom))}
+          value={Math.min(ER_MAX_ZOOM, Math.max(minZoom, zoom))}
           disabled={disabled}
           aria-label={t(I18N_KEYS.EXPLORER.ER_DIAGRAM_ZOOM)}
           aria-valuetext={percent}

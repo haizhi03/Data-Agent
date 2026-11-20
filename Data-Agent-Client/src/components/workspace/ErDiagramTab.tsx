@@ -51,6 +51,8 @@ import {
   CARD_WIDTH,
   ER_MAX_ZOOM,
   ER_MIN_ZOOM,
+  minZoomForCanvas,
+  panExtentForDiagram,
   cardHeight,
   clearStoredLayout,
   shiftCardsForResize,
@@ -725,6 +727,35 @@ function ErDiagramCanvas({ metadata }: ErDiagramTabProps) {
   const limitNotice = erDiagramLimitNotice(tableChoice, diagram?.truncated === true);
   const showTablePicker = showErDiagramTablePicker(diagram?.tableCount);
   const showCanvas = !error && !!shown && shown.tables.length > 0;
+  const [paneSize, setPaneSize] = useState({ width: 0, height: 0 });
+  useLayoutEffect(() => {
+    const pane = flowRef.current;
+    if (!pane) return;
+    const publish = () => {
+      const width = pane.clientWidth;
+      const height = pane.clientHeight;
+      setPaneSize((current) => (current.width === width && current.height === height ? current : { width, height }));
+    };
+    publish();
+    const observer = new ResizeObserver(publish);
+    observer.observe(pane);
+    return () => observer.disconnect();
+  }, [showCanvas]);
+  const canvasBounds = useMemo(() => {
+    if (nodes.length === 0) return null;
+    return layoutBounds(nodes.map((node) => ({
+      x: node.position.x,
+      y: node.position.y,
+      width: node.measured?.width || node.width || CARD_WIDTH,
+      height: node.measured?.height || node.height || cardHeight(node.data.table.columns.length, node.data.expanded),
+    })));
+  }, [nodes]);
+  const translateExtent = useMemo(() => (
+    canvasBounds ? panExtentForDiagram(canvasBounds, paneSize.width, paneSize.height) ?? undefined : undefined
+  ), [canvasBounds, paneSize.height, paneSize.width]);
+  const minZoom = translateExtent
+    ? minZoomForCanvas(translateExtent, paneSize.width, paneSize.height)
+    : ER_MIN_ZOOM;
 
   return (
     <ErDiagramInteractionContext.Provider value={interaction}>
@@ -924,8 +955,9 @@ function ErDiagramCanvas({ metadata }: ErDiagramTabProps) {
                   edgeTypes={edgeTypes}
                   onNodeDragStart={onNodeDragStart}
                   onNodeDragStop={onNodeDragStop}
-                  minZoom={ER_MIN_ZOOM}
+                  minZoom={minZoom}
                   maxZoom={ER_MAX_ZOOM}
+                  translateExtent={translateExtent}
                   deleteKeyCode={null}
                   nodesConnectable={false}
                   nodesDraggable={!layouting && !exporting}
@@ -936,7 +968,7 @@ function ErDiagramCanvas({ metadata }: ErDiagramTabProps) {
                 >
                   <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="var(--border-color)" />
                   <ErDiagramMiniMap ready={frameReady} disabled={layouting || exporting} />
-                  <ErDiagramZoomBar disabled={layouting || exporting} onFit={fitToWindow} />
+                  <ErDiagramZoomBar disabled={layouting || exporting} minZoom={minZoom} onFit={fitToWindow} />
                 </ReactFlow>
                 {layouting && nodes.length === 0 && (
                   <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm theme-text-secondary">
