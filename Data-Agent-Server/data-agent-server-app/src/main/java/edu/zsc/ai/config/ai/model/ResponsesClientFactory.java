@@ -9,6 +9,9 @@ public class ResponsesClientFactory implements ModelClientFactory {
     private final CredentialService credentials;
     @Override public boolean supports(ModelApiStyle style) { return style == ModelApiStyle.OPENAI_RESPONSES; }
     @Override public ModelClientBundle create(ResolvedModelConfig config) {
+        return create(config, credentials);
+    }
+    @Override public ModelClientBundle create(ResolvedModelConfig config, CredentialService credentials) {
         var model = new ResponsesProtocolModel(config, credentials, new PolicyHttpClientBuilder(config).build());
         return new ModelClientBundle(model, model);
     }

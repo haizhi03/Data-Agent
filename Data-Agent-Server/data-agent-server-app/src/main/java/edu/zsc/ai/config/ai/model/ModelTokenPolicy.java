@@ -16,7 +16,7 @@ public final class ModelTokenPolicy {
             return override;
         }
         String name = modelId == null ? "" : modelId.trim().toLowerCase(Locale.ROOT);
-        var specification=QwenModelSpecifications.find(name);
+        var specification=ModelSpecifications.find(name);
         if(specification!=null)return specification.contextTokens();
         // Published GPT-4o/mini snapshots: https://developers.openai.com/api/docs/models/gpt-4o
         if (name.matches("gpt-4o(?:-mini)?(?:-\\d{4}-\\d{2}-\\d{2})?")) return 128000;
@@ -50,14 +50,28 @@ public final class ModelTokenPolicy {
     /** Strict validation for newly saved settings; automatic budgets remain below the model ceiling. */
     public static int output(String modelId,String compatibility,Integer override,int context,
                              MultiProviderProperties.ThinkingMode thinking,Integer thinkingBudget,ModelPurpose purpose) {
-        var specification=QwenModelSpecifications.find(modelId,compatibility);
+        var specification=ModelSpecifications.find(modelId,compatibility);
         if(specification!=null) {
             int ceiling=specification.outputLimit(thinking);
             if(context>specification.contextTokens() || (override!=null && override>ceiling))throw new IllegalArgumentException("Model token limit exceeded");
-            int result=output(override,context,thinking,thinkingBudget,purpose);
+            int result=effectiveOutput(compatibility,override,context,thinking,thinkingBudget,purpose);
             if(thinkingBudget!=null && thinkingBudget>=ceiling)throw new IllegalArgumentException("Thinking budget leaves no output space");
             return Math.min(result,ceiling);
         }
-        return output(override,context,thinking,thinkingBudget,purpose);
+        return effectiveOutput(compatibility,override,context,thinking,thinkingBudget,purpose);
+    }
+
+    /** File validation preserves older limits; runtime callers clamp them to current catalogue ceilings. */
+    public static int effectiveOutput(String compatibility,Integer override,int context,
+            MultiProviderProperties.ThinkingMode thinking,Integer thinkingBudget,ModelPurpose purpose) {
+        int result=output(override,context,thinking,thinkingBudget,purpose);
+        if(thinking!=MultiProviderProperties.ThinkingMode.DISABLED) {
+            int minimum=edu.zsc.ai.domain.service.ai.model.ModelProfiles.all().stream()
+                    .filter(p->p.compatibilityProfile().equals(compatibility) && p.thinkingModes().contains(thinking))
+                    .mapToInt(p->p.optionRules().minimumThinkingOutputTokens()).max().orElse(8192);
+            result=Math.max(result,minimum);
+        }
+        if(result>=context)throw new IllegalArgumentException("Output exceeds context window");
+        return result;
     }
 }

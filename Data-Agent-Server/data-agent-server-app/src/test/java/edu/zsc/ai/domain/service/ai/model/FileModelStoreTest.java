@@ -5,7 +5,6 @@ import edu.zsc.ai.config.ai.model.*;
 import java.io.IOException;
 import java.nio.channels.*;
 import java.nio.file.*;
-import java.nio.file.attribute.PosixFilePermissions;
 import java.util.*;
 import java.util.concurrent.*;
 import org.junit.jupiter.api.*;
@@ -59,8 +58,8 @@ class FileModelStoreTest {
         assertThrows(ModelManagementException.class,()->failing.update(scope,s->{s.startupImported=false;return null;}));
         assertArrayEquals(before,Files.readAllBytes(target()));assertEquals("existing-file",Files.readString(legacy));
         try(var paths=Files.list(target().getParent())){assertTrue(paths.noneMatch(p->p.getFileName().toString().startsWith(".models-")));}
-        assertEquals(PosixFilePermissions.fromString("rw-------"),Files.getPosixFilePermissions(target()));
-        assertEquals(PosixFilePermissions.fromString("rwx------"),Files.getPosixFilePermissions(target().getParent()));
+        ModelStorageFilesTest.assertPrivate(target(),false);
+        ModelStorageFilesTest.assertPrivate(target().getParent(),true);
     }
     @Test void corruptUnknownAndMismatchedFilesAreNeverSilentlyReset() throws Exception {
         initialize();String good=Files.readString(target());
@@ -71,7 +70,8 @@ class FileModelStoreTest {
             assertEquals(bad,Files.readString(target()));
         }
     }
-    @Test void rejectsSymlinksWithoutReadingOrOverwritingTheirTarget() throws Exception {
+    @Test @org.junit.jupiter.api.condition.EnabledOnOs({org.junit.jupiter.api.condition.OS.MAC,org.junit.jupiter.api.condition.OS.LINUX})
+    void rejectsSymlinksWithoutReadingOrOverwritingTheirTarget() throws Exception {
         initialize();Path outside=temporary.resolve("unrelated.json"),backup=temporary.resolve("backup");Files.writeString(outside,"unrelated");Files.move(target(),backup);Files.createSymbolicLink(target(),outside);
         assertThrows(ModelManagementException.class,()->files.read(scope,s->s.revision));assertThrows(ModelManagementException.class,()->files.update(scope,s->{s.startupImported=false;return null;}));
         assertEquals("unrelated",Files.readString(outside));

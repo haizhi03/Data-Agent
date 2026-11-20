@@ -6,8 +6,8 @@ import { ModelConnectionFields } from './ModelConnectionFields';
 import { ModelSettingRow, modelSettingColumns } from './ModelSettingRow';
 import { ConnectionTestPanel } from './ConnectionTestPanel';
 import { inferProvider, selectProvider, type ProviderPreset } from '../../lib/modelProviderPresets';
-import { changeSetupConnection, setupConnection } from '../../lib/modelSetup';
-import { findModelSpecification, modelOutputCeiling } from '../../lib/modelSpecifications';
+import { changeSetupConnection, profileOptions, setupConnection } from '../../lib/modelSetup';
+import { findModelSpecification, modelOutputCeiling, specificationsForProfile } from '../../lib/modelSpecifications';
 import type { ConnectionTestInput, ConnectionTestResult, ModelProfile, ModelSetupInput, ModelSpecification, ThinkingMode } from '../../types/modelManagement';
 
 interface Props {
@@ -29,13 +29,18 @@ export function ModelSetupEditor({ value, profiles, hasCredential, credentialSto
   const connection = { ...setupConnection(value), provider: preset === 'CUSTOM' ? value.provider : preset };
   const available = profiles.filter((profile) => profile.apiStyle === value.apiStyle && profile.compatibilityProfile === value.compatibilityProfile);
   const selected = available.find((profile) => profile.capabilityProfile === value.capabilityProfile);
-  const specification = value.compatibilityProfile === 'qwen-chat-v1' ? findModelSpecification(specifications, value.modelId) : undefined;
+  const specification = findModelSpecification(specificationsForProfile(specifications, value.compatibilityProfile), value.modelId);
+  const rules = selected?.optionRules;
   const outputCeiling = specification ? modelOutputCeiling(specification, value.defaultOptions.thinkingMode) : 1000000;
   const sourceLink = specification && <a href={specification.sourceUrl} target="_blank" rel="noreferrer" className="underline underline-offset-2 ml-1">
     {tr('setup.spec_source', { date: specification.verifiedAt })}</a>;
-  const setThinking = (mode: ThinkingMode) => onChange({ ...value, defaultOptions: { ...value.defaultOptions, thinkingMode: mode,
-    temperature: null, thinkingBudget: mode === 'ENABLED' && value.capabilityProfile === 'anthropic-thinking-v1' ? 1024 : null,
-    reasoningEffort: value.capabilityProfile === 'responses-reasoning-v1' ? 'medium' : null } });
+  const setThinking = (mode: ThinkingMode) => onChange({ ...value, defaultOptions: {
+    ...profileOptions(selected, mode, value.defaultOptions.maxOutputTokens ?? null),
+    ...(mode === 'ENABLED' && rules?.reasoningEfforts.includes(value.defaultOptions.reasoningEffort ?? '')
+      ? { reasoningEffort: value.defaultOptions.reasoningEffort } : {}),
+    ...(mode === 'ENABLED' && rules?.minThinkingBudget != null && value.defaultOptions.thinkingBudget != null
+      ? { thinkingBudget: value.defaultOptions.thinkingBudget } : {}),
+  } });
   const limits = <>
       <Field title={tr('context')} hint={specification ? <>{tr('setup.known_context_hint', { context: specification.contextTokens.toLocaleString() })}{sourceLink}</> : tr('setup.context_hint')}>{(id) => <Input id={id} className="h-11 rounded-lg" type="number" min={2} max={specification?.contextTokens ?? 100000000}
         placeholder={tr('setup.context_placeholder')} value={value.maxContextTokens ?? ''}
@@ -53,22 +58,21 @@ export function ModelSetupEditor({ value, profiles, hasCredential, credentialSto
   const advanced = <div className="space-y-7 border-t border-border pt-6">
       <Field title={tr('setup.capability')}>{(id) => <select id={id} className={selectClass} value={value.capabilityProfile} onChange={(e) => {
         const profile = available.find((p) => p.capabilityProfile === e.target.value);
-        onChange({ ...value, capabilityProfile: e.target.value, defaultOptions: { thinkingMode: profile?.thinkingModes[0] ?? 'DISABLED',
-          maxOutputTokens: value.defaultOptions.maxOutputTokens ?? null } });
+        onChange({ ...value, capabilityProfile: e.target.value, defaultOptions: profileOptions(profile, undefined, value.defaultOptions.maxOutputTokens ?? null) });
       }}>{available.map((profile) => <option key={profile.capabilityProfile} value={profile.capabilityProfile}>{tr(`setup.capabilities.${profile.capabilityProfile}`)}</option>)}</select>}</Field>
-      <Field title={tr('thinking')}>{(id) => <select id={id} className={selectClass} value={value.defaultOptions.thinkingMode} onChange={(e) => setThinking(e.target.value as ThinkingMode)}>
+      <Field title={tr('thinking')}>{(id) => <select id={id} className={selectClass} disabled={selected?.thinkingModes.length === 1} value={value.defaultOptions.thinkingMode} onChange={(e) => setThinking(e.target.value as ThinkingMode)}>
         {selected?.thinkingModes.map((mode) => <option key={mode} value={mode}>{tr(`thinking_modes.${mode}`)}</option>)}
       </select>}</Field>
       <Field title={tr('threshold')}>{(id) => <Input id={id} type="number" min={1} max={value.maxContextTokens == null ? undefined : value.maxContextTokens - 1}
         placeholder={tr('setup.threshold_placeholder')} value={value.memoryThreshold ?? ''}
         onChange={(e) => onChange({ ...value, memoryThreshold: e.target.value ? Number(e.target.value) : null })} />}</Field>
-      {value.defaultOptions.thinkingMode === 'DISABLED' && <Field title={tr('temperature')}>{(id) => <Input id={id} type="number" step="0.1" min={0} max={value.apiStyle === 'ANTHROPIC_MESSAGES' ? 1 : 2}
+      {(rules?.temperatureModes ?? ['DISABLED']).includes(value.defaultOptions.thinkingMode) && <Field title={tr('temperature')}>{(id) => <Input id={id} type="number" step="0.1" min={0} max={rules?.maxTemperature ?? 2}
         value={value.defaultOptions.temperature ?? ''} onChange={(e) => onChange({ ...value, defaultOptions: { ...value.defaultOptions, temperature: e.target.value ? Number(e.target.value) : null } })} />}</Field>}
-      {value.defaultOptions.thinkingMode === 'ENABLED' && ['qwen-tools-v1', 'anthropic-thinking-v1'].includes(value.capabilityProfile) && <Field title={tr('thinking_budget')}>{(id) => <Input id={id} type="number"
-        min={value.capabilityProfile === 'anthropic-thinking-v1' ? 1024 : 1} required={value.capabilityProfile === 'anthropic-thinking-v1'} value={value.defaultOptions.thinkingBudget ?? ''}
+      {value.defaultOptions.thinkingMode === 'ENABLED' && rules?.minThinkingBudget != null && <Field title={tr('thinking_budget')}>{(id) => <Input id={id} type="number"
+        min={rules?.minThinkingBudget ?? 1} required={rules?.thinkingBudgetRequired} value={value.defaultOptions.thinkingBudget ?? ''}
         onChange={(e) => onChange({ ...value, defaultOptions: { ...value.defaultOptions, thinkingBudget: e.target.value ? Number(e.target.value) : null } })} />}</Field>}
-      {value.capabilityProfile === 'responses-reasoning-v1' && <Field title={tr('effort')}>{(id) => <select id={id} className={selectClass} value={value.defaultOptions.reasoningEffort ?? 'medium'}
-        onChange={(e) => onChange({ ...value, defaultOptions: { ...value.defaultOptions, reasoningEffort: e.target.value } })}>{['low', 'medium', 'high'].map((effort) => <option key={effort}>{effort}</option>)}</select>}</Field>}
+      {value.defaultOptions.thinkingMode === 'ENABLED' && !!rules?.reasoningEfforts.length && <Field title={tr('effort')}>{(id) => <select id={id} className={selectClass} value={value.defaultOptions.reasoningEffort ?? rules?.defaultReasoningEffort ?? ''}
+        onChange={(e) => onChange({ ...value, defaultOptions: { ...value.defaultOptions, reasoningEffort: e.target.value } })}>{rules?.reasoningEfforts.map((effort) => <option key={effort}>{effort}</option>)}</select>}</Field>}
     <ModelSettingRow title={tr('setup.availability')}><div className="flex flex-wrap gap-5 text-sm py-2">
       <label className="flex gap-2 items-center"><input type="checkbox" checked={value.chatVisible} onChange={(e) => onChange({ ...value, chatVisible: e.target.checked, makeDefault: e.target.checked && value.makeDefault })} />{tr('chat_visible')}</label>
       <label className="flex gap-2 items-center"><input type="checkbox" checked={value.enabled} onChange={(e) => onChange({ ...value, enabled: e.target.checked, makeDefault: e.target.checked && value.makeDefault })} />{tr('enabled')}</label>

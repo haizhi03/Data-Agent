@@ -88,6 +88,14 @@
             <scope>test</scope>
         </dependency>
 
+        <!-- ACL-only filesystem fixtures for Windows storage permission regression tests. -->
+        <dependency>
+            <groupId>com.google.jimfs</groupId>
+            <artifactId>jimfs</artifactId>
+            <version>1.3.0</version>
+            <scope>test</scope>
+        </dependency>
+
         <!-- LangChain4j AI Core -->
         <dependency>
             <groupId>dev.langchain4j</groupId>

@@ -3,7 +3,9 @@ import { ChevronDown, Eye, EyeOff } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Input } from '../ui/Input';
 import { ModelSettingRow } from './ModelSettingRow';
-import { QwenModelInput } from './QwenModelInput';
+import { ModelIdInput } from './ModelIdInput';
+import { specificationsForProfile } from '../../lib/modelSpecifications';
+import { qwenModelPresets } from '../../lib/qwenModelPresets';
 import { connectionRequestUrl, providerApis, providerPresets, selectProviderApi, type ProviderPreset } from '../../lib/modelProviderPresets';
 import type { ConnectionInput, ModelProfile, ModelSpecification } from '../../types/modelManagement';
 
@@ -30,6 +32,9 @@ export function ModelConnectionFields({ value, preset, profiles, secret, editing
   const id = useId();
   const [keyVisible, setKeyVisible] = useState(false);
   const availableApis = providerApis(preset, profiles);
+  const modelSpecifications = specificationsForProfile(specifications, value.compatibilityProfile);
+  const candidates = modelSpecifications.length ? modelSpecifications.map((specification) => specification.modelId)
+    : preset === 'QWEN' ? qwenModelPresets : [];
   const row = (name: string, title: string, children: ReactNode) => <ModelSettingRow title={title} htmlFor={`${id}-${name}`}>{children}</ModelSettingRow>;
   const inputClass = 'h-11 rounded-lg';
 
@@ -60,7 +65,7 @@ export function ModelConnectionFields({ value, preset, profiles, secret, editing
       <p className="text-xs text-muted-foreground">{tr(value.apiStyle === 'DASHSCOPE_CHAT' ? 'dashscope_endpoint_hint' : 'setup.endpoint_hint')}</p>
     </>)}
     {row('model', tr('setup.model_id'), <>
-      {preset === 'QWEN' ? <QwenModelInput id={`${id}-model`} value={modelId} onChange={onModelIdChange} specifications={specifications} />
+      {candidates.length ? <ModelIdInput id={`${id}-model`} value={modelId} onChange={onModelIdChange} specifications={modelSpecifications} candidates={candidates} />
         : <Input className={inputClass} id={`${id}-model`} required maxLength={256} placeholder={tr('setup.model_placeholder')} value={modelId} onChange={(e) => onModelIdChange(e.target.value)} />}
       <p className="text-xs text-muted-foreground">{tr('setup.model_hint')}</p>
     </>)}

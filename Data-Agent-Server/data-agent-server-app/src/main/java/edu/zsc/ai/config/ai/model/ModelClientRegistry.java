@@ -36,9 +36,7 @@ public class ModelClientRegistry {
         if (config == null) throw ModelIntegrationException.unavailable();
         resolver.reauthorize(config); // A cache hit never bypasses authorization.
         ModelClientBundle raw = cache.get(config, c -> {
-            List<ModelClientFactory> matching = factories.stream().filter(f -> f.supports(c.apiStyle())).toList();
-            if (matching.size() != 1) throw ModelIntegrationException.capability();
-            try { return matching.get(0).create(c); }
+            try { return ModelClientFactory.select(factories,c.apiStyle()).create(c); }
             catch (RuntimeException e) { throw safe(e); }
         });
         return guarded(raw, config, run);

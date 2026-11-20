@@ -1,4 +1,13 @@
-import type { ConnectionInput, ManagedModel, ModelConnection, ModelProfile, ModelSetupInput, PurposeBinding } from '../types/modelManagement';
+import type { ConnectionInput, ManagedModel, ModelConnection, ModelOptions, ModelProfile, ModelSetupInput, PurposeBinding, ThinkingMode } from '../types/modelManagement';
+
+/** Defaults come from the same profile that validates requests on the server. */
+export function profileOptions(profile?: ModelProfile, mode: ThinkingMode = profile?.thinkingModes[0] ?? 'DISABLED', maxOutputTokens: number | null = null): ModelOptions {
+  const rules = profile?.optionRules;
+  return { thinkingMode: mode, maxOutputTokens,
+    ...(mode === 'ENABLED' && rules?.defaultReasoningEffort ? { reasoningEffort: rules.defaultReasoningEffort } : {}),
+    ...(mode === 'ENABLED' && rules?.thinkingBudgetRequired ? { thinkingBudget: rules.minThinkingBudget } : {}),
+  };
+}
 
 export function setupFromModel(profiles: ModelProfile[], connection?: ModelConnection, model?: ManagedModel): ModelSetupInput {
   const apiStyle = connection?.apiStyle ?? 'OPENAI_RESPONSES';
@@ -10,7 +19,7 @@ export function setupFromModel(profiles: ModelProfile[], connection?: ModelConne
     name: model?.name ?? connection?.name ?? '', provider: connection?.provider ?? 'OPENAI', apiStyle, compatibilityProfile,
     endpoint: connection?.endpoint ?? 'https://api.openai.com/v1', modelId: model?.modelId ?? '',
     capabilityProfile: model?.capabilityProfile ?? profile?.capabilityProfile ?? '',
-    defaultOptions: model ? { ...model.defaultOptions, ...(model.tokenLimits ? { maxOutputTokens: model.tokenLimits.maxOutputTokens ?? null } : {}) } : { thinkingMode: 'DISABLED', maxOutputTokens: null },
+    defaultOptions: model ? { ...model.defaultOptions, ...(model.tokenLimits ? { maxOutputTokens: model.tokenLimits.maxOutputTokens ?? null } : {}) } : profileOptions(profile),
     maxContextTokens: model?.tokenLimits ? model.tokenLimits.maxContextTokens ?? null : model?.maxContextTokens ?? null,
     memoryThreshold: model?.memoryThreshold ?? null,
     chatVisible: model?.chatVisible ?? true, enabled: (model?.enabled ?? true) && (connection?.enabled ?? true), makeDefault: false,
@@ -27,8 +36,7 @@ export function changeSetupConnection(setup: ModelSetupInput, connection: Connec
   const profile = profiles.find((p) => p.apiStyle === connection.apiStyle && p.compatibilityProfile === connection.compatibilityProfile);
   return { ...setup, name: connection.name, provider: connection.provider, apiStyle: connection.apiStyle, endpoint: connection.endpoint,
     compatibilityProfile: connection.compatibilityProfile,
-    ...(changed ? { capabilityProfile: profile?.capabilityProfile ?? '', defaultOptions: { thinkingMode: profile?.thinkingModes[0] ?? 'DISABLED',
-      maxOutputTokens: setup.defaultOptions.maxOutputTokens ?? null } } : {}),
+    ...(changed ? { capabilityProfile: profile?.capabilityProfile ?? '', defaultOptions: profileOptions(profile, undefined, setup.defaultOptions.maxOutputTokens ?? null) } : {}),
   };
 }
 

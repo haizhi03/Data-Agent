@@ -73,16 +73,17 @@ public class ModelConnectionTestService {
         if (input.apiKey() == null && (existing == null || existing.credentialId() == null)) {
             throw new ModelManagementException("MODEL_TEST_CREDENTIAL_REQUIRED", HttpStatus.BAD_REQUEST);
         }
-        var profile = ModelProfiles.all().stream().filter(p -> p.apiStyle() == input.apiStyle()
-                && p.compatibilityProfile().equals(input.compatibilityProfile())
-                && p.thinkingModes().contains(MultiProviderProperties.ThinkingMode.DISABLED)).findFirst().orElseThrow(ModelManagementException::invalid);
+        var profile = ModelProfiles.defaults(input.apiStyle(),input.compatibilityProfile());
+        var options = ModelProfiles.defaultOptions(profile);
+        String effort = options.getThinkingMode() == MultiProviderProperties.ThinkingMode.ENABLED
+                && profile.optionRules().reasoningEfforts().contains("low") ? "low" : options.getReasoningEffort();
         Set<String> allowed = new HashSet<>(properties.getModelRouting().getAllowedPrivateHosts());
         if (existing != null) allowed.addAll(existing.allowedPrivateHosts());
         String id = "connection-test/" + UUID.randomUUID();
         return new ResolvedModelConfig(id, 1, existing == null ? id : existing.id(), existing == null ? 1 : existing.version(), scope,
                 input.provider().trim(), input.apiStyle(), input.modelId().trim(), "Connection test", ModelEndpointPolicy.normalize(input.endpoint()),
                 input.apiKey() != null ? "transient:" + id : "credential:" + existing.credentialId(), existing == null ? 0 : existing.credentialVersion(),
-                profile.capabilityProfile(), input.compatibilityProfile(), new ResolvedModelConfig.EffectiveOptions(MultiProviderProperties.ThinkingMode.DISABLED, null, null, 256),
+                profile.capabilityProfile(), input.compatibilityProfile(), new ResolvedModelConfig.EffectiveOptions(options.getThinkingMode(), options.getThinkingBudget(), null, profile.optionRules().testMaxOutputTokens(),effort),
                 32768, 24000, false, allowed);
     }
 

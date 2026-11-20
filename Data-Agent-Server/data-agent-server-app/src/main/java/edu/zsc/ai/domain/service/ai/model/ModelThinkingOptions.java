@@ -14,9 +14,8 @@ public final class ModelThinkingOptions {
     }
 
     public static List<MultiProviderProperties.ThinkingMode> modes(String capability,ModelApiStyle style,String compatibility) {
-        return ModelProfiles.all().stream().filter(profile->profile.apiStyle()==style
-                && profile.compatibilityProfile().equals(compatibility) && profile.capabilityProfile().equals(capability))
-                .findFirst().map(profile->profile.thinkingModes()).orElse(List.of());
+        var profile=ModelProfiles.find(style,compatibility,capability);
+        return profile==null?List.of():profile.thinkingModes();
     }
 
     /** Validated per-message main-chat options; never persisted to workspace defaults. */
@@ -37,7 +36,7 @@ public final class ModelThinkingOptions {
 
     public static int context(FileModelState.Model model,FileModelState.Connection connection) {
         int context=model.tokenLimits()!=null && model.tokenLimits().maxContextTokens()==null?ModelTokenPolicy.context(model.modelId(),null):model.maxContextTokens();
-        var specification=QwenModelSpecifications.find(model.modelId(),connection.compatibilityProfile());
+        var specification=ModelSpecifications.find(model.modelId(),connection.compatibilityProfile());
         return specification==null?context:Math.min(context,specification.contextTokens());
     }
 
@@ -50,13 +49,14 @@ public final class ModelThinkingOptions {
         Integer budget=original.thinkingBudget();String effort=original.reasoningEffort();Double temperature=original.temperature();
         if(apply) {
             if(mode==DISABLED){budget=null;effort=null;}
-            if("anthropic-thinking-v1".equals(model.capabilityProfile()) && mode==ENABLED && budget==null)budget=1024;
-            if("anthropic-adaptive-v1".equals(model.capabilityProfile()))budget=null;
-            if("responses-reasoning-v1".equals(model.capabilityProfile()) && mode==ENABLED && effort==null)effort="medium";
-            if(connection.apiStyle()==ModelApiStyle.ANTHROPIC_MESSAGES && mode!=DISABLED)temperature=null;
+            var rules=ModelProfiles.find(connection.apiStyle(),connection.compatibilityProfile(),model.capabilityProfile()).optionRules();
+            if(rules.minThinkingBudget()==null)budget=null;
+            if(rules.thinkingBudgetRequired() && mode==ENABLED && budget==null)budget=rules.minThinkingBudget();
+            if(mode==ENABLED && effort==null)effort=rules.defaultReasoningEffort();
+            if(!rules.temperatureModes().contains(mode))temperature=null;
         }
         int context=context(model,connection);
-        var specification=QwenModelSpecifications.find(model.modelId(),connection.compatibilityProfile());
+        var specification=ModelSpecifications.find(model.modelId(),connection.compatibilityProfile());
         Integer output=model.tokenLimits()==null?original.maxOutputTokens():model.tokenLimits().maxOutputTokens();
         if(specification!=null && output!=null)output=Math.min(output,specification.outputLimit(mode));
         if(model.tokenLimits()!=null || apply)output=ModelTokenPolicy.output(model.modelId(),connection.compatibilityProfile(),output,context,mode,budget,purpose);

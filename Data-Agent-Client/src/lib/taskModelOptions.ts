@@ -1,5 +1,6 @@
 import type { ManagedModel, ModelConnection, ModelSpecification, PurposeBinding } from '../types/modelManagement';
 import { qwenModelPresets } from './qwenModelPresets';
+import { specificationsForProfile } from './modelSpecifications';
 
 export type TaskModelOption = { value: string; label: string } & (
   { kind: 'model'; modelConfigId: string } |
@@ -11,9 +12,11 @@ export function taskModelOptions(connections: ModelConnection[], models: Managed
   const result: TaskModelOption[] = [];
   const included = new Set<string>();
   const available = models.filter((model) => model.available && (binding.purpose !== 'MAIN_CHAT' || model.chatVisible));
-  const candidates = specifications.length ? specifications.map((specification) => specification.modelId) : qwenModelPresets;
   for (const connection of connections) {
-    if (!connection.enabled || !connection.hasCredential || connection.compatibilityProfile !== 'qwen-chat-v1'
+    const declared = specificationsForProfile(specifications, connection.compatibilityProfile);
+    const candidates = declared.length ? declared.map((specification) => specification.modelId)
+      : connection.compatibilityProfile === 'qwen-chat-v1' ? qwenModelPresets : [];
+    if (!connection.enabled || !connection.hasCredential || !candidates.length
       || !models.some((model) => !model.taskPreset && model.available && model.connectionId === connection.id)) continue;
     for (const modelId of candidates) {
       const matches = available.filter((model) => model.connectionId === connection.id && model.modelId === modelId);

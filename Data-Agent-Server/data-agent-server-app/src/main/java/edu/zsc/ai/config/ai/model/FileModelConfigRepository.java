@@ -21,7 +21,7 @@ public class FileModelConfigRepository implements ModelConfigRepository {
         var connections=new HashSet<String>();
         for(var source:s.models.values()) {
             if(!presetSource(s,source) || !connections.add(source.connectionId()))continue;
-            for(var specification:QwenModelSpecifications.all()) {
+            for(var specification:ModelSpecifications.all(s.connections.get(source.connectionId()).compatibilityProfile())) {
                 if(result.stream().anyMatch(model->model.chatVisible() && model.connectionId().equals(source.connectionId())
                         && model.modelId().equals(specification.modelId())))continue;
                 var preset=resolvePreset(s,new ChatPreset(source.id(),specification.modelId()),a,ModelPurpose.MAIN_CHAT);
@@ -67,30 +67,34 @@ public class FileModelConfigRepository implements ModelConfigRepository {
     private static boolean presetSource(FileModelState s,FileModelState.Model source) {
         if(source==null || source.taskPreset() || !source.enabled() || !source.chatVisible())return false;
         var connection=s.connections.get(source.connectionId());
-        return connection!=null && connection.enabled() && "qwen-chat-v1".equals(connection.compatibilityProfile())
+        return connection!=null && connection.enabled() && !ModelSpecifications.all(connection.compatibilityProfile()).isEmpty()
                 && s.credentials.containsKey(connection.credentialId());
     }
     private ResolvedModelConfig resolvePreset(FileModelState s,ChatPreset preset,ModelAccessContext a,ModelPurpose purpose) {
         var source=s.models.get(preset.sourceId());if(!presetSource(s,source))return null;
-        var specification=QwenModelSpecifications.all().stream().filter(model->model.modelId().equals(preset.modelId())).findFirst().orElse(null);
+        var specification=ModelSpecifications.all(s.connections.get(source.connectionId()).compatibilityProfile()).stream().filter(model->model.modelId().equals(preset.modelId())).findFirst().orElse(null);
         if(specification==null)return null;
         // Explicitly hidden/disabled models must not be reintroduced by the connection presets.
         if(s.models.values().stream().anyMatch(model->model.connectionId().equals(source.connectionId()) && model.modelId().equals(preset.modelId())
                 && (!model.enabled() || !model.taskPreset() && !model.chatVisible())))return null;
         var base=resolve(s,source.id(),a,purpose);if(base==null)return null;
-        var initial=new ResolvedModelConfig.EffectiveOptions(MultiProviderProperties.ThinkingMode.DISABLED,null,null,8192);
-        var variant=new FileModelState.Model(preset.id(),"preset",source.connectionId(),source.name(),preset.modelId(),"qwen-tools-v1",initial,
+        var profile=ModelProfiles.find(base.apiStyle(),base.compatibilityProfile(),specification.capabilityProfile());
+        if(profile==null)return null;
+        var defaults=ModelProfiles.defaultOptions(profile);
+        var initial=new ResolvedModelConfig.EffectiveOptions(defaults.getThinkingMode(),defaults.getThinkingBudget(),null,
+                profile.optionRules().defaultMaxOutputTokens(),defaults.getReasoningEffort());
+        var variant=new FileModelState.Model(preset.id(),"preset",source.connectionId(),source.name(),preset.modelId(),specification.capabilityProfile(),initial,
                 specification.contextTokens(),Math.min(24000,specification.contextTokens()-1),true,source.version(),true,new ConfiguredTokenLimits(null,null));
         var binding=s.bindings.get(purpose);
         var options=ModelThinkingOptions.options(variant,s.connections.get(source.connectionId()),binding==null?null:binding.thinkingMode(),purpose);
         return new ResolvedModelConfig(preset.id(),base.configVersion(),base.connectionId(),base.connectionVersion(),a,base.provider(),base.apiStyle(),
-                preset.modelId(),base.name(),base.endpoint(),base.credentialRef(),base.credentialVersion(),"qwen-tools-v1",base.compatibilityProfile(),options,
+                preset.modelId(),base.name(),base.endpoint(),base.credentialRef(),base.credentialVersion(),specification.capabilityProfile(),base.compatibilityProfile(),options,
                 specification.contextTokens(),Math.min(24000,specification.contextTokens()-1),true,base.allowedPrivateHosts());
     }
     private record ChatPreset(String sourceId,String modelId) {
-        String id(){return "qwen-preset/"+sourceId+"/"+modelId;}
+        String id(){return (ModelSpecifications.find(modelId,"qwen-chat-v1")!=null?"qwen-preset/":"model-preset/")+sourceId+"/"+modelId;}
         static ChatPreset parse(String id) {
-            if(id==null || !id.startsWith("qwen-preset/"))return null;
+            if(id==null || !(id.startsWith("qwen-preset/") || id.startsWith("model-preset/")))return null;
             var parts=id.split("/",-1);
             return parts.length==3?new ChatPreset(parts[1],parts[2]):null;
         }

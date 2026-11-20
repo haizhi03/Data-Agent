@@ -1230,6 +1230,9 @@
       "name_placeholder": "例如：工作用 Qwen；留空使用模型 ID",
       "model_id": "默认模型",
       "model_placeholder": "例如：qwen3.8-max",
+      "candidate_model_placeholder": "选择模型，或输入其他模型 ID",
+      "candidate_models": "预置模型",
+      "candidate_presets_hint": "预置候选，支持手动输入其他 ID；是否可用请测试连接。",
       "qwen_model_placeholder": "选择 Qwen 模型，或输入其他模型 ID",
       "qwen_models": "Qwen 预置模型",
       "choose_models": "展开模型列表",
@@ -1274,7 +1277,7 @@
       "set_default": "设为默认",
       "make_default": "同时设为默认模型，用于对话和其他 AI 任务",
       "task_defaults": "按任务选择模型（高级）",
-      "defaults_hint": "Qwen 连接可直接选择 4 个预置模型，共用该连接的地址和 API Key。切换只影响当前任务；“设为默认”会统一设置全部任务。",
+      "defaults_hint": "同一连接的预置模型共用地址和 API Key。切换只影响当前任务；“设为默认”会统一设置全部任务。",
       "incomplete": "尚未填写模型 ID，完善后即可使用。",
       "complete": "完善配置",
       "more": "更多检查"

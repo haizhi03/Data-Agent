@@ -9,6 +9,9 @@ public class AnthropicMessagesClientFactory implements ModelClientFactory {
     private final CredentialService credentials;
     @Override public boolean supports(ModelApiStyle style) { return style == ModelApiStyle.ANTHROPIC_MESSAGES; }
     @Override public ModelClientBundle create(ResolvedModelConfig config) {
+        return create(config, credentials);
+    }
+    @Override public ModelClientBundle create(ResolvedModelConfig config, CredentialService credentials) {
         var model = new AnthropicMessagesProtocolModel(config, credentials, new PolicyHttpClientBuilder(config).build());
         return new ModelClientBundle(model, model);
     }

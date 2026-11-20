@@ -3,7 +3,6 @@ package edu.zsc.ai.domain.service.ai.model;
 import edu.zsc.ai.common.enums.org.WorkspaceTypeEnum;
 import edu.zsc.ai.config.ai.model.*;
 import java.nio.file.*;
-import java.nio.file.attribute.PosixFilePermissions;
 import java.util.*;
 import java.util.concurrent.*;
 import org.junit.jupiter.api.*;
@@ -34,9 +33,9 @@ class ModelCredentialKeyStoreTest {
         assertTrue(first.configured());
         byte[] original = Files.readAllBytes(key());
         assertEquals(32, Base64.getDecoder().decode(original).length);
-        assertEquals(PosixFilePermissions.fromString("rw-------"), Files.getPosixFilePermissions(key()));
-        assertEquals(PosixFilePermissions.fromString("rwx------"), Files.getPosixFilePermissions(key().getParent()));
-        assertEquals(PosixFilePermissions.fromString("rw-------"), Files.getPosixFilePermissions(key().resolveSibling("keys.lock")));
+        ModelStorageFilesTest.assertPrivate(key(),false);
+        ModelStorageFilesTest.assertPrivate(key().getParent(),true);
+        ModelStorageFilesTest.assertPrivate(key().resolveSibling("keys.lock"),false);
         String payload = first.encrypt("synthetic-provider-key", scope, "credential-one", "V1");
         assertFalse(payload.contains("synthetic-provider-key"));
         var restarted = cipher();
@@ -153,7 +152,8 @@ class ModelCredentialKeyStoreTest {
         assertFalse(Arrays.equals(Files.readAllBytes(key()), Files.readAllBytes(key().resolveSibling("V2.key"))));
     }
 
-    @Test void symlinkedStorageKeyDirectoryKeyAndLockAreRejected() throws Exception {
+    @Test @org.junit.jupiter.api.condition.EnabledOnOs({org.junit.jupiter.api.condition.OS.MAC,org.junit.jupiter.api.condition.OS.LINUX})
+    void symlinkedStorageKeyDirectoryKeyAndLockAreRejected() throws Exception {
         Path outside = temporary.resolve("outside");Files.createDirectory(outside);
         Path root = temporary.resolve("root-link");Files.createSymbolicLink(root, outside);
         assertFalse(new ModelCredentialCipher(environment(Map.of()), properties(root)).configured());

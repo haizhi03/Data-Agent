@@ -223,9 +223,16 @@ class ProtocolHttpContractTest {
     @ParameterizedTest @EnumSource(value = ModelApiStyle.class, names = {"OPENAI_RESPONSES", "ANTHROPIC_MESSAGES"})
     void draftConnectionProbeUsesTransientKeyAndProductionProtocolOverLocalTls(ModelApiStyle style) throws Exception {
         var config=config(style);
-        var probe=new ModelConnectionProbe(){@Override protected ModelClientBundle createClients(ResolvedModelConfig c,CredentialService transientCredentials){
-            var model=model(c,transientCredentials);return new ModelClientBundle(model,model);
-        }};
+        var factory=new ModelClientFactory(){
+            @Override public boolean supports(ModelApiStyle candidate){return candidate==style;}
+            @Override public ModelClientBundle create(ResolvedModelConfig c){
+                throw new AssertionError("Draft probes must use transient credentials");
+            }
+            @Override public ModelClientBundle create(ResolvedModelConfig c,CredentialService transientCredentials){
+                var model=model(c,transientCredentials);return new ModelClientBundle(model,model);
+            }
+        };
+        var probe=new ModelConnectionProbe(List.of(factory));
         replies.add(json(response(style,text(style,"OK"),"draft-test")));
         assertDoesNotThrow(()->probe.test(config,"draft-fixture-key"));
         var body=requests.poll(3,TimeUnit.SECONDS);assertNotNull(body);assertEquals("fixture-model",body.path("model").asText());
