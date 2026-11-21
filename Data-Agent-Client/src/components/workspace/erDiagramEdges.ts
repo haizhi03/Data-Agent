@@ -1,5 +1,6 @@
 import type { Edge } from '@xyflow/react';
 import type { ErRelation } from '../../services/table.service';
+import { relationFocusKey } from './erDiagramFocus';
 import {
   anchorColumns,
   endMarks,
@@ -22,6 +23,8 @@ export type ErEdgeData = {
   toMark: EndMark;
   lane: number;
   dimmed: boolean;
+  /** Set while this line is pinned by "how these connect". Clicking it removes just this line. */
+  focusKey?: string;
 };
 
 export type ErRelationEdge = Edge<ErEdgeData, 'er'>;
@@ -82,11 +85,15 @@ export function buildDiagramEdges(
   showAllLines: boolean,
   linked: ReadonlySet<string> = new Set(),
   highlighted: ReadonlySet<string> = new Set(),
+  pinnedRelations: ErRelation[] | null = null,
 ): ErRelationEdge[] {
   if (nodes.length === 0 || relations.length === 0) return [];
-  const active = focus ? relations.filter((relation) => relationTouches(relation, focus)) : [];
-  const drawn = showAllLines ? relations : active;
-  if (!showAllLines && (!focus || active.length === 0)) return [];
+  const usePinned = pinnedRelations != null;
+  const active = usePinned
+    ? pinnedRelations
+    : (focus ? relations.filter((relation) => relationTouches(relation, focus)) : []);
+  const drawn = usePinned ? pinnedRelations : (showAllLines ? relations : active);
+  if (!usePinned && !showAllLines && (!focus || active.length === 0)) return [];
   const byId = new Map(nodes.map((node) => [node.id, node]));
   const lanes = pairLaneOffsets(drawn);
   return drawn.flatMap((relation, index) => {
@@ -115,7 +122,8 @@ export function buildDiagramEdges(
         fromMark: marks.from,
         toMark: marks.to,
         lane: lanes[index] ?? 0,
-        dimmed: showAllLines && focus != null && !active.includes(relation),
+        dimmed: !usePinned && showAllLines && focus != null && !active.includes(relation),
+        focusKey: usePinned ? relationFocusKey(relation) : undefined,
       },
     }];
   });

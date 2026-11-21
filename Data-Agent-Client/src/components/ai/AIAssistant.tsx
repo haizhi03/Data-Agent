@@ -20,6 +20,7 @@ import { resolveErrorMessage } from '../../lib/errorMessage';
 import { SLASH_COMMAND_IDS } from './slashCommands';
 import { I18N_KEYS } from '../../constants/i18nKeys';
 import type { ChatContext, ChatMessage, ChatUserMention } from '../../types/chat';
+import { useErQueryFocusStore } from '../../store/erQueryFocusStore';
 import { MessageBlockType, MessageRole } from '../../types/chat';
 import type { ModelOption } from '../../types/ai';
 import type { ThinkingMode } from '../../types/modelManagement';
@@ -235,10 +236,15 @@ export function AIAssistant({ onClosePanel, historyAsLeftSidebar = false }: AIAs
     if (!input.trim() || !modelOptions.some((m) => m.modelName === model)) return;
     const messageText = input.trim();
     const activeMentions = resolveMentionsInText(messageText, userMentionsRef.current);
+    const erFocus = useErQueryFocusStore.getState().focus;
     userHasScrolledUpRef.current = false;
-    submitMessage(messageText, activeMentions.length > 0 ? { userMentions: activeMentions } : undefined);
+    submitMessage(messageText, {
+      ...(activeMentions.length > 0 ? { userMentions: activeMentions } : {}),
+      ...(erFocus ? { erFocus } : {}),
+    });
     setInput('');
     setUserMentions([]);
+    if (erFocus) useErQueryFocusStore.getState().clear();
   }, [input, setInput, submitMessage, setUserMentions, modelOptions, model]);
 
   const chatMessages = chatMessagesToMessages(messages);

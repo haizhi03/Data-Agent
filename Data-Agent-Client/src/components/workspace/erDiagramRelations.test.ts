@@ -6,6 +6,7 @@ import {
   collapseJunctions,
   endMarks,
   filterTablesByName,
+  matchingTableIds,
   junctionTableId,
   relationMapping,
   relationTouches,
@@ -135,6 +136,7 @@ describe('filter tables by name', () => {
 
   it('keeps every table when the query is blank', () => {
     expect(filterTablesByName(diagram, '  ').tables).toHaveLength(diagram.tables.length);
+    expect(matchingTableIds(diagram, '  ')).toBeNull();
   });
 
   it('keeps a matching table and only the lines between matching tables', () => {

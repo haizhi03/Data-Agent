@@ -4,10 +4,12 @@ import { columnKey, tableId } from './erDiagramRelations';
 import {
   cardHeight,
   shiftCardsForResize,
+  ER_CANVAS_RING,
   ER_MIN_ZOOM,
   ER_MINIMAP_HIDE_SLACK,
   ER_MINIMAP_SHOW_SLACK,
   formatZoomPercent,
+  minZoomForCanvas,
   minimapNeeded,
   clearStoredLayout,
   hasStoredLayout,
@@ -15,6 +17,7 @@ import {
   layoutDiagram,
   mergeStoredPositions,
   normalizeLayout,
+  panExtentForDiagram,
   viewportForDiagram,
   viewportShowsAllTables,
   readStoredLayout,
@@ -233,6 +236,24 @@ describe('ER diagram opening frame', () => {
     expect(bottom).toBeLessThanOrEqual(700 - 32 + 0.01);
     expect(left).toBeGreaterThanOrEqual(32 - 0.01);
     expect(right).toBeLessThanOrEqual(1000 - 32 + 0.01);
+  });
+
+  it('limits panning to the fitted view plus one card of room', () => {
+    const bounds = { x: 24, y: 24, width: 900, height: 1400 };
+    const view = { width: 1000, height: 700 };
+    const viewport = viewportForDiagram(bounds, view.width, view.height)!;
+    const extent = panExtentForDiagram(bounds, view.width, view.height)!;
+    const left = -viewport.x / viewport.zoom;
+    const top = -viewport.y / viewport.zoom;
+    const right = left + view.width / viewport.zoom;
+    const bottom = top + view.height / viewport.zoom;
+    expect(extent[0][0]).toBeCloseTo(left - ER_CANVAS_RING);
+    expect(extent[0][1]).toBeCloseTo(top - ER_CANVAS_RING);
+    expect(extent[1][0]).toBeCloseTo(right + ER_CANVAS_RING);
+    expect(extent[1][1]).toBeCloseTo(bottom + ER_CANVAS_RING);
+    const lowest = minZoomForCanvas(extent, view.width, view.height);
+    expect(lowest).toBeLessThan(viewport.zoom);
+    expect(lowest).toBeGreaterThan(ER_MIN_ZOOM);
   });
 });
 
