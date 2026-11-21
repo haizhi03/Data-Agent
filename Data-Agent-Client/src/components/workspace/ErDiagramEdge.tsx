@@ -67,18 +67,20 @@ export function ErRelationEdgeView({
       <BaseEdge
         id={id}
         path={path}
-        interactionWidth={0}
+        interactionWidth={data?.focusKey ? 18 : 0}
         markerStart={`url(#${startId})`}
         markerEnd={`url(#${endId})`}
         style={{
           stroke: color,
-          strokeWidth: 1.6,
+          strokeWidth: data?.focusKey ? 2.4 : 1.6,
           strokeDasharray: data?.cross ? '5 4' : undefined,
           opacity: data?.dimmed ? 0.28 : 1,
           fill: 'none',
-          pointerEvents: 'none',
+          pointerEvents: data?.focusKey ? 'stroke' : 'none',
+          cursor: data?.focusKey ? 'pointer' : undefined,
         }}
       />
+      {data?.focusKey ? <title>点击隐藏这条线</title> : null}
     </g>
   );
 }

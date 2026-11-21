@@ -7,6 +7,9 @@ export interface ErDiagramInteraction {
   linked: ReadonlySet<string>;
   highlighted: ReadonlySet<string>;
   junctionTables: ReadonlySet<string>;
+  dimmedTables: ReadonlySet<string>;
+  /** Tables matched by the name box. Null when the box is empty. */
+  soughtTables: ReadonlySet<string> | null;
   active: ColumnFocus | null;
   draggingRef: MutableRefObject<boolean>;
   togglePin: (focus: ColumnFocus) => void;
@@ -14,6 +17,8 @@ export interface ErDiagramInteraction {
   clearHover: (focus: ColumnFocus) => void;
   busy: boolean;
   toggleExpanded: (nodeId: string) => void;
+  /** Ctrl or Shift click toggles this table in the current selection. */
+  modifySelection: (nodeId: string) => void;
   openData: (table: ErTable) => void;
   openDdl: (table: ErTable) => void;
   openExternal: (table: ErTable) => void;

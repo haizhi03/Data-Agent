@@ -53,6 +53,12 @@ public class ChatRequest extends BaseRequest {
     private List<ChatUserMention> userMentions;
 
     /**
+     * Tables circled on the ER diagram for this question. The agent may follow
+     * one foreign-key hop beyond them. Absent when the user did not attach a selection.
+     */
+    private ErQueryFocus erFocus;
+
+    /**
      * Optional client workspace fallback when custom HTTP headers are missing on the chat stream request
      * (e.g. some fetch/EventSource paths). Values are validated with {@code loadActiveMembership}; if the
      * interceptor already set {@code ORGANIZATION} with {@code orgId}, body hints are ignored.

@@ -55,7 +55,7 @@ function SideHandles({ role, side, column }: { role: 'source' | 'target'; side: 
   );
 }
 
-export function ErTableNode({ data }: NodeProps<ErTableNodeType>) {
+export function ErTableNode({ data, selected }: NodeProps<ErTableNodeType>) {
   const { t } = useTranslation();
   const interaction = useErDiagramInteraction();
   const nodeId = useNodeId();
@@ -73,14 +73,25 @@ export function ErTableNode({ data }: NodeProps<ErTableNodeType>) {
     if (nodeId) updateInternals(nodeId);
   }, [expanded, nodeId, shownColumnKey, updateInternals]);
 
+  const sought = interaction.soughtTables?.has(id) === true;
+  const dimmed = interaction.dimmedTables.has(id) || (interaction.soughtTables != null && !sought);
   return (
     <div
-      className={`flex h-full w-full flex-col overflow-hidden rounded-md border theme-bg-popup shadow-sm ${table.external ? 'border-dashed border-rose-400/80' : 'theme-border'}`}
+      className={`flex h-full w-full flex-col overflow-hidden rounded-md border theme-bg-popup shadow-sm ${table.external ? 'border-dashed border-rose-400/80' : 'theme-border'} ${selected ? 'ring-2 ring-blue-500' : sought ? 'ring-2 ring-amber-500' : ''} ${dimmed ? 'opacity-40' : ''} ${sought ? 'relative z-10' : ''}`}
       style={{ width: CARD_WIDTH, height }}
       onDoubleClick={(event) => {
         if (!table.external) return;
         event.stopPropagation();
         interaction.openExternal(table);
+      }}
+      onPointerDownCapture={(event) => {
+        if (event.button !== 0 || !nodeId) return;
+        const target = event.target as HTMLElement;
+        if (target.closest('button, .er-drag-handle')) return;
+        if (!(event.ctrlKey || event.metaKey || event.shiftKey)) return;
+        event.stopPropagation();
+        event.preventDefault();
+        interaction.modifySelection(nodeId);
       }}
     >
       <div
@@ -145,7 +156,7 @@ export function ErTableNode({ data }: NodeProps<ErTableNodeType>) {
                   event.stopPropagation();
                 }}
                 onClick={(event) => {
-                  if (!linked) return;
+                  if (!linked || event.ctrlKey || event.metaKey || event.shiftKey) return;
                   event.stopPropagation();
                   interaction.togglePin({ tableId: id, column: column.name });
                 }}

@@ -108,23 +108,37 @@ export function junctionTableId(relation: ErRelation) {
   return tableId({ catalog: relation.viaCatalog, schema: relation.viaSchema, name: relation.viaTable });
 }
 
-/** Keeps tables whose name matches, and lines whose two ends are both still shown. */
-export function filterTablesByName(diagram: ErDiagram, query: string, exact = false): ErDiagram {
+/** Tables whose names match the query. Null when the query is blank, so the diagram stays unmarked. */
+export function matchingTableIds(diagram: ErDiagram, query: string, exact = false): Set<string> | null {
   const needles = query.split(',').map((part) => part.trim().toLowerCase()).filter(Boolean);
-  if (needles.length === 0) return diagram;
+  if (needles.length === 0) return null;
   const kept = new Set<string>();
   diagram.tables.forEach((table) => {
-    const name = table.name.toLowerCase();
-    const scope = (table.schema || table.catalog || '').toLowerCase();
-    const qualified = scope ? `${scope}.${name}` : name;
-    const matched = needles.some((needle) => {
-      if (exact) return name === needle || qualified === needle;
-      if (name.includes(needle)) return true;
-      if (needle.includes('.') && qualified.includes(needle)) return true;
-      return scope.length > 0 && scope === needle;
-    });
-    if (matched) kept.add(tableId(table));
+    if (tableNameMatches(table, needles, exact)) kept.add(tableId(table));
   });
+  return kept;
+}
+
+function tableNameMatches(
+  table: { catalog?: string | null; schema?: string | null; name: string },
+  needles: string[],
+  exact: boolean,
+) {
+  const name = table.name.toLowerCase();
+  const scope = (table.schema || table.catalog || '').toLowerCase();
+  const qualified = scope ? `${scope}.${name}` : name;
+  return needles.some((needle) => {
+    if (exact) return name === needle || qualified === needle;
+    if (name.includes(needle)) return true;
+    if (needle.includes('.') && qualified.includes(needle)) return true;
+    return scope.length > 0 && scope === needle;
+  });
+}
+
+/** Keeps tables whose name matches, and lines whose two ends are both still shown. */
+export function filterTablesByName(diagram: ErDiagram, query: string, exact = false): ErDiagram {
+  const kept = matchingTableIds(diagram, query, exact);
+  if (!kept) return diagram;
   return {
     ...diagram,
     tables: diagram.tables.filter((table) => kept.has(tableId(table))),

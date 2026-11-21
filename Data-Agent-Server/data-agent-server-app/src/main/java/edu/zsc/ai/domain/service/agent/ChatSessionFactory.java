@@ -93,8 +93,9 @@ public class ChatSessionFactory {
             RequestContextInfo requestContextSnapshot = RequestContext.snapshot();
             AgentRequestContextInfo agentRequestContextSnapshot = AgentRequestContext.snapshot();
 
+            String enriched = ErQueryFocusMessage.enrich(request.getMessage(), request.getErFocus(), request.getLanguage());
             return new ChatSession(modelName, agentMode, agent, memoryId,
-                    request.getMessage(), parameters, conversationId, requestContextSnapshot, agentRequestContextSnapshot);
+                    enriched, parameters, conversationId, requestContextSnapshot, agentRequestContextSnapshot);
         } finally {
             restoreContexts(previousRequestContext, previousAgentRequestContext);
         }
