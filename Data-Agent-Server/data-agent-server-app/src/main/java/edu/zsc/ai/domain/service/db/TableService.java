@@ -37,8 +37,6 @@ public interface TableService {
 
     void deleteTable(DbContext db, String tableName);
 
-    void renameTable(DbContext db, String tableName, String newTableName);
-
     ExecuteSqlResponse insertRow(DbContext db, String tableName, List<TableRowValue> values);
 
     ExecuteSqlResponse deleteRow(DbContext db, String tableName, List<TableRowValue> matchValues, boolean force);

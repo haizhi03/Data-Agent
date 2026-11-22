@@ -94,19 +94,6 @@ public final class DmTableManager implements TableManager {
     }
 
     @Override
-    public void renameTable(Connection connection, String catalog, String schema,
-                            String tableName, String newTableName) {
-        support.renameObject(
-                connection,
-                support.resolveSchema(connection, schema),
-                tableName,
-                newTableName,
-                DmSqlTemplate.SQL_RENAME_TABLE,
-                DatabaseObjectTypeEnum.TABLE.getValue()
-        );
-    }
-
-    @Override
     public void deleteTable(Connection connection, String catalog, String schema, String tableName) {
         support.dropObject(
                 connection,

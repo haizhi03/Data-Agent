@@ -203,24 +203,6 @@ public final class DmMetadataSupport {
         }
     }
 
-    public void renameObject(Connection connection, String schema, String objectName,
-                             String newObjectName, String sqlTemplate, String objectType) {
-        requireConnectionAndName(connection, objectName);
-        if (StringUtils.isBlank(newObjectName)) {
-            throw new IllegalArgumentException("New object name must not be null or empty");
-        }
-
-        String fullName = DmIdentifierBuilder.buildFullIdentifier(schema, objectName);
-        String quotedNewName = DmIdentifierEscaper.getInstance().quoteIdentifier(newObjectName.trim());
-        String sql = String.format(sqlTemplate, fullName, quotedNewName);
-
-        SqlCommandResult result = execute(connection, schema, sql);
-        if (!result.isSuccess()) {
-            throw new RuntimeException(String.format(
-                    "Failed to rename %s: %s", objectType, result.getErrorMessage()));
-        }
-    }
-
     public SqlCommandResult getTableLikeData(Connection connection, String schema,
                                              String objectName, int offset, int pageSize) {
         requireConnectionAndName(connection, objectName);

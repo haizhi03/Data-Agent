@@ -265,30 +265,6 @@ function removeNameFromCachedMetadata<T extends { name: string }>(
   if (cached) queryClient.setQueryData<T[]>(queryKey, cached.filter((item) => item.name !== name));
 }
 
-/** Keep a cached table list in sync with a rename so tree rebuilds don't revive the old name. */
-export function renameCachedExplorerTable(
-  queryClient: QueryClient,
-  connectionId: string,
-  catalog: string | undefined,
-  schema: string | undefined,
-  oldName: string,
-  newName: string
-) {
-  const queryKey = getExplorerTablesQueryKey(connectionId, catalog, schema);
-  const cached = queryClient.getQueryData<string[]>(queryKey);
-  if (!cached || !cached.includes(oldName)) return;
-  const next = [...new Set(cached.map((name) => (name === oldName ? newName : name)))];
-  queryClient.setQueryData<string[]>(queryKey, next);
-
-  const commentsKey = getExplorerTableCommentsQueryKey(connectionId, catalog, schema);
-  const comments = queryClient.getQueryData<ExplorerTableComments>(commentsKey);
-  if (comments && oldName in comments) {
-    const nextComments = { ...comments, [newName]: comments[oldName] };
-    delete nextComments[oldName];
-    queryClient.setQueryData<ExplorerTableComments>(commentsKey, nextComments);
-  }
-}
-
 export function removeCachedExplorerTable(
   queryClient: QueryClient,
   connectionId: string,

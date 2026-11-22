@@ -336,12 +336,6 @@ public abstract class DefaultDmPlugin extends AbstractDatabasePlugin
     }
 
     @Override
-    public void renameTable(Connection connection, String catalog, String schema,
-                            String tableName, String newTableName) {
-        tableManager.renameTable(connection, catalog, schema, tableName, newTableName);
-    }
-
-    @Override
     public SqlCommandResult getTableData(Connection connection, String catalog, String schema,
                                          String tableName, int offset, int pageSize) {
         return tableManager.getTableData(connection, catalog, schema, tableName, offset, pageSize);

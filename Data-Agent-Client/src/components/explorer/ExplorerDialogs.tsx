@@ -6,7 +6,6 @@ import { DeleteEntityDialog } from './DeleteEntityDialog';
 import { DdlViewerDialog } from './DdlViewerDialog';
 import { TableDataDialog } from './TableDataDialog';
 import { CreateTableDialog } from './CreateTableDialog';
-import { RenameTableDialog } from './RenameTableDialog';
 import { TableCommentDialog } from './TableCommentDialog';
 import { ExplorerNodeType } from '../../constants/explorer';
 import { I18N_KEYS } from '../../constants/i18nKeys';
@@ -49,11 +48,6 @@ interface ExplorerDialogsProps {
   deleteState: any;
   onDeleteStateChange: (state: any) => void;
   onConfirmDelete: () => void;
-
-  // Rename table dialog
-  renameState: NodeDialogState;
-  onRenameStateChange: (state: NodeDialogState) => void;
-  onConfirmRename: (newName: string) => void;
 
   // Table comment dialog
   commentState: NodeDialogState;
@@ -100,10 +94,6 @@ export function ExplorerDialogs({
   deleteState,
   onDeleteStateChange,
   onConfirmDelete,
-
-  renameState,
-  onRenameStateChange,
-  onConfirmRename,
 
   commentState,
   onCommentStateChange,
@@ -194,20 +184,6 @@ export function ExplorerDialogs({
           node={selectedCreateTableNode}
           connections={connections}
           onSuccess={onCreateTableSuccess}
-        />
-      )}
-
-      {renameState.node && (
-        <RenameTableDialog
-          open={renameState.isOpen}
-          onOpenChange={(open) => {
-            if (!open) {
-              onRenameStateChange({ node: null, isOpen: false, isPending: false });
-            }
-          }}
-          tableName={renameState.node.name}
-          onConfirm={onConfirmRename}
-          isPending={renameState.isPending}
         />
       )}
 

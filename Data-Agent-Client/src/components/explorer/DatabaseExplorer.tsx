@@ -10,7 +10,6 @@ import { useDialogState } from '../../hooks/useDialogState';
 import { useConnectionActions } from '../../hooks/useConnectionActions';
 import { useDataViewActions } from '../../hooks/useDataViewActions';
 import { useDeleteActions } from '../../hooks/useDeleteActions';
-import { useRenameActions } from '../../hooks/useRenameActions';
 import { useTableCommentActions } from '../../hooks/useTableCommentActions';
 import { I18N_KEYS } from '../../constants/i18nKeys';
 import { DataAttributes } from '../../constants/dataAttributes';
@@ -113,8 +112,6 @@ export function DatabaseExplorer() {
     setCreateTableDialogOpen,
     selectedCreateTableNode,
     setSelectedCreateTableNode,
-    renameState,
-    setRenameState,
     commentState,
     setCommentState,
   } = dialogState;
@@ -146,14 +143,6 @@ export function DatabaseExplorer() {
     setDeleteState,
     deleteState,
     setTreeDataState,
-  });
-
-  // Rename actions
-  const { handleRename, confirmRename } = useRenameActions({
-    setRenameState,
-    renameState,
-    setTreeDataState,
-    rebuildTablesFolder,
   });
 
   // Table comment actions
@@ -504,7 +493,6 @@ export function DatabaseExplorer() {
           onViewData={handleViewData}
           onTableOrViewDoubleClick={handleTableOrViewDoubleClick}
           onTableComment={handleTableComment}
-          onRename={handleRename}
           onDelete={handleDelete}
           onOpenQueryConsole={handleOpenQueryConsole}
           onRunSqlScript={handleRunSqlScript}
@@ -554,9 +542,6 @@ export function DatabaseExplorer() {
         deleteState={deleteState}
         onDeleteStateChange={setDeleteState}
         onConfirmDelete={confirmDelete}
-        renameState={renameState}
-        onRenameStateChange={setRenameState}
-        onConfirmRename={confirmRename}
         commentState={commentState}
         onCommentStateChange={setCommentState}
         onConfirmTableComment={confirmTableComment}

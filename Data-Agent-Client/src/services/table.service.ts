@@ -196,20 +196,4 @@ export const tableService = {
       }
     });
   },
-
-  renameTable: async (
-    connectionId: string,
-    tableName: string,
-    newTableName: string,
-    catalog?: string,
-    schema?: string
-  ): Promise<void> => {
-    await http.put(ApiPaths.TABLES_RENAME, {
-      connectionId,
-      tableName,
-      newTableName,
-      catalog,
-      schema
-    });
-  },
 };

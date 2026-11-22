@@ -155,20 +155,6 @@ public class TableServiceImpl implements TableService {
     }
 
     @Override
-    public void renameTable(DbContext db, String tableName, String newTableName) {
-        connectionService.openConnection(db);
-
-        ActiveConnectionRegistry.ActiveConnection active = ActiveConnectionRegistry.getOwnedConnection(db);
-        TableManager provider = DefaultPluginManager.getInstance().getTableManagerByPluginId(active.pluginId());
-        try (ActiveConnectionRegistry.BorrowedConnection borrowed = active.borrowConnection()) {
-            provider.renameTable(borrowed.connection(), db.catalog(), db.schema(), tableName, newTableName);
-        }
-
-        log.info("Table renamed successfully: connectionId={}, catalog={}, schema={}, tableName={}, newTableName={}",
-                db.connectionId(), db.catalog(), db.schema(), tableName, newTableName);
-    }
-
-    @Override
     public ExecuteSqlResponse insertRow(DbContext db, String tableName, List<TableRowValue> values) {
         connectionService.openConnection(db);
 

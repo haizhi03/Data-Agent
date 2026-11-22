@@ -152,27 +152,6 @@ public final class MysqlCapabilitySupport {
         }
     }
 
-    public void renameObject(Connection connection, String catalog, String objectName, String newObjectName,
-                             String sqlTemplate, String objectType) {
-        if (connection == null || StringUtils.isBlank(objectName) || StringUtils.isBlank(newObjectName)) {
-            throw new IllegalArgumentException(
-                    String.format("Connection, %s name and new name must not be null or empty", objectType));
-        }
-
-        // Qualify both sides: with an unqualified target MySQL resolves the new
-        // name against the session's default database, which is unset when the
-        // connection was created without one. Fully qualifying keeps the rename
-        // inside the table's own database either way.
-        String fullOldName = MysqlIdentifierBuilder.buildFullIdentifier(catalog, objectName);
-        String fullNewName = MysqlIdentifierBuilder.buildFullIdentifier(catalog, newObjectName.trim());
-        String sql = String.format(sqlTemplate, fullOldName, fullNewName);
-
-        SqlCommandResult result = execute(connection, catalog, sql);
-        if (!result.isSuccess()) {
-            throw new RuntimeException(String.format("Failed to rename %s: %s", objectType, result.getErrorMessage()));
-        }
-    }
-
     public SqlCommandResult getTableLikeData(Connection connection, String catalog, String objectName, int offset, int pageSize) {
         requireConnectionAndName(connection, objectName);
 

@@ -82,10 +82,6 @@ public interface TableManager {
         throw new UnsupportedOperationException("Plugin does not support deleting table");
     }
 
-    default void renameTable(Connection connection, String catalog, String schema, String tableName, String newTableName) {
-        throw new UnsupportedOperationException("Plugin does not support renaming table");
-    }
-
     default SqlCommandResult insertRow(Connection connection, String catalog, String schema, String tableName,
                                        List<TableRowValue> values) {
         throw new UnsupportedOperationException("Plugin does not support inserting table rows");

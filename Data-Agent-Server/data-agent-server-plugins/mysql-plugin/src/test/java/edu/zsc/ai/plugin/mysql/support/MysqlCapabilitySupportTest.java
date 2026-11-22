@@ -21,22 +21,6 @@ import static org.mockito.Mockito.when;
 class MysqlCapabilitySupportTest {
 
     @Test
-    void renameObject_qualifiesNewNameWithCatalog() {
-        SqlCommandRequest request = captureRename("demo", "old_table", "new_table");
-
-        // Qualifying the target keeps the rename inside the table's database even
-        // when the JDBC session has no default database selected.
-        assertEquals("RENAME TABLE demo.old_table TO demo.new_table", request.getExecuteSql());
-    }
-
-    @Test
-    void renameObject_leavesNamesUnqualifiedWithoutCatalog() {
-        SqlCommandRequest request = captureRename(null, "old_table", "new_table");
-
-        assertEquals("RENAME TABLE old_table TO new_table", request.getExecuteSql());
-    }
-
-    @Test
     void getTableComments_readsNonBlankCommentsForSchema() throws Exception {
         Connection connection = mock(Connection.class);
         PreparedStatement statement = mock(PreparedStatement.class);
@@ -68,25 +52,5 @@ class MysqlCapabilitySupportTest {
         verify(executor).executeCommand(captor.capture());
         assertEquals("ALTER TABLE demo.users COMMENT = 'Owner''s \\\\ note'",
                 captor.getValue().getExecuteSql());
-    }
-
-    private SqlCommandRequest captureRename(String catalog, String oldName, String newName) {
-        MySQLSqlExecutor executor = mock(MySQLSqlExecutor.class);
-        SqlCommandResult success = new SqlCommandResult();
-        success.setSuccess(true);
-        when(executor.executeCommand(any(SqlCommandRequest.class))).thenReturn(success);
-
-        new MysqlCapabilitySupport(executor).renameObject(
-                mock(Connection.class),
-                catalog,
-                oldName,
-                newName,
-                MySqlTemplate.SQL_RENAME_TABLE,
-                "table"
-        );
-
-        ArgumentCaptor<SqlCommandRequest> captor = ArgumentCaptor.forClass(SqlCommandRequest.class);
-        verify(executor).executeCommand(captor.capture());
-        return captor.getValue();
     }
 }

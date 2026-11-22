@@ -71,18 +71,6 @@ public final class MysqlTableManager implements TableManager {
     }
 
     @Override
-    public void renameTable(Connection connection, String catalog, String schema, String tableName, String newTableName) {
-        support.renameObject(
-                connection,
-                catalog,
-                tableName,
-                newTableName,
-                MySqlTemplate.SQL_RENAME_TABLE,
-                DatabaseObjectTypeEnum.TABLE.getValue()
-        );
-    }
-
-    @Override
     public SqlCommandResult insertRow(Connection connection, String catalog, String schema, String tableName,
                                       List<TableRowValue> values) {
         return rowWriteSupport.insertRow(connection, catalog, schema, tableName, values);

@@ -26,8 +26,7 @@ public final class MySqlTemplate {
     /** %s = full table name (catalog.table or table, escaped and quoted) */
     public static final String SQL_DROP_TABLE = "DROP TABLE %s";
 
-    /** %1$s = old full table name, %2$s = new quoted table name */
-    public static final String SQL_RENAME_TABLE = "RENAME TABLE %s TO %s";    /** %s = full view name (catalog.view or view, escaped and quoted) */
+    /** %s = full view name (catalog.view or view, escaped and quoted) */
     public static final String SQL_DROP_VIEW = "DROP VIEW %s";
     /** %s = full function name (catalog.func or func, escaped and quoted) */
     public static final String SQL_DROP_FUNCTION = "DROP FUNCTION %s";

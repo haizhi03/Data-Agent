@@ -7,7 +7,6 @@ import edu.zsc.ai.domain.model.dto.request.db.DeleteTableRowRequest;
 import edu.zsc.ai.domain.model.dto.request.db.DeleteTableRequest;
 import edu.zsc.ai.domain.model.dto.request.db.ErDiagramRequest;
 import edu.zsc.ai.domain.model.dto.request.db.InsertTableRowRequest;
-import edu.zsc.ai.domain.model.dto.request.db.RenameTableRequest;
 import edu.zsc.ai.domain.model.dto.request.db.TableRowValueRequest;
 import edu.zsc.ai.domain.model.dto.request.db.UpdateTableCommentRequest;
 import edu.zsc.ai.domain.model.dto.request.db.UpdateTableRowRequest;
@@ -137,16 +136,6 @@ public class TableController {
                 request.getConnectionId(), request.getTableName(), request.getCatalog(), request.getSchema());
         DbContext db = new DbContext(request.getConnectionId(), request.getCatalog(), request.getSchema());
         tableService.deleteTable(db, request.getTableName());
-        return ApiResponse.success(null);
-    }
-
-    @PutMapping("/rename")
-    public ApiResponse<Void> renameTable(@Valid @RequestBody RenameTableRequest request) {
-        log.info("Renaming table: connectionId={}, tableName={}, newTableName={}, catalog={}, schema={}",
-                request.getConnectionId(), request.getTableName(), request.getNewTableName(),
-                request.getCatalog(), request.getSchema());
-        DbContext db = DbContext.from(request);
-        tableService.renameTable(db, request.getTableName(), request.getNewTableName());
         return ApiResponse.success(null);
     }
 

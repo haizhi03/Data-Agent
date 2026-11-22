@@ -27,7 +27,6 @@ interface NodeContextMenuContentProps {
   onViewDdl: (node: ExplorerNode) => void;
   onViewData: (node: ExplorerNode, highlightColumn?: string) => void;
   onTableComment: (node: ExplorerNode) => void;
-  onRename: (node: ExplorerNode) => void;
   onDelete: (node: ExplorerNode, type: ExplorerNodeType) => void;
   onImportData: (node: ExplorerNode) => void;
   onExportData: (node: ExplorerNode) => void;
@@ -55,7 +54,6 @@ export function NodeContextMenuContent({
   onViewDdl,
   onViewData,
   onTableComment,
-  onRename,
   onDelete,
   onImportData,
   onExportData,
@@ -335,16 +333,12 @@ export function NodeContextMenuContent({
         </ContextMenuSub>
       )}
 
-      {/* 4. Table comment / rename - for tables */}
+      {/* 4. Table comment - for tables */}
       {node.type === ExplorerNodeType.TABLE && (
         <>
           <ContextMenuItem onSelect={() => onTableComment(node)}>
             <MessageSquare className="w-3.5 h-3.5 mr-2" />
             {t(I18N_KEYS.EXPLORER.EDIT_TABLE_COMMENT)}
-          </ContextMenuItem>
-          <ContextMenuItem onSelect={() => onRename(node)}>
-            <Pencil className="w-3.5 h-3.5 mr-2" />
-            {t(I18N_KEYS.EXPLORER.RENAME_TABLE)}
           </ContextMenuItem>
           <ContextMenuSeparator />
         </>

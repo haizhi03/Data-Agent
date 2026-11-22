@@ -35,7 +35,6 @@ class DmLiveCapabilityAuditTest {
              DmLiveTestRun run = DmLiveTestRun.start(conn, SCHEMA)) {
             run.sweepStaleRunObjects();
             String table = run.name("T");
-            String tableRenamed = run.name("T2");
             String view = run.name("V");
             String proc = run.name("P");
             String func = run.name("F");
@@ -97,23 +96,16 @@ class DmLiveCapabilityAuditTest {
             System.out.println("[audit] triggers=" + plugin.getTriggers(conn, null, SCHEMA, null));
             assertEquals(1, plugin.getTriggers(conn, null, SCHEMA, null).size());
 
-            // 5. rename
-            plugin.renameTable(conn, null, SCHEMA, table, tableRenamed);
-            run.track("TABLE", tableRenamed);
-            assertTrue(plugin.getTableNames(conn, null, SCHEMA).contains(tableRenamed));
-            plugin.renameTable(conn, null, SCHEMA, tableRenamed, table);
-            System.out.println("[audit] renameTable ok");
-
-            // 6. searchTables / countTables
+            // 5. searchTables / countTables
             System.out.println("[audit] searchTables " + run.prefix() + "% ="
                     + plugin.searchTables(conn, null, SCHEMA, run.prefix())
                     + " count=" + plugin.countTables(conn, null, SCHEMA, run.prefix()));
 
-            // 7. sql splitter on PL/SQL-style block
+            // 6. sql splitter on PL/SQL-style block
             List<String> stmts = plugin.split("CREATE OR REPLACE PROCEDURE P AS BEGIN NULL; END;\n/\nSELECT 1;\nSELECT 2;");
             System.out.println("[audit] split result=" + stmts);
 
-            // 8. view data
+            // 7. view data
             var viewData = plugin.getViewData(conn, null, SCHEMA, view, 0, 10);
             System.out.println("[audit] view data rows ok, cols=" + (viewData.getColumns() == null ? 0 : viewData.getColumns().size()));
         }

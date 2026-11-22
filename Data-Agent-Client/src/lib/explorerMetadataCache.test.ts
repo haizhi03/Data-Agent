@@ -15,7 +15,6 @@ import {
   invalidateCachedExplorerFolder,
   removeCachedExplorerTable,
   removeCachedExplorerView,
-  renameCachedExplorerTable,
   updateCachedExplorerTableComment,
 } from './explorerMetadataCache';
 
@@ -82,46 +81,6 @@ describe('clearExplorerMetadataForCatalog', () => {
     expect(getCachedExplorerViews(queryClient, '1', 'app', 'public')).toBeUndefined();
     // Sibling catalogs and connections stay cached.
     expect(getCachedExplorerTables(queryClient, '1', 'other', undefined)).toEqual(['users']);
-  });
-});
-
-describe('explorer metadata cache after renames', () => {
-  let queryClient: QueryClient;
-
-  beforeEach(() => {
-    queryClient = new QueryClient();
-  });
-
-  it('renames the table in place in the cached list', () => {
-    queryClient.setQueryData(getExplorerTablesQueryKey('1', 'db', 'public'), ['users', 'orders']);
-    renameCachedExplorerTable(queryClient, '1', 'db', 'public', 'users', 'customers');
-    expect(getCachedExplorerTables(queryClient, '1', 'db', 'public')).toEqual(['customers', 'orders']);
-  });
-
-  it('does nothing when the list was never cached', () => {
-    renameCachedExplorerTable(queryClient, '1', 'db', undefined, 'users', 'customers');
-    expect(getCachedExplorerTables(queryClient, '1', 'db', undefined)).toBeUndefined();
-  });
-
-  it('does nothing when the old name is not in the list', () => {
-    queryClient.setQueryData(getExplorerTablesQueryKey('1', 'db', undefined), ['orders']);
-    renameCachedExplorerTable(queryClient, '1', 'db', undefined, 'users', 'customers');
-    expect(getCachedExplorerTables(queryClient, '1', 'db', undefined)).toEqual(['orders']);
-  });
-
-  it('moves the cached comment to the new table name', () => {
-    queryClient.setQueryData(getExplorerTablesQueryKey('1', 'db', 'public'), ['users', 'orders']);
-    queryClient.setQueryData(getExplorerTableCommentsQueryKey('1', 'db', 'public'), {
-      users: 'People',
-      orders: 'Sales',
-    });
-
-    renameCachedExplorerTable(queryClient, '1', 'db', 'public', 'users', 'customers');
-
-    expect(getCachedExplorerTableComments(queryClient, '1', 'db', 'public')).toEqual({
-      customers: 'People',
-      orders: 'Sales',
-    });
   });
 });
 

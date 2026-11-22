@@ -22,7 +22,6 @@ interface ExplorerTreeProps {
   onViewData: (node: ExplorerNode, highlightColumn?: string) => void;
   onTableOrViewDoubleClick: (node: ExplorerNode) => void;
   onTableComment: (node: ExplorerNode) => void;
-  onRename: (node: ExplorerNode) => void;
   onDelete: (node: ExplorerNode, type: ExplorerNodeType) => void;
   onOpenQueryConsole: (node: ExplorerNode) => void;
   onRunSqlScript: (node: ExplorerNode) => void;
@@ -117,7 +116,6 @@ export const ExplorerTree = forwardRef<ExplorerTreeHandle, ExplorerTreeProps>(fu
   onViewData,
   onTableOrViewDoubleClick,
   onTableComment,
-  onRename,
   onDelete,
   onOpenQueryConsole,
   onRunSqlScript,
@@ -252,7 +250,6 @@ export const ExplorerTree = forwardRef<ExplorerTreeHandle, ExplorerTreeProps>(fu
         onViewData={onViewData}
         onTableOrViewDoubleClick={onTableOrViewDoubleClick}
         onTableComment={onTableComment}
-        onRename={onRename}
         onDelete={onDelete}
         onOpenQueryConsole={onOpenQueryConsole}
         onRunSqlScript={onRunSqlScript}

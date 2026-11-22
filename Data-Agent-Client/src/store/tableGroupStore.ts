@@ -77,7 +77,6 @@ interface TableGroupState {
   removeTableFromGroups: (scope: string, tableName: string) => void;
   removeGroupsForCatalog: (connectionId: string, catalog: string) => void;
   removeGroupsForConnection: (connectionId: string) => void;
-  renameTableInGroups: (scope: string, oldName: string, newName: string) => void;
 }
 
 export const useTableGroupStore = create<TableGroupState>()(
@@ -188,18 +187,6 @@ export const useTableGroupStore = create<TableGroupState>()(
             (scope) => scope.startsWith(`${connectionId}|`),
           );
           return next ? { groupsByScope: next } : state;
-        }),
-
-      renameTableInGroups: (scope, oldName, newName) =>
-        set((state) => {
-          const next = updateManualTableNames(
-            state.groupsByScope[scope] ?? [],
-            oldName,
-            (tableNames) => [
-              ...new Set(tableNames.map((name) => (name === oldName ? newName : name))),
-            ],
-          );
-          return next ? { groupsByScope: { ...state.groupsByScope, [scope]: next } } : state;
         }),
     }),
     {
