@@ -37,7 +37,13 @@ public interface TableDataExporter {
      *                 implementations like Excel; single-format ones ignore it)
      * @param columns  column names to export (case-insensitive, in table order);
      *                 null exports all columns
+     * @param whereClause optional WHERE condition without the keyword (null/blank
+     *                    exports every row)
+     * @param orderByColumn optional column to order by (null/blank uses the
+     *                      database's natural order)
+     * @param orderByDirection "asc" or "desc", ignored when no order column
      */
     void export(DbContext db, String tableName, String fileType, List<String> columns,
+                String whereClause, String orderByColumn, String orderByDirection,
                 OutputStream outputStream, Runnable onBeforeFirstWrite);
 }

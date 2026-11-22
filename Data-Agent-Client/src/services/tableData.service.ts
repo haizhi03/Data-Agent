@@ -51,6 +51,11 @@ export interface ExportTableParams {
   fileType: string;
   /** Column names to export; omit for all columns. */
   columns?: string[];
+  /** Optional WHERE condition (without the keyword); omit to export every row. */
+  whereClause?: string;
+  /** Optional single-column ordering applied to the export. */
+  orderByColumn?: string;
+  orderByDirection?: 'asc' | 'desc';
 }
 
 export interface ImportTableDataParams {
@@ -217,6 +222,13 @@ export const tableDataService = {
     if (params.schema != null && params.schema !== '') query.schema = params.schema;
     if (params.columns != null && params.columns.length > 0) {
       query.columns = params.columns.join(',');
+    }
+    if (params.whereClause != null && params.whereClause.trim() !== '') {
+      query.whereClause = params.whereClause;
+    }
+    if (params.orderByColumn != null && params.orderByColumn !== '') {
+      query.orderByColumn = params.orderByColumn;
+      query.orderByDirection = params.orderByDirection ?? 'asc';
     }
 
     const response = await http.get<Blob>(ApiPaths.TABLE_EXPORT, {

@@ -11,7 +11,12 @@ import org.slf4j.LoggerFactory;
 
 import java.sql.*;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * Abstract SQL executor that provides common SQL execution logic.
@@ -448,6 +453,9 @@ public abstract class AbstractSqlExecutor implements CommandExecutor<SqlCommandR
         try (ResultSet resultSet = statement.getResultSet()) {
             ResultSetMetaData metaData = resultSet.getMetaData();
             int columnCount = metaData.getColumnCount();
+            Connection connection = statement.getConnection();
+            // One metadata lookup per distinct source table per result set.
+            Map<String, TableColumnMetadata> tableMetadataCache = new HashMap<>();
 
             // Get column names (use 1-based index consistently)
             for (int i = 1; i <= columnCount; i++) {
@@ -455,16 +463,29 @@ public abstract class AbstractSqlExecutor implements CommandExecutor<SqlCommandR
                 String label = metaData.getColumnLabel(i);
                 String header = (label != null && !label.isBlank()) ? label : name;
                 headers.add(header);
-                SqlColumnInfo columnInfo = new SqlColumnInfo(
-                        name,
-                        label,
-                        metaData.getColumnTypeName(i),
-                        metaData.getColumnType(i),
-                        metaData.getPrecision(i),
-                        metaData.getScale(i),
-                        metaData.isNullable(i) == ResultSetMetaData.columnNullable,
-                        metaData.getTableName(i)
-                );
+                String catalogName = trimToNull(metaData.getCatalogName(i));
+                String schemaName = trimToNull(metaData.getSchemaName(i));
+                String tableName = trimToNull(metaData.getTableName(i));
+                TableColumnMetadata tableMetadata = resolveTableMetadata(
+                        connection, tableMetadataCache, catalogName, schemaName, tableName);
+                String columnKey = name == null ? null : name.toUpperCase(Locale.ROOT);
+                Integer primaryKeyOrdinal = columnKey == null ? null : tableMetadata.primaryKeys().get(columnKey);
+                String comment = columnKey == null ? null : tableMetadata.comments().get(columnKey);
+                SqlColumnInfo columnInfo = SqlColumnInfo.builder()
+                        .name(name)
+                        .label(label)
+                        .typeName(metaData.getColumnTypeName(i))
+                        .jdbcType(metaData.getColumnType(i))
+                        .precision(metaData.getPrecision(i))
+                        .scale(metaData.getScale(i))
+                        .nullable(metaData.isNullable(i) == ResultSetMetaData.columnNullable)
+                        .tableName(tableName)
+                        .catalogName(catalogName)
+                        .schemaName(schemaName)
+                        .primaryKey(primaryKeyOrdinal != null)
+                        .primaryKeyOrdinal(primaryKeyOrdinal)
+                        .comment(comment)
+                        .build();
                 columns.add(columnInfo);
             }
 
@@ -495,6 +516,110 @@ public abstract class AbstractSqlExecutor implements CommandExecutor<SqlCommandR
             sub.setFetchingMs(fetchEnd - fetchStart);
             addWarnings(resultSet.getWarnings(), result, sub);
         }
+    }
+
+    private static String trimToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    /**
+     * Resolve primary key ordinals and column comments for a source table. Lookup failures
+     * are logged at debug level and never fail the query.
+     */
+    private static TableColumnMetadata resolveTableMetadata(Connection connection,
+                                                            Map<String, TableColumnMetadata> cache,
+                                                            String catalog,
+                                                            String schema,
+                                                            String table) {
+        if (connection == null || table == null) {
+            return TableColumnMetadata.EMPTY;
+        }
+        String cacheKey = String.valueOf(catalog) + '\u0000' + schema + '\u0000' + table;
+        return cache.computeIfAbsent(cacheKey,
+                key -> loadTableColumnMetadata(connection, catalog, schema, table));
+    }
+
+    private static TableColumnMetadata loadTableColumnMetadata(Connection connection,
+                                                               String catalog,
+                                                               String schema,
+                                                               String table) {
+        Map<String, Integer> primaryKeys = new HashMap<>();
+        Map<String, String> comments = new HashMap<>();
+        String effectiveCatalog = catalog;
+        if (effectiveCatalog == null) {
+            try {
+                effectiveCatalog = trimToNull(connection.getCatalog());
+            } catch (SQLException e) {
+                log.debug("Failed to read current catalog: {}", e.getMessage());
+            }
+        }
+        // Drivers disagree on which of catalog/schema identifies the table; try the
+        // combinations until one returns metadata.
+        String[][] candidates = {
+                {effectiveCatalog, schema},
+                {effectiveCatalog, null},
+                {null, schema},
+                {null, null}
+        };
+        Set<String> tried = new HashSet<>();
+        for (String[] candidate : candidates) {
+            String key = String.valueOf(candidate[0]) + '\u0000' + candidate[1];
+            if (!tried.add(key)) {
+                continue;
+            }
+            readPrimaryKeys(connection, candidate[0], candidate[1], table, primaryKeys);
+            readColumnComments(connection, candidate[0], candidate[1], table, comments);
+            if (!primaryKeys.isEmpty() || !comments.isEmpty()) {
+                break;
+            }
+        }
+        return new TableColumnMetadata(primaryKeys, comments);
+    }
+
+    private static void readPrimaryKeys(Connection connection,
+                                        String catalog,
+                                        String schema,
+                                        String table,
+                                        Map<String, Integer> ordinals) {
+        try (ResultSet primaryKeys = connection.getMetaData().getPrimaryKeys(catalog, schema, table)) {
+            while (primaryKeys.next()) {
+                String columnName = primaryKeys.getString("COLUMN_NAME");
+                if (columnName != null) {
+                    ordinals.put(columnName.toUpperCase(Locale.ROOT), primaryKeys.getInt("KEY_SEQ"));
+                }
+            }
+        } catch (SQLException e) {
+            log.debug("Failed to read primary key metadata for {}.{}.{}: {}", catalog, schema, table,
+                    e.getMessage());
+        }
+    }
+
+    private static void readColumnComments(Connection connection,
+                                           String catalog,
+                                           String schema,
+                                           String table,
+                                           Map<String, String> comments) {
+        try (ResultSet columns = connection.getMetaData().getColumns(catalog, schema, table, null)) {
+            while (columns.next()) {
+                String columnName = columns.getString("COLUMN_NAME");
+                String remarks = columns.getString("REMARKS");
+                if (columnName != null && remarks != null && !remarks.isBlank()) {
+                    comments.put(columnName.toUpperCase(Locale.ROOT), remarks.trim());
+                }
+            }
+        } catch (SQLException e) {
+            log.debug("Failed to read column comments for {}.{}.{}: {}", catalog, schema, table,
+                    e.getMessage());
+        }
+    }
+
+    private record TableColumnMetadata(Map<String, Integer> primaryKeys, Map<String, String> comments) {
+        private static final TableColumnMetadata EMPTY =
+                new TableColumnMetadata(Map.of(), Map.of());
     }
 
     private void applyFirstResult(SqlCommandResult result, SqlCommandSubResult first) {

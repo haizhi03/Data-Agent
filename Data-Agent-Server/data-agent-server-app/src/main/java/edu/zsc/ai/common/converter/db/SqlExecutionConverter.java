@@ -8,6 +8,7 @@ import edu.zsc.ai.domain.model.dto.response.db.ExecuteSqlResponse;
 import edu.zsc.ai.domain.model.dto.response.db.ExecuteSqlResponseType;
 import edu.zsc.ai.domain.model.dto.response.db.ExecuteSqlResultSet;
 import edu.zsc.ai.domain.model.dto.response.db.ExecuteSqlSubResult;
+import edu.zsc.ai.plugin.model.command.sql.SqlColumnInfo;
 import edu.zsc.ai.plugin.model.command.sql.SqlCommandResult;
 import edu.zsc.ai.plugin.model.command.sql.SqlMessageInfo;
 import edu.zsc.ai.plugin.model.command.sql.SqlMessageLevel;
@@ -75,73 +76,58 @@ public class SqlExecutionConverter {
         if (!r.isQuery()) {
             return null;
         }
-        List<ExecuteSqlColumn> columns = null;
-        if (r.getColumns() != null) {
-            columns = r.getColumns()
-                    .stream()
-                    .map(col -> ExecuteSqlColumn.builder()
-                            .name(col.getName())
-                            .label(col.getLabel())
-                            .typeName(col.getTypeName())
-                            .jdbcType(col.getJdbcType())
-                            .precision(col.getPrecision())
-                            .scale(col.getScale())
-                            .nullable(col.getNullable())
-                            .tableName(col.getTableName())
-                            .build())
-                    .collect(Collectors.toList());
-        } else if (r.getHeaders() != null) {
-            columns = r.getHeaders()
-                    .stream()
-                    .map(header -> ExecuteSqlColumn.builder()
-                            .name(header)
-                            .label(header)
-                            .build())
-                    .collect(Collectors.toList());
-        }
-        Integer fetchRows = r.getRows() == null ? null : r.getRows().size();
-        return ExecuteSqlResultSet.builder()
-                .columns(columns)
-                .rows(r.getRows())
-                .fetchRows(fetchRows)
-                .truncated(r.getTruncated())
-                .build();
+        return buildResultSet(r.getColumns(), r.getHeaders(), r.getRows(), r.getTruncated());
     }
 
     private static ExecuteSqlResultSet buildResultSet(SqlCommandSubResult r) {
         if (r == null || !r.isQuery()) {
             return null;
         }
+        return buildResultSet(r.getColumns(), r.getHeaders(), r.getRows(), r.getTruncated());
+    }
+
+    private static ExecuteSqlResultSet buildResultSet(
+            List<SqlColumnInfo> columnInfos,
+            List<String> headers,
+            List<List<Object>> rows,
+            Boolean truncated) {
         List<ExecuteSqlColumn> columns = null;
-        if (r.getColumns() != null) {
-            columns = r.getColumns()
-                    .stream()
-                    .map(col -> ExecuteSqlColumn.builder()
-                            .name(col.getName())
-                            .label(col.getLabel())
-                            .typeName(col.getTypeName())
-                            .jdbcType(col.getJdbcType())
-                            .precision(col.getPrecision())
-                            .scale(col.getScale())
-                            .nullable(col.getNullable())
-                            .tableName(col.getTableName())
-                            .build())
+        if (columnInfos != null) {
+            columns = columnInfos.stream()
+                    .map(SqlExecutionConverter::toExecuteSqlColumn)
                     .collect(Collectors.toList());
-        } else if (r.getHeaders() != null) {
-            columns = r.getHeaders()
-                    .stream()
+        } else if (headers != null) {
+            columns = headers.stream()
                     .map(header -> ExecuteSqlColumn.builder()
                             .name(header)
                             .label(header)
                             .build())
                     .collect(Collectors.toList());
         }
-        Integer fetchRows = r.getRows() == null ? null : r.getRows().size();
+        Integer fetchRows = rows == null ? null : rows.size();
         return ExecuteSqlResultSet.builder()
                 .columns(columns)
-                .rows(r.getRows())
+                .rows(rows)
                 .fetchRows(fetchRows)
-                .truncated(r.getTruncated())
+                .truncated(truncated)
+                .build();
+    }
+
+    private static ExecuteSqlColumn toExecuteSqlColumn(SqlColumnInfo col) {
+        return ExecuteSqlColumn.builder()
+                .name(col.getName())
+                .label(col.getLabel())
+                .typeName(col.getTypeName())
+                .jdbcType(col.getJdbcType())
+                .precision(col.getPrecision())
+                .scale(col.getScale())
+                .nullable(col.getNullable())
+                .tableName(col.getTableName())
+                .catalogName(col.getCatalogName())
+                .schemaName(col.getSchemaName())
+                .primaryKey(col.getPrimaryKey())
+                .primaryKeyOrdinal(col.getPrimaryKeyOrdinal())
+                .comment(col.getComment())
                 .build();
     }
 

@@ -49,7 +49,7 @@ export const useSqlRunStore = create<SqlRunState>((set) => ({
   cancelStatus: null,
 
   runSql: async (params) => {
-    const { connectionId, databaseName, schemaName, sql, mode, timeoutMs, maxRows } = params;
+    const { connectionId, databaseName, schemaName, dbType, sql, mode, timeoutMs, maxRows } = params;
     if (!sql || !connectionId || currentExecution) return;
 
     const executionId = crypto.randomUUID();
@@ -77,7 +77,9 @@ export const useSqlRunStore = create<SqlRunState>((set) => ({
       // Ignore outcomes if this execution is no longer active.
       if (currentExecution?.executionId !== executionId) return;
 
-      set({ scriptResults: results });
+      // Keep the originating connection on each result so the results panel can
+      // resolve table metadata (primary keys) even after the user switches tabs.
+      set({ scriptResults: results.map((item) => ({ ...item, connectionId, dbType })) });
 
       const result = results[0];
       if (!result) throw new Error('The script contained no executable statements');
@@ -85,6 +87,8 @@ export const useSqlRunStore = create<SqlRunState>((set) => ({
       set({
         executeResult: {
           ...result,
+          connectionId,
+          dbType,
           originalSql: result.originalSql || sql,
           executedSql: result.executedSql || sql,
         },

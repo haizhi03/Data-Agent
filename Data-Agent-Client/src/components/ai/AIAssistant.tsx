@@ -11,6 +11,8 @@ import { ConversationHistoryPanel } from './ConversationHistoryPanel';
 import { cn } from '../../lib/utils';
 import { useConversationRuntime } from '../../hooks/useConversationRuntime';
 import { useAuthStore } from '../../store/authStore';
+import { useUiStore } from '../../store/uiStore';
+import { DataAttributes } from '../../constants/dataAttributes';
 import { conversationService } from '../../services/conversation.service';
 import { aiService } from '../../services/ai.service';
 import { ChatPaths } from '../../constants/apiPaths';
@@ -94,6 +96,24 @@ export function AIAssistant({ onClosePanel, historyAsLeftSidebar = false }: AIAs
   const [isPlanListOpen, setIsPlanListOpen] = useState(false);
   const [isCompacting, setIsCompacting] = useState(false);
   const [input, setInput] = useState('');
+
+  // Receives prompts composed elsewhere (e.g. the result panel's AI fix button).
+  const aiComposeRequest = useUiStore((state) => state.aiComposeRequest);
+  const lastAiComposeIdRef = useRef(0);
+  useEffect(() => {
+    if (!aiComposeRequest || aiComposeRequest.id === lastAiComposeIdRef.current) {
+      return;
+    }
+    lastAiComposeIdRef.current = aiComposeRequest.id;
+    setInput(aiComposeRequest.text);
+    requestAnimationFrame(() => {
+      const inputEl = document.querySelector<HTMLTextAreaElement>(
+        `textarea[${DataAttributes.AI_INPUT}]`,
+      );
+      inputEl?.focus();
+      inputEl?.setSelectionRange(inputEl.value.length, inputEl.value.length);
+    });
+  }, [aiComposeRequest]);
 
   const setUserMentions = useCallback<Dispatch<SetStateAction<ChatUserMention[]>>>((value) => {
     const next =

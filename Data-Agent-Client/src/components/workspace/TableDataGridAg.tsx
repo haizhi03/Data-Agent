@@ -21,9 +21,9 @@ import {
   buildTableDataGridRows,
   buildTransposeTableDataGridColumnDefs,
   buildTransposeTableDataGridRows,
-  TABLE_DATA_GRID_ROW_NUMBER_COL_ID,
   type TableDataGridAgRow,
 } from './tableDataGridAgUtils';
+import { AG_GRID_ROW_NUMBER_COL_ID } from '../../utils/agGrid';
 import type { FindMatch } from './useTableDataFind';
 import type { SelectedTableRow } from './tableDataTabShared';
 
@@ -105,7 +105,7 @@ export function TableDataGridAg({
         const node = params.node;
         if (!node?.data || node.data.__rowIndex == null || node.data.__rowIndex < 0) return false;
         const colId = params.colDef.colId ?? '';
-        if (!colId || colId === TABLE_DATA_GRID_ROW_NUMBER_COL_ID) return false;
+        if (!colId || colId === AG_GRID_ROW_NUMBER_COL_ID) return false;
         const key = `${node.data.__rowIndex}::${colId}`;
         return matchedKeys.has(key) && key !== currentKey;
       },
@@ -113,7 +113,7 @@ export function TableDataGridAg({
         const node = params.node;
         if (!node?.data || node.data.__rowIndex == null || node.data.__rowIndex < 0) return false;
         const colId = params.colDef.colId ?? '';
-        if (!colId || colId === TABLE_DATA_GRID_ROW_NUMBER_COL_ID) return false;
+        if (!colId || colId === AG_GRID_ROW_NUMBER_COL_ID) return false;
         const key = `${node.data.__rowIndex}::${colId}`;
         return key === currentKey;
       },
@@ -121,7 +121,7 @@ export function TableDataGridAg({
         const node = params.node;
         if (!node?.data || node.data.__rowIndex == null || node.data.__rowIndex < 0) return false;
         const colId = params.colDef.colId ?? '';
-        if (!colId || colId === TABLE_DATA_GRID_ROW_NUMBER_COL_ID) return false;
+        if (!colId || colId === AG_GRID_ROW_NUMBER_COL_ID) return false;
         const key = `${node.data.__rowIndex}::${colId}`;
         return dirtyCellKeys.has(key);
       },
@@ -279,7 +279,7 @@ export function TableDataGridAg({
 
     const sortedColumn = event.api
       .getColumnState()
-      .find((column) => column.colId !== TABLE_DATA_GRID_ROW_NUMBER_COL_ID && column.sort);
+      .find((column) => column.colId !== AG_GRID_ROW_NUMBER_COL_ID && column.sort);
 
     onGridSortChange(
       sortedColumn?.colId ?? null,

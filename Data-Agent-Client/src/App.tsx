@@ -15,6 +15,7 @@ import { routerConfig } from "./router.tsx";
 import { ROUTES } from "./constants/routes";
 import { AuthModalType } from "./constants/modal";
 import { DataAttributes } from "./constants/dataAttributes";
+import { useUiStore } from "./store/uiStore";
 import { WorkspaceLayout } from "./components/layouts/WorkspaceLayout";
 
 function AppRoutes({
@@ -76,6 +77,14 @@ function App() {
     // Layout state
     const [showAI, setShowAI] = useState(false);
     const [showExplorer, setShowExplorer] = useState(true);
+    const aiComposeRequest = useUiStore((state) => state.aiComposeRequest);
+
+    // Reveal the AI sidebar when another panel asks it to compose a prompt.
+    useEffect(() => {
+        if (aiComposeRequest) {
+            setShowAI(true);
+        }
+    }, [aiComposeRequest]);
 
     // Wait until the persisted session is available. An earlier unauthenticated
     // request fails once and leaves the add-database menu stuck on "loading".

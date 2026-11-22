@@ -256,9 +256,13 @@ public class TableController {
             @RequestParam(required = false) String schema,
             @RequestParam(defaultValue = "CSV") String fileType,
             @RequestParam(required = false) String columns,
+            @RequestParam(required = false) String whereClause,
+            @RequestParam(required = false) String orderByColumn,
+            @RequestParam(required = false) String orderByDirection,
             HttpServletResponse response) throws IOException {
-        log.info("Exporting table data: connectionId={}, tableName={}, catalog={}, schema={}, fileType={}, columns={}",
-                connectionId, tableName, catalog, schema, fileType, columns);
+        log.info("Exporting table data: connectionId={}, tableName={}, catalog={}, schema={}, fileType={}, columns={}, filtered={}",
+                connectionId, tableName, catalog, schema, fileType, columns,
+                (whereClause != null && !whereClause.isBlank()) || (orderByColumn != null && !orderByColumn.isBlank()));
 
         // Format metadata comes from the strategy itself; this controller knows no formats.
         TableDataExporter exporter = tableService.resolveExporter(fileType);
@@ -274,7 +278,9 @@ public class TableController {
                     "attachment; filename*=UTF-8''" + encodedFileName);
         };
 
-        exporter.export(db, tableName, fileType, selectedColumns, response.getOutputStream(), prepareHeaders);
+        exporter.export(db, tableName, fileType, selectedColumns,
+                whereClause, orderByColumn, orderByDirection,
+                response.getOutputStream(), prepareHeaders);
     }
 
     /**

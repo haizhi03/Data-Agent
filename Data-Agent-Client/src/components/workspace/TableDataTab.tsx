@@ -39,6 +39,7 @@ export function TableDataTab({ tabId, metadata }: TableDataTabProps) {
     currentPage,
     pageSize,
     whereClause,
+    appliedWhereClause,
     orderByColumn,
     orderByDirection,
     viewMode,
@@ -112,6 +113,13 @@ export function TableDataTab({ tabId, metadata }: TableDataTabProps) {
     tableName: metadata.objectName,
     catalog: transferCatalog || undefined,
     schema: metadata.schema ?? metadata.schemaName ?? undefined,
+  };
+  // Export mirrors the grid: the applied WHERE clause and current ordering.
+  const exportParams = {
+    ...transferParams,
+    whereClause: appliedWhereClause || undefined,
+    orderByColumn: orderByColumn || undefined,
+    orderByDirection,
   };
   const transferTargetPath = `@${metadata.connectionName}/${transferCatalog}/${metadata.objectName}`;
 
@@ -249,7 +257,7 @@ export function TableDataTab({ tabId, metadata }: TableDataTabProps) {
         open={exportDialogOpen}
         onOpenChange={setExportDialogOpen}
         targetTablePath={transferTargetPath}
-        exportParams={transferParams}
+        exportParams={exportParams}
       />
 
       <Dialog

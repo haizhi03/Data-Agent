@@ -59,9 +59,9 @@ public class ExcelTableDataExporter extends AbstractTableDataExporter<ExcelTable
 
     @Override
     protected void preCheck(TableManager provider, Connection connection, DbContext db,
-                            String tableName, String fileType) {
+                            String tableName, String fileType, String whereClause) {
         if ("XLS".equalsIgnoreCase(fileType)) {
-            long totalRows = provider.getTableDataCount(connection, db.catalog(), db.schema(), tableName);
+            long totalRows = provider.getTableDataCount(connection, db.catalog(), db.schema(), tableName, whereClause);
             if (totalRows > TransferConstants.XLS_MAX_DATA_ROWS) {
                 throw new BusinessException("XLS format supports at most " + TransferConstants.XLS_MAX_DATA_ROWS
                         + " data rows (found " + totalRows + "); please choose XLSX instead");

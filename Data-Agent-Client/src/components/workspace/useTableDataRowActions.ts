@@ -5,17 +5,17 @@ import { I18N_KEYS } from '../../constants/i18nKeys';
 import { useToast } from '../../hooks/useToast';
 import { columnService, type ColumnMetadata } from '../../services/column.service';
 import { primaryKeyService } from '../../services/primaryKey.service';
-import {
-  tableDataService,
-  type BatchRowOperation,
-  type TableDataResponse,
-  type TableRowValuePayload,
+import type {
+  BatchRowOperation,
+  TableDataResponse,
+  TableRowValuePayload,
 } from '../../services/tableData.service';
 import type { TableTabMetadata } from '../../types/tab';
 import type { TableDataGridAgRow } from './tableDataGridAgUtils';
 import type { LoadDataOverrides, SelectedTableRow } from './tableDataTabShared';
-import { formatCellValue, toRowMatchValue } from './tableDataTabShared';
+import { isSameCellValue, toRowMatchValue } from './tableDataTabShared';
 import { normalizeEditedCellInput, normalizeInsertInput } from './tableDataInputValues';
+import { useBatchRowOpsSubmit } from './useBatchRowOpsSubmit';
 
 type PendingOpType = 'INSERT' | 'UPDATE' | 'DELETE';
 
@@ -30,6 +30,18 @@ interface PendingOp {
   setValues?: TableRowValuePayload[];
   /** WHERE matching values for UPDATE / DELETE. */
   matchValues?: TableRowValuePayload[];
+}
+
+function toBatchRowOperations(ops: PendingOp[]): BatchRowOperation[] {
+  return ops.map((op) => {
+    if (op.type === 'INSERT') {
+      return { type: 'INSERT', values: op.values };
+    }
+    if (op.type === 'UPDATE') {
+      return { type: 'UPDATE', setValues: op.setValues, matchValues: op.matchValues };
+    }
+    return { type: 'DELETE', matchValues: op.matchValues };
+  });
 }
 
 interface UseTableDataRowActionsArgs {
@@ -78,11 +90,6 @@ export function useTableDataRowActions({
   const [selectedRow, setSelectedRow] = useState<LocalSelectedRow | null>(null);
   const [selectedRows, setSelectedRows] = useState<SelectedTableRow[]>([]);
   const [pendingOps, setPendingOps] = useState<PendingOp[]>([]);
-  const [submittingEdits, setSubmittingEdits] = useState(false);
-
-  // Batch force confirmation dialog state
-  const [batchForceConfirmOpen, setBatchForceConfirmOpen] = useState(false);
-  const [batchForceMessage, setBatchForceMessage] = useState('');
 
   const revertingCellRef = useRef(false);
   const primaryKeyColumnsRef = useRef<string[] | null>(null);
@@ -450,10 +457,7 @@ export function useTableDataRowActions({
       const newValue = normalizeEditedCellInput(event.newValue, oldValue, isDm);
 
       // AG Grid fires on !== comparisons; skip number 5 vs string "5" style non-changes.
-      if (
-        newValue === oldValue
-        || (typeof oldValue === 'number' && formatCellValue(newValue) === formatCellValue(oldValue))
-      ) {
+      if (isSameCellValue(newValue, oldValue)) {
         revert();
         return;
       }
@@ -482,10 +486,7 @@ export function useTableDataRowActions({
 
       const columnIndex = data.headers.indexOf(colId);
       const originalValue = sourceRow[columnIndex];
-      const equalsOriginal =
-        newValue === originalValue
-        || (typeof originalValue === 'number'
-          && formatCellValue(newValue) === formatCellValue(originalValue));
+      const equalsOriginal = isSameCellValue(newValue, originalValue);
 
       void (async () => {
         const pkColumns = await getPrimaryKeyColumns();
@@ -558,73 +559,41 @@ export function useTableDataRowActions({
 
   // --- Submit / revert ----------------------------------------------------
 
+  // Reuse the shared staged-operations submit flow (also used by SQL results).
+  const handleBatchSubmitSuccess = useCallback(async () => {
+    setPendingOps([]);
+    await loadData(currentPageRef.current);
+  }, [loadData]);
+
+  const {
+    submitting: submittingEdits,
+    forceConfirmOpen: batchForceConfirmOpen,
+    forceMessage: batchForceMessage,
+    submit: submitBatchOps,
+    closeForceConfirm: closeBatchForceConfirm,
+  } = useBatchRowOpsSubmit({
+    connectionId: metadata.connectionId,
+    tableName: objectName,
+    catalog: catalog || undefined,
+    schema: schema || undefined,
+    onSuccess: handleBatchSubmitSuccess,
+  });
+
   const submitPendingOps = useCallback(
     async (force: boolean): Promise<boolean> => {
       const ops = pendingOpsRef.current;
       if (ops.length === 0) {
         return true;
       }
-
-      setSubmittingEdits(true);
-      try {
-        const operations: BatchRowOperation[] = ops.map((op) => {
-          if (op.type === 'INSERT') {
-            return { type: 'INSERT', values: op.values };
-          }
-          if (op.type === 'UPDATE') {
-            return { type: 'UPDATE', setValues: op.setValues, matchValues: op.matchValues };
-          }
-          return { type: 'DELETE', matchValues: op.matchValues };
-        });
-
-        const result = await tableDataService.batchRows({
-          connectionId: metadata.connectionId,
-          tableName: objectName,
-          catalog: catalog || undefined,
-          schema: schema || undefined,
-          operations,
-          force,
-        });
-
-        if (result.success) {
-          toast.success(t(I18N_KEYS.EXPLORER.BATCH_SUBMIT_SUCCESS, { count: result.total }));
-          setPendingOps([]);
-          await loadData(currentPageRef.current);
-          return true;
-        }
-
-        if (result.requiresForce) {
-          setBatchForceMessage(result.errorMessage ?? '');
-          setBatchForceConfirmOpen(true);
-          return false;
-        }
-
-        const failedIndex = result.failedAtIndex != null ? result.failedAtIndex + 1 : '?';
-        toast.error(
-          t(I18N_KEYS.EXPLORER.BATCH_SUBMIT_FAILED_ITEM, {
-            index: failedIndex,
-            message: result.errorMessage ?? '',
-          }),
-        );
-        return false;
-      } catch (err) {
-        toast.error((err as Error).message);
-        return false;
-      } finally {
-        setSubmittingEdits(false);
-      }
+      return submitBatchOps(toBatchRowOperations(ops), force);
     },
-    [catalog, loadData, metadata.connectionId, objectName, schema, t, toast],
+    [submitBatchOps],
   );
 
-  const closeBatchForceConfirm = useCallback(() => {
-    setBatchForceConfirmOpen(false);
-  }, []);
-
   const handleConfirmBatchForce = useCallback(async () => {
-    setBatchForceConfirmOpen(false);
+    closeBatchForceConfirm();
     await submitPendingOps(true);
-  }, [submitPendingOps]);
+  }, [closeBatchForceConfirm, submitPendingOps]);
 
   // Discard all staged operations and restore the grid from the database.
   const revertPendingOps = useCallback(async () => {
