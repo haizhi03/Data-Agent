@@ -516,6 +516,8 @@
     "er_focus_attached": "已附加 {{tables}}",
     "er_focus_draft": "按这些表写一条查询",
     "er_focus_clear": "取消连线",
+    "er_focus_only": "只显示这些表",
+    "er_focus_show_all": "显示全部",
     "er_diagram_reset_layout": "重置布局",
     "er_diagram_show_all_lines": "显示所有连线",
     "er_diagram_fit": "适应窗口",

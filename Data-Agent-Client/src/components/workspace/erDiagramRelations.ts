@@ -148,6 +148,18 @@ export function filterTablesByName(diagram: ErDiagram, query: string, exact = fa
   };
 }
 
+/** Keeps the chosen tables and the lines whose two ends are both still shown. */
+export function filterTablesByIds(diagram: ErDiagram, ids: ReadonlySet<string>): ErDiagram {
+  if (ids.size === 0) return diagram;
+  return {
+    ...diagram,
+    tables: diagram.tables.filter((table) => ids.has(tableId(table))),
+    relations: diagram.relations.filter((relation) => (
+      ids.has(relationFromId(relation)) && ids.has(relationToId(relation))
+    )),
+  };
+}
+
 /** Drops junction cards and their foreign keys. The many-to-many link between the two ends stays. */
 export function collapseJunctions(diagram: ErDiagram, enabled: boolean): ErDiagram {
   if (!enabled) return diagram;

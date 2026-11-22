@@ -516,6 +516,8 @@
     "er_focus_attached": "Attached {{tables}}",
     "er_focus_draft": "Write a query from these tables",
     "er_focus_clear": "Clear lines",
+    "er_focus_only": "Show only these tables",
+    "er_focus_show_all": "Show all",
     "er_diagram_reset_layout": "Reset layout",
     "er_diagram_show_all_lines": "Show all lines",
     "er_diagram_fit": "Fit to window",

@@ -282,6 +282,8 @@ export const I18N_KEYS = {
     ER_FOCUS_ATTACHED: 'explorer.er_focus_attached',
     ER_FOCUS_DRAFT: 'explorer.er_focus_draft',
     ER_FOCUS_CLEAR: 'explorer.er_focus_clear',
+    ER_FOCUS_ONLY: 'explorer.er_focus_only',
+    ER_FOCUS_SHOW_ALL: 'explorer.er_focus_show_all',
     ER_DIAGRAM_LEGEND_ONE: 'explorer.er_diagram_legend_one',
     ER_DIAGRAM_LEGEND_MANY: 'explorer.er_diagram_legend_many',
     ER_DIAGRAM_LEGEND_MANY_TO_MANY: 'explorer.er_diagram_legend_many_to_many',

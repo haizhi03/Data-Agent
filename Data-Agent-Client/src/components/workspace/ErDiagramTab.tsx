@@ -71,6 +71,7 @@ import {
   cardinalityLabel,
   collapseJunctions,
   columnKey,
+  filterTablesByIds,
   junctionTableId,
   matchingTableIds,
   relationFromId,
@@ -136,7 +137,12 @@ function tableLocation(table: ErTable, metadata: ErDiagramTabMetadata) {
   };
 }
 
-function toFlowNodes(tables: ErTable[], points: LayoutPoint[], previous: ErTableNodeType[] = []): ErTableNodeType[] {
+function toFlowNodes(
+  tables: ErTable[],
+  points: LayoutPoint[],
+  previous: ErTableNodeType[] = [],
+  selectedIds: ReadonlySet<string> = new Set(),
+): ErTableNodeType[] {
   const byId = new Map(points.map((point) => [point.id, point]));
   const expandedIds = new Set(previous.filter((node) => node.data.expanded).map((node) => node.id));
   return tables.map((table) => {
@@ -152,6 +158,7 @@ function toFlowNodes(tables: ErTable[], points: LayoutPoint[], previous: ErTable
       data: { table, expanded },
       dragHandle: '.er-drag-handle',
       selectable: true,
+      selected: selectedIds.has(id),
       deletable: false,
     };
   });
@@ -192,6 +199,9 @@ function ErDiagramCanvas({ metadata }: ErDiagramTabProps) {
   const [collapseJunctionTables, setCollapseJunctionTables] = useState(false);
   const [showAllLines, setShowAllLines] = useState(false);
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
+  const [onlyTableIds, setOnlyTableIds] = useState<string[] | null>(null);
+  const selectedNodeIdsRef = useRef(selectedNodeIds);
+  selectedNodeIdsRef.current = selectedNodeIds;
   const [pinnedLinks, setPinnedLinks] = useState<{ relations: ErRelation[]; selectedKeys: string[] } | null>(null);
   const [exporting, setExporting] = useState(false);
   const [layouting, setLayouting] = useState(false);
@@ -213,7 +223,9 @@ function ErDiagramCanvas({ metadata }: ErDiagramTabProps) {
   const catalogGeneration = useRef(0);
   const catalogRequestStarted = useRef(false);
   const framedToken = useRef(-1);
-  const layoutCause = useRef({ collapse: collapseJunctionTables, diagram });
+  /** After leaving "only these tables", fit this subset in the restored layout. */
+  const frameFocusRef = useRef<Set<string> | null>(null);
+  const layoutCause = useRef({ collapse: collapseJunctionTables, diagram, only: '' });
   const [layoutVersion, setLayoutVersion] = useState(0);
   const [frameReady, setFrameReady] = useState(false);
   const storageKey = layoutStorageKey(metadata.connectionId, metadata.catalog, metadata.schema);
@@ -329,7 +341,12 @@ function ErDiagramCanvas({ metadata }: ErDiagramTabProps) {
     () => (diagram ? collapseJunctions(diagram, collapseJunctionTables) : null),
     [collapseJunctionTables, diagram],
   );
-  const shown = collapsed;
+  const onlyTableKey = onlyTableIds?.join('\n') ?? '';
+  const shown = useMemo(() => {
+    if (!collapsed) return null;
+    if (!onlyTableIds || onlyTableIds.length === 0) return collapsed;
+    return filterTablesByIds(collapsed, new Set(onlyTableIds));
+  }, [collapsed, onlyTableIds]);
   const nameMatchIds = useMemo(
     () => (collapsed ? matchingTableIds(collapsed, tableNameFilter, exactTableFilter) : null),
     [collapsed, exactTableFilter, tableNameFilter],
@@ -355,7 +372,12 @@ function ErDiagramCanvas({ metadata }: ErDiagramTabProps) {
       if (token !== requestId.current) return;
       const stored = useStored ? readStoredLayout(storageKey) : null;
       setHasCustomLayout(persist || hasStoredLayout(stored));
-      setNodes(toFlowNodes(next.tables, mergeStoredPositions(points, stored), previous));
+      setNodes(toFlowNodes(
+        next.tables,
+        mergeStoredPositions(points, stored),
+        previous,
+        new Set(selectedNodeIdsRef.current),
+      ));
       if (persist) {
         writeStoredLayout(storageKey, Object.fromEntries(points.map((point) => [point.id, { x: point.x, y: point.y }])));
       }
@@ -403,16 +425,31 @@ function ErDiagramCanvas({ metadata }: ErDiagramTabProps) {
 
   useEffect(() => {
     const previous = layoutCause.current;
-    const onlyFolding = previous.diagram === diagram && previous.collapse !== collapseJunctionTables;
-    layoutCause.current = { collapse: collapseJunctionTables, diagram };
+    if (previous.diagram !== diagram && previous.only !== '') {
+      layoutCause.current = { collapse: collapseJunctionTables, diagram, only: '' };
+      setOnlyTableIds(null);
+      return;
+    }
+    const sameDiagram = previous.diagram === diagram;
+    const onlyFolding = sameDiagram
+      && previous.collapse !== collapseJunctionTables
+      && previous.only === onlyTableKey;
+    const enteringOnly = sameDiagram && previous.only === '' && onlyTableKey !== '';
+    const changingOnly = sameDiagram && previous.only !== '' && onlyTableKey !== '' && previous.only !== onlyTableKey;
+    const leavingOnly = sameDiagram && previous.only !== '' && onlyTableKey === '';
+    if (enteringOnly || changingOnly || leavingOnly) setShowAllLines(false);
+    frameFocusRef.current = leavingOnly
+      ? new Set(previous.only.split('\n').filter(Boolean).map((id) => toNodeId(id)))
+      : null;
+    layoutCause.current = { collapse: collapseJunctionTables, diagram, only: onlyTableKey };
     if (!shown || shown.tables.length === 0) {
       requestId.current += 1;
       setNodes([]);
       setLayouting(false);
       return;
     }
-    void placeNodes(shown, true, undefined, false, !onlyFolding);
-  }, [collapseJunctionTables, diagram, placeNodes, setNodes, shown]);
+    void placeNodes(shown, !enteringOnly && !changingOnly, undefined, false, !onlyFolding);
+  }, [collapseJunctionTables, diagram, onlyTableKey, placeNodes, setNodes, shown]);
 
   const linkedColumns = useMemo(() => {
     const linked = new Set<string>();
@@ -669,7 +706,10 @@ function ErDiagramCanvas({ metadata }: ErDiagramTabProps) {
   const frameNodes = useCallback((current: ErTableNodeType[]) => {
     const pane = flowRef.current;
     if (!pane || current.length === 0) return Promise.resolve(false);
-    const bounds = layoutBounds(current.map((node) => ({
+    const focus = frameFocusRef.current;
+    const focused = focus && focus.size > 0 ? current.filter((node) => focus.has(node.id)) : current;
+    const cards = focused.length > 0 ? focused : current;
+    const bounds = layoutBounds(cards.map((node) => ({
       x: node.position.x,
       y: node.position.y,
       width: node.measured?.width || node.width || CARD_WIDTH,
@@ -696,6 +736,7 @@ function ErDiagramCanvas({ metadata }: ErDiagramTabProps) {
         if (stopped || framedToken.current === layoutVersion) return;
         if (fitted) {
           framedToken.current = layoutVersion;
+          frameFocusRef.current = null;
           setFrameReady(true);
           return;
         }
@@ -1114,7 +1155,7 @@ function ErDiagramCanvas({ metadata }: ErDiagramTabProps) {
                   <ErDiagramMiniMap ready={frameReady} disabled={layouting || exporting} />
                   <ErDiagramZoomBar disabled={layouting || exporting} minZoom={minZoom} onFit={fitToWindow} />
                 </ReactFlow>
-                {(selectedTables.length > 0 || pinnedLinks) && (
+                {(selectedTables.length > 0 || pinnedLinks || onlyTableIds) && (
                   <div className="absolute bottom-4 left-1/2 z-20 flex w-[min(36rem,calc(100%-2rem))] -translate-x-1/2 flex-col gap-2 rounded-lg border theme-border theme-bg-popup px-3 py-2 shadow-lg">
                     {selectedTables.length > 0 && (
                       <div className="flex items-center justify-between gap-3 text-xs">
@@ -1148,6 +1189,33 @@ function ErDiagramCanvas({ metadata }: ErDiagramTabProps) {
                           onClick={() => setPinnedLinks(null)}
                         >
                           {t(I18N_KEYS.EXPLORER.ER_FOCUS_CLEAR)}
+                        </button>
+                      )}
+                      {selectedTables.length > 0 && (
+                        <button
+                          type="button"
+                          className="rounded border theme-border px-2 py-1 text-xs theme-text-primary"
+                          onMouseDown={(event) => event.stopPropagation()}
+                          onClick={() => {
+                            const ids = selectedTables.map((table) => tableId(table));
+                            if (ids.length === 0) return;
+                            const current = new Set(onlyTableIds ?? []);
+                            if (current.size === ids.length && ids.every((id) => current.has(id))) return;
+                            setShowAllLines(false);
+                            setOnlyTableIds([...ids].sort());
+                          }}
+                        >
+                          {t(I18N_KEYS.EXPLORER.ER_FOCUS_ONLY)}
+                        </button>
+                      )}
+                      {onlyTableIds && (
+                        <button
+                          type="button"
+                          className="rounded border theme-border px-2 py-1 text-xs theme-text-primary"
+                          onMouseDown={(event) => event.stopPropagation()}
+                          onClick={() => setOnlyTableIds(null)}
+                        >
+                          {t(I18N_KEYS.EXPLORER.ER_FOCUS_SHOW_ALL)}
                         </button>
                       )}
                       {selectedTables.length > 0 && (
