@@ -32,6 +32,8 @@ export interface ChatRequest {
   catalogName?: string;
   schemaName?: string;
   userMentions?: ChatUserMention[];
+  /** Tables circled on the ER diagram. Sent only while that attachment is on the input. */
+  erFocus?: import('../components/workspace/erDiagramFocus').ErQueryFocusPayload;
   /**
    * Mirrors workspace headers for /api/chat/stream when fetch cannot rely on custom headers.
    * Server validates org membership.

@@ -5,11 +5,14 @@ import {
   cardinalityLabel,
   collapseJunctions,
   endMarks,
+  filterTablesByIds,
   filterTablesByName,
+  matchingTableIds,
   junctionTableId,
   relationMapping,
   relationTouches,
   sideColumns,
+  tableId,
   viaTableName,
 } from './erDiagramRelations';
 
@@ -135,6 +138,24 @@ describe('filter tables by name', () => {
 
   it('keeps every table when the query is blank', () => {
     expect(filterTablesByName(diagram, '  ').tables).toHaveLength(diagram.tables.length);
+    expect(matchingTableIds(diagram, '  ')).toBeNull();
+  });
+
+  it('keeps only the chosen tables and lines between them', () => {
+    const linked: ErDiagram = {
+      tables: [sampleTable('users'), sampleTable('orders'), sampleTable('payment')],
+      relations: [
+        relation({ name: 'fk_order', fromSchema: 'app', fromTable: 'orders', toSchema: 'app', toTable: 'users' }),
+        relation({ name: 'fk_pay', fromSchema: 'app', fromTable: 'payment', toSchema: 'app', toTable: 'orders' }),
+      ],
+      truncated: false,
+    };
+    const kept = filterTablesByIds(linked, new Set([
+      tableId(sampleTable('orders')),
+      tableId(sampleTable('users')),
+    ]));
+    expect(kept.tables.map((table) => table.name).sort()).toEqual(['orders', 'users']);
+    expect(kept.relations.map((item) => item.name)).toEqual(['fk_order']);
   });
 
   it('keeps a matching table and only the lines between matching tables', () => {

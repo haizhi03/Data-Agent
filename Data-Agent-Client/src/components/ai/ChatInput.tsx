@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChatInputToolbar } from './ChatInputToolbar';
 import { AGENT_COLORS, AGENT_TYPES } from './agentTypes';
@@ -15,6 +15,7 @@ import { useMentionLogic } from './hooks/useMentionLogic';
 import { useKeyboardHandler } from './hooks/useKeyboardHandler';
 import { useInputChangeHandler } from './hooks/useInputChangeHandler';
 import { I18N_KEYS } from '../../constants/i18nKeys';
+import { useErQueryFocusStore } from '../../store/erQueryFocusStore';
 
 function formatDetailedTokenCount(value: number | null): string {
   if (value == null || !Number.isFinite(value)) {
@@ -44,6 +45,16 @@ export function ChatInput() {
   const { agent, setAgent } = agentState;
   const { setChatContext } = chatContextState;
   const { setUserMentions } = mentionState;
+  const erFocus = useErQueryFocusStore((state) => state.focus);
+  const erDraft = useErQueryFocusStore((state) => state.draft);
+  const attachedTables = erFocus?.tables.map((table) => table.name).join('、') ?? '';
+
+  useEffect(() => {
+    if (!erDraft) return;
+    setInput(input.trim() ? input : erDraft);
+    document.getElementById('chat-input-textarea')?.focus();
+    useErQueryFocusStore.setState({ draft: null });
+  }, [erDraft, input, setInput]);
   const modelNames = useMemo(() => modelOptions.map((m) => m.modelName), [modelOptions]);
 
   // Track todos for display above input
@@ -186,6 +197,21 @@ export function ChatInput() {
             onSlashSelect={slashCmd.runSlashCommand}
             onSlashHighlight={slashCmd.setSlashHighlightedIndex}
           />
+
+          {erFocus && (
+            <div className="flex items-center gap-2 pr-10 text-xs">
+              <span className="min-w-0 truncate rounded bg-blue-500/10 px-2 py-1 text-blue-700 dark:text-blue-300">
+                {t(I18N_KEYS.EXPLORER.ER_FOCUS_ATTACHED, { tables: attachedTables })}
+              </span>
+              <button
+                type="button"
+                className="shrink-0 theme-text-secondary"
+                onClick={() => useErQueryFocusStore.getState().clear()}
+              >
+                ×
+              </button>
+            </div>
+          )}
 
           <ChatInputArea
             input={input}
