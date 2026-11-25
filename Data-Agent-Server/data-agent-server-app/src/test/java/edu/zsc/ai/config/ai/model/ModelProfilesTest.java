@@ -9,7 +9,7 @@ import static edu.zsc.ai.config.ai.model.MultiProviderProperties.*;
 
 class ModelProfilesTest {
     @Test void existingProtocolsAndCapabilityDefaultsRemainUnchanged() {
-        assertEquals(10,ModelProfiles.all().size());
+        assertEquals(11,ModelProfiles.all().size());
         assertEquals(Set.of(ModelApiStyle.OPENAI_CHAT_COMPLETIONS,ModelApiStyle.OPENAI_RESPONSES,
                 ModelApiStyle.ANTHROPIC_MESSAGES,ModelApiStyle.DASHSCOPE_CHAT),
                 ModelProfiles.all().stream().map(profile->profile.apiStyle()).collect(java.util.stream.Collectors.toSet()));
@@ -51,5 +51,30 @@ class ModelProfilesTest {
         assertNull(ModelSpecifications.find("qwen-plus","openai-chat-v1"));
         assertNull(ModelSpecifications.find("account-specific-model"));
         assertEquals(32768,ModelTokenPolicy.context("account-specific-model",null));
+    }
+    @Test void kimiRequiresThinkingAndOnlyAcceptsItsOwnEffortsAndParameters() {
+        var connection=new Connection();connection.setApiStyle(ModelApiStyle.OPENAI_CHAT_COMPLETIONS);connection.setCompatibilityProfile("kimi-chat-v1");
+        var model=new Model();model.setCapabilityProfile("kimi-reasoning-tools-v1");
+        assertThrows(IllegalStateException.class,()->ProviderCompatibilityPolicy.validate(model,connection));
+        model.setDefaultOptions(ModelProfiles.defaultOptions(ModelProfiles.defaults(connection.getApiStyle(),connection.getCompatibilityProfile())));
+        for(var effort:List.of("low","high","max")) {
+            model.getDefaultOptions().setReasoningEffort(effort);
+            assertDoesNotThrow(()->ProviderCompatibilityPolicy.validate(model,connection));
+        }
+        model.getDefaultOptions().setReasoningEffort("medium");
+        assertThrows(IllegalStateException.class,()->ProviderCompatibilityPolicy.validate(model,connection));
+        model.getDefaultOptions().setReasoningEffort(null);
+        assertEquals("max",ProviderCompatibilityPolicy.effectiveReasoningEffort(model,connection));
+        model.getDefaultOptions().setThinkingBudget(1024);
+        assertThrows(IllegalStateException.class,()->ProviderCompatibilityPolicy.validate(model,connection));
+        model.getDefaultOptions().setThinkingBudget(null);model.getDefaultOptions().setTemperature(1.0);
+        assertThrows(IllegalStateException.class,()->ProviderCompatibilityPolicy.validate(model,connection));
+    }
+    @Test void catalogueScopesCandidatesAndLimitsToTheirCompatibilityProfile() {
+        assertEquals(List.of("kimi-k3.1-pro","kimi-k3"),ModelSpecifications.all("kimi-chat-v1").stream().map(ModelSpecifications.Specification::modelId).toList());
+        assertEquals(4,ModelSpecifications.all("qwen-chat-v1").size());
+        assertNull(ModelSpecifications.find("kimi-k3","qwen-chat-v1"));
+        assertEquals(1_048_576,ModelTokenPolicy.context("kimi-k3",null));
+        for(var purpose:ModelPurpose.values())assertEquals(16384,ModelTokenPolicy.output("kimi-k3","kimi-chat-v1",null,1_048_576,ThinkingMode.ENABLED,null,purpose));
     }
 }

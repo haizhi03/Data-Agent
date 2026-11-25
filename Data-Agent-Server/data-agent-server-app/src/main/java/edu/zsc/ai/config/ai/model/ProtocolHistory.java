@@ -2,10 +2,18 @@ package edu.zsc.ai.config.ai.model;
 
 import dev.langchain4j.data.message.*;
 import java.util.*;
+import dev.langchain4j.model.chat.response.ChatResponse;
 
 /** Closed business history can move between deployments; open tool chains cannot. */
 public final class ProtocolHistory {
     private ProtocolHistory() {}
+
+    /** Track the source of SDK reasoning so switching providers never replays foreign thoughts. */
+    static ChatResponse capture(ChatResponse response, ResolvedModelConfig config) {
+        if (response == null || response.aiMessage() == null || config.apiStyle() != ModelApiStyle.OPENAI_CHAT_COMPLETIONS
+                || response.aiMessage().thinking() == null) return response;
+        return response.toBuilder().aiMessage(ProtocolStateCodec.attach(response.aiMessage(),config,ProtocolJson.array())).build();
+    }
 
     public static List<ChatMessage> forTarget(List<ChatMessage> messages, ResolvedModelConfig config) {
         checkClosed(messages);
@@ -14,7 +22,9 @@ public final class ProtocolHistory {
             if (message instanceof AiMessage ai) {
                 var state = ProtocolStateCodec.read(ai);
                 boolean legacyForeign = ai.attributes().containsKey("thinking_signature") || ai.attributes().containsKey("redacted_thinking");
-                result.add((state != null && !ProtocolStateCodec.matches(state, config)) || legacyForeign
+                boolean unknownThinking = state == null && config.apiStyle() == ModelApiStyle.OPENAI_CHAT_COMPLETIONS
+                        && OpenAiChatCompatibility.rules(config).preserveThinking() && ai.thinking() != null;
+                result.add((state != null && !ProtocolStateCodec.matches(state, config)) || legacyForeign || unknownThinking
                         ? ProtocolStateCodec.portable(ai) : ai);
             } else result.add(message);
         }

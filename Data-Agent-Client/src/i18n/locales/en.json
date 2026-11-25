@@ -1294,6 +1294,7 @@
       "name_placeholder": "e.g. Work Qwen; defaults to the model ID",
       "model_id": "Default model",
       "model_placeholder": "e.g. qwen3.8-max",
+      "moonshot_key_hint": "Use a Kimi Open Platform API key here. Kimi Code uses separate keys, URLs and model IDs; they are not interchangeable.",
       "candidate_model_placeholder": "Choose a model or enter another model ID",
       "candidate_models": "Model presets",
       "candidate_presets_hint": "Preset suggestions; other IDs are welcome. Test the connection to check availability.",
@@ -1329,6 +1330,7 @@
       "capabilities": {
         "text-tools-v1": "General text and tools",
         "qwen-tools-v1": "Qwen text, thinking and tools",
+        "kimi-reasoning-tools-v1": "Kimi reasoning and tools (always thinking)",
         "responses-tools-v1": "OpenAI text and tools",
         "responses-reasoning-v1": "OpenAI reasoning and tools",
         "anthropic-tools-v1": "Claude text and tools",
@@ -1393,6 +1395,7 @@
       "OPENAI": "OpenAI",
       "QWEN": "Qwen",
       "ANTHROPIC": "Anthropic (Claude)",
+      "MOONSHOT": "Kimi Open Platform",
       "CUSTOM": "Custom service"
     },
     "provider_hints": {
