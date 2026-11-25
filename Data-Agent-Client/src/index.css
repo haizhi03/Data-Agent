@@ -1021,6 +1021,24 @@
   cursor: grabbing;
 }
 
+.er-diagram-zoom-bar {
+  container: er-zoom / inline-size;
+}
+
+.er-zoom-fit-icon {
+  display: none;
+}
+
+@container er-zoom (max-width: 300px) {
+  .er-zoom-fit-icon {
+    display: block;
+  }
+
+  .er-zoom-fit-label {
+    display: none;
+  }
+}
+
 .er-zoom-range {
   height: 4px;
   border-radius: 9999px;

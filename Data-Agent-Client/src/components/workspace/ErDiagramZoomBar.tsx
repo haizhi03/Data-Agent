@@ -1,8 +1,8 @@
 import { Panel, useReactFlow, useViewport } from '@xyflow/react';
-import { Minus, Plus } from 'lucide-react';
+import { Maximize2, Minus, Plus } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { I18N_KEYS } from '../../constants/i18nKeys';
-import { ER_MAX_ZOOM, ER_MINIMAP_WIDTH, ER_MIN_ZOOM, ER_ZOOM_BAR_HEIGHT, formatZoomPercent } from './erDiagramLayout';
+import { ER_MAX_ZOOM, ER_MIN_ZOOM, ER_PANEL_MARGIN, ER_ZOOM_BAR_HEIGHT, formatZoomPercent } from './erDiagramLayout';
 
 export function ErDiagramZoomBar({
   disabled = false,
@@ -19,14 +19,14 @@ export function ErDiagramZoomBar({
   const percent = formatZoomPercent(zoom);
 
   return (
-    <Panel position="bottom-right">
+    <Panel position="bottom-right" className="er-diagram-zoom-bar" style={{ width: 340, maxWidth: `calc(100% - ${ER_PANEL_MARGIN * 2}px)` }}>
       <div
-        className="pointer-events-auto flex w-max items-center gap-1 rounded border theme-border theme-bg-popup px-1.5 text-xs theme-text-primary shadow-sm"
-        style={{ minWidth: ER_MINIMAP_WIDTH, height: ER_ZOOM_BAR_HEIGHT }}
+        className="pointer-events-auto flex w-full min-w-0 items-center gap-1 rounded border theme-border theme-bg-popup px-1.5 text-xs theme-text-primary shadow-sm"
+        style={{ height: ER_ZOOM_BAR_HEIGHT }}
       >
         <button
           type="button"
-          className="inline-flex h-6 w-6 items-center justify-center rounded theme-bg-hover disabled:opacity-40"
+          className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded theme-bg-hover disabled:opacity-40"
           aria-label={t(I18N_KEYS.EXPLORER.ER_DIAGRAM_ZOOM_OUT)}
           disabled={disabled}
           onClick={() => { void zoomOut(); }}
@@ -35,7 +35,7 @@ export function ErDiagramZoomBar({
         </button>
         <input
           type="range"
-          className="er-zoom-range w-24 shrink-0"
+          className="er-zoom-range min-w-0 flex-1"
           min={minZoom}
           max={ER_MAX_ZOOM}
           step="any"
@@ -47,7 +47,7 @@ export function ErDiagramZoomBar({
         />
         <button
           type="button"
-          className="inline-flex h-6 w-6 items-center justify-center rounded theme-bg-hover disabled:opacity-40"
+          className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded theme-bg-hover disabled:opacity-40"
           aria-label={t(I18N_KEYS.EXPLORER.ER_DIAGRAM_ZOOM_IN)}
           disabled={disabled}
           onClick={() => { void zoomIn(); }}
@@ -58,14 +58,17 @@ export function ErDiagramZoomBar({
         <button
           type="button"
           className="inline-flex h-6 shrink-0 items-center whitespace-nowrap rounded px-1.5 theme-bg-hover disabled:opacity-40"
+          title={t(I18N_KEYS.EXPLORER.ER_DIAGRAM_FIT)}
+          aria-label={t(I18N_KEYS.EXPLORER.ER_DIAGRAM_FIT)}
           disabled={disabled}
           onClick={onFit}
         >
-          {t(I18N_KEYS.EXPLORER.ER_DIAGRAM_FIT)}
+          <Maximize2 size={14} className="er-zoom-fit-icon" aria-hidden="true" />
+          <span className="er-zoom-fit-label">{t(I18N_KEYS.EXPLORER.ER_DIAGRAM_FIT)}</span>
         </button>
         <button
           type="button"
-          className="min-w-[3.25rem] rounded px-1 text-right tabular-nums theme-bg-hover disabled:opacity-40"
+          className="min-w-[3.25rem] shrink-0 rounded px-1 text-right tabular-nums theme-bg-hover disabled:opacity-40"
           title={t(I18N_KEYS.EXPLORER.ER_DIAGRAM_ZOOM_RESET)}
           aria-label={`${percent}, ${t(I18N_KEYS.EXPLORER.ER_DIAGRAM_ZOOM_RESET)}`}
           disabled={disabled}

@@ -237,8 +237,8 @@ export function viewportForDiagram(
 }
 
 /**
- * The rectangle fit-to-window shows, expanded by one ring.
- * Panning stays inside it, so the canvas is not an open field around the tables.
+ * Keep the fitted view and every table inside the pannable rectangle, plus one ring.
+ * At the minimum zoom, a large diagram may extend beyond the fitted view.
  */
 export function panExtentForDiagram(
   bounds: { x: number; y: number; width: number; height: number },
@@ -253,8 +253,8 @@ export function panExtentForDiagram(
   const right = left + viewWidth / viewport.zoom;
   const bottom = top + viewHeight / viewport.zoom;
   return [
-    [left - ring, top - ring],
-    [right + ring, bottom + ring],
+    [Math.min(left, bounds.x) - ring, Math.min(top, bounds.y) - ring],
+    [Math.max(right, bounds.x + bounds.width) + ring, Math.max(bottom, bounds.y + bounds.height) + ring],
   ];
 }
 

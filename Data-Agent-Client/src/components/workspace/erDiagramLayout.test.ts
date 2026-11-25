@@ -255,6 +255,20 @@ describe('ER diagram opening frame', () => {
     expect(lowest).toBeLessThan(viewport.zoom);
     expect(lowest).toBeGreaterThan(ER_MIN_ZOOM);
   });
+
+  it.each([
+    { x: 24, y: 24, width: 28700, height: 322 },
+    { x: 24, y: 24, width: 260, height: 20000 },
+    { x: -15000, y: -14000, width: 30000, height: 28000 },
+  ])('keeps every table reachable when minimum zoom clips the fitted view: %j', (bounds) => {
+    const viewport = viewportForDiagram(bounds, 1000, 631)!;
+    expect(viewport.zoom).toBe(ER_MIN_ZOOM);
+    const extent = panExtentForDiagram(bounds, 1000, 631)!;
+    expect(extent[0][0]).toBeLessThanOrEqual(bounds.x - ER_CANVAS_RING);
+    expect(extent[0][1]).toBeLessThanOrEqual(bounds.y - ER_CANVAS_RING);
+    expect(extent[1][0]).toBeGreaterThanOrEqual(bounds.x + bounds.width + ER_CANVAS_RING);
+    expect(extent[1][1]).toBeGreaterThanOrEqual(bounds.y + bounds.height + ER_CANVAS_RING);
+  });
 });
 
 describe('ELK diagram layout', () => {
