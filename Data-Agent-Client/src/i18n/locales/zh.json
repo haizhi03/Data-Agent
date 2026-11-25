@@ -540,6 +540,7 @@
     "er_diagram_open_external": "双击打开该 schema 的 ER 图",
     "er_diagram_filter": "表名，逗号分隔",
     "er_diagram_filter_exact": "启用精准过滤",
+    "er_diagram_filter_exact_short": "精准",
     "er_diagram_filter_empty": "没有匹配的表",
     "er_diagram_drag_table": "拖动表头可移动此表",
     "er_diagram_expand_columns": "展开其余 {{count}} 个字段",

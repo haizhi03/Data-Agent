@@ -137,6 +137,8 @@ export function hasStoredLayout(layout: StoredLayout | null) {
 
 const LAYOUT_ORIGIN = 24;
 const VIEW_PADDING = 32;
+/** One card of spare room around the fitted view, so panning is not locked to the tables. */
+export const ER_CANVAS_RING = CARD_WIDTH;
 
 export const ER_MIN_ZOOM = 0.08;
 export const ER_MAX_ZOOM = 1.8;
@@ -232,6 +234,41 @@ export function viewportForDiagram(
     y: VIEW_PADDING - bounds.y * zoom,
     zoom,
   };
+}
+
+/**
+ * The rectangle fit-to-window shows, expanded by one ring.
+ * Panning stays inside it, so the canvas is not an open field around the tables.
+ */
+export function panExtentForDiagram(
+  bounds: { x: number; y: number; width: number; height: number },
+  viewWidth: number,
+  viewHeight: number,
+  ring = ER_CANVAS_RING,
+): [[number, number], [number, number]] | null {
+  const viewport = viewportForDiagram(bounds, viewWidth, viewHeight);
+  if (!viewport) return null;
+  const left = -viewport.x / viewport.zoom;
+  const top = -viewport.y / viewport.zoom;
+  const right = left + viewWidth / viewport.zoom;
+  const bottom = top + viewHeight / viewport.zoom;
+  return [
+    [left - ring, top - ring],
+    [right + ring, bottom + ring],
+  ];
+}
+
+/** Lowest zoom that still fills the window with the pannable rectangle. */
+export function minZoomForCanvas(
+  extent: [[number, number], [number, number]],
+  viewWidth: number,
+  viewHeight: number,
+) {
+  const width = extent[1][0] - extent[0][0];
+  const height = extent[1][1] - extent[0][1];
+  if (width <= 0 || height <= 0 || viewWidth <= 0 || viewHeight <= 0) return ER_MIN_ZOOM;
+  const fit = Math.min(viewWidth / width, viewHeight / height);
+  return Math.min(ER_MAX_ZOOM, Math.max(ER_MIN_ZOOM, fit));
 }
 
 export function mergeStoredPositions(points: LayoutPoint[], stored: StoredLayout | null): LayoutPoint[] {

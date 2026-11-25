@@ -4,7 +4,15 @@ import { useTranslation } from 'react-i18next';
 import { I18N_KEYS } from '../../constants/i18nKeys';
 import { ER_MAX_ZOOM, ER_MINIMAP_WIDTH, ER_MIN_ZOOM, ER_ZOOM_BAR_HEIGHT, formatZoomPercent } from './erDiagramLayout';
 
-export function ErDiagramZoomBar({ disabled = false }: { disabled?: boolean }) {
+export function ErDiagramZoomBar({
+  disabled = false,
+  minZoom = ER_MIN_ZOOM,
+  onFit,
+}: {
+  disabled?: boolean;
+  minZoom?: number;
+  onFit: () => void;
+}) {
   const { t } = useTranslation();
   const { zoom } = useViewport();
   const { zoomIn, zoomOut, zoomTo } = useReactFlow();
@@ -13,8 +21,8 @@ export function ErDiagramZoomBar({ disabled = false }: { disabled?: boolean }) {
   return (
     <Panel position="bottom-right">
       <div
-        className="pointer-events-auto flex items-center gap-1 rounded border theme-border theme-bg-popup px-1.5 text-xs theme-text-primary shadow-sm"
-        style={{ width: ER_MINIMAP_WIDTH, height: ER_ZOOM_BAR_HEIGHT }}
+        className="pointer-events-auto flex w-max items-center gap-1 rounded border theme-border theme-bg-popup px-1.5 text-xs theme-text-primary shadow-sm"
+        style={{ minWidth: ER_MINIMAP_WIDTH, height: ER_ZOOM_BAR_HEIGHT }}
       >
         <button
           type="button"
@@ -27,11 +35,11 @@ export function ErDiagramZoomBar({ disabled = false }: { disabled?: boolean }) {
         </button>
         <input
           type="range"
-          className="er-zoom-range min-w-0 flex-1"
-          min={ER_MIN_ZOOM}
+          className="er-zoom-range w-24 shrink-0"
+          min={minZoom}
           max={ER_MAX_ZOOM}
           step="any"
-          value={Math.min(ER_MAX_ZOOM, Math.max(ER_MIN_ZOOM, zoom))}
+          value={Math.min(ER_MAX_ZOOM, Math.max(minZoom, zoom))}
           disabled={disabled}
           aria-label={t(I18N_KEYS.EXPLORER.ER_DIAGRAM_ZOOM)}
           aria-valuetext={percent}
@@ -45,6 +53,15 @@ export function ErDiagramZoomBar({ disabled = false }: { disabled?: boolean }) {
           onClick={() => { void zoomIn(); }}
         >
           <Plus size={14} />
+        </button>
+        <span className="mx-0.5 h-4 shrink-0 border-l theme-border" aria-hidden="true" />
+        <button
+          type="button"
+          className="inline-flex h-6 shrink-0 items-center whitespace-nowrap rounded px-1.5 theme-bg-hover disabled:opacity-40"
+          disabled={disabled}
+          onClick={onFit}
+        >
+          {t(I18N_KEYS.EXPLORER.ER_DIAGRAM_FIT)}
         </button>
         <button
           type="button"
