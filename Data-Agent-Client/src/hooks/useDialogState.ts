@@ -59,13 +59,6 @@ export function useDialogState() {
     isPending: false,
   });
 
-  // Table comment dialog
-  const [commentState, setCommentState] = useState<NodeDialogState>({
-    node: null,
-    isOpen: false,
-    isPending: false,
-  });
-
   return {
     // Connection modal
     connectionModalOpen,
@@ -114,9 +107,5 @@ export function useDialogState() {
     // Rename table
     renameState,
     setRenameState,
-
-    // Table comment
-    commentState,
-    setCommentState,
   };
 }

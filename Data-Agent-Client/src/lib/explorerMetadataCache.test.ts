@@ -16,7 +16,6 @@ import {
   removeCachedExplorerTable,
   removeCachedExplorerView,
   renameCachedExplorerTable,
-  updateCachedExplorerTableComment,
 } from './explorerMetadataCache';
 
 describe('explorer metadata cache after deletes', () => {
@@ -130,30 +129,6 @@ describe('explorer metadata cache table comments', () => {
 
   beforeEach(() => {
     queryClient = new QueryClient();
-  });
-
-  it('sets and clears one table comment without touching the others', () => {
-    queryClient.setQueryData(getExplorerTableCommentsQueryKey('1', 'db', undefined), {
-      users: 'People',
-      orders: 'Sales',
-    });
-
-    updateCachedExplorerTableComment(queryClient, '1', 'db', undefined, 'users', 'Customers');
-    expect(getCachedExplorerTableComments(queryClient, '1', 'db', undefined)).toEqual({
-      users: 'Customers',
-      orders: 'Sales',
-    });
-
-    updateCachedExplorerTableComment(queryClient, '1', 'db', undefined, 'users', '   ');
-    expect(getCachedExplorerTableComments(queryClient, '1', 'db', undefined)).toEqual({
-      orders: 'Sales',
-    });
-  });
-
-  it('does not create a partial cache when comments were never fetched', () => {
-    updateCachedExplorerTableComment(queryClient, '1', 'db', undefined, 'users', 'People');
-    // A partial map would make hydration believe the comment list is loaded.
-    expect(getCachedExplorerTableComments(queryClient, '1', 'db', undefined)).toBeUndefined();
   });
 
   it('drops the comment when the table is deleted', () => {

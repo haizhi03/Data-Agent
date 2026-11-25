@@ -35,7 +35,6 @@ export interface ExplorerTreeNodeProps {
   onViewDdl: (node: ExplorerNode) => void;
   onViewData: (node: ExplorerNode, highlightColumn?: string) => void;
   onTableOrViewDoubleClick: (node: ExplorerNode) => void;
-  onTableComment: (node: ExplorerNode) => void;
   onRename: (node: ExplorerNode) => void;
   onDelete: (node: ExplorerNode, type: ExplorerNodeType) => void;
   onOpenQueryConsole: (node: ExplorerNode) => void;
@@ -72,7 +71,6 @@ export function ExplorerTreeNode({
   onViewDdl,
   onViewData,
   onTableOrViewDoubleClick,
-  onTableComment,
   onRename,
   onDelete,
   onOpenQueryConsole,
@@ -279,7 +277,6 @@ export function ExplorerTreeNode({
           onSchemaCompare={onSchemaCompare}
           onViewDdl={onViewDdl}
           onViewData={onViewData}
-          onTableComment={onTableComment}
           onRename={onRename}
           onDelete={onDelete}
           onImportData={onImportData}

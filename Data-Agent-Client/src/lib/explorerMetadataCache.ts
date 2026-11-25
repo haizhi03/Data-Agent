@@ -307,31 +307,6 @@ export function removeCachedExplorerTable(
   }
 }
 
-/**
- * Reflect a comment edit in the cached map. Only touches an existing cache;
- * creating a partial map would make hydration believe comments were loaded.
- */
-export function updateCachedExplorerTableComment(
-  queryClient: QueryClient,
-  connectionId: string,
-  catalog: string | undefined,
-  schema: string | undefined,
-  tableName: string,
-  comment: string
-) {
-  const commentsKey = getExplorerTableCommentsQueryKey(connectionId, catalog, schema);
-  const cached = queryClient.getQueryData<ExplorerTableComments>(commentsKey);
-  if (!cached) return;
-
-  if (comment.trim() === '') {
-    const nextComments = { ...cached };
-    delete nextComments[tableName];
-    queryClient.setQueryData<ExplorerTableComments>(commentsKey, nextComments);
-    return;
-  }
-  queryClient.setQueryData<ExplorerTableComments>(commentsKey, { ...cached, [tableName]: comment });
-}
-
 export function removeCachedExplorerView(
   queryClient: QueryClient,
   connectionId: string,

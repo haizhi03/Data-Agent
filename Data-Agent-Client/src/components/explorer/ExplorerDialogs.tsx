@@ -7,7 +7,6 @@ import { DdlViewerDialog } from './DdlViewerDialog';
 import { TableDataDialog } from './TableDataDialog';
 import { CreateTableDialog } from './CreateTableDialog';
 import { RenameTableDialog } from './RenameTableDialog';
-import { TableCommentDialog } from './TableCommentDialog';
 import { ExplorerNodeType } from '../../constants/explorer';
 import { I18N_KEYS } from '../../constants/i18nKeys';
 import { collectDeletableChildren } from '../../utils/treeOperations';
@@ -55,11 +54,6 @@ interface ExplorerDialogsProps {
   onRenameStateChange: (state: NodeDialogState) => void;
   onConfirmRename: (newName: string) => void;
 
-  // Table comment dialog
-  commentState: NodeDialogState;
-  onCommentStateChange: (state: NodeDialogState) => void;
-  onConfirmTableComment: (comment: string) => void;
-
   // Create table dialog
   createTableDialogOpen: boolean;
   onCreateTableDialogOpenChange: (open: boolean) => void;
@@ -104,10 +98,6 @@ export function ExplorerDialogs({
   renameState,
   onRenameStateChange,
   onConfirmRename,
-
-  commentState,
-  onCommentStateChange,
-  onConfirmTableComment,
 
   createTableDialogOpen,
   onCreateTableDialogOpenChange,
@@ -211,22 +201,8 @@ export function ExplorerDialogs({
         />
       )}
 
-      {commentState.node && (
-        <TableCommentDialog
-          open={commentState.isOpen}
-          onOpenChange={(open) => {
-            if (!open) {
-              onCommentStateChange({ node: null, isOpen: false, isPending: false });
-            }
-          }}
-          tableName={commentState.node.name}
-          initialComment={commentState.node.comment ?? ''}
-          onConfirm={onConfirmTableComment}
-          isPending={commentState.isPending}
-        />
-      )}
-
-      {deleteState.type && deleteState.node && (        <DeleteEntityDialog
+      {deleteState.type && deleteState.node && (
+        <DeleteEntityDialog
           open={deleteState.isOpen}
           onOpenChange={(open) => {
             onDeleteStateChange({ ...deleteState, isOpen: open });
