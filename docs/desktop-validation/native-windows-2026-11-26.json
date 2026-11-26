@@ -1,0 +1,166 @@
+{
+  "verifiedAt": "2026-11-26T16:02:11.935977+00:00",
+  "implementationCommit": "8c1c7769af94d481ef39d897daaf72a1d48efe8a",
+  "releaseStatus": "DEVELOPMENT_PREVIEW_CROSS_BUILT_WINDOWS_RUNTIME_PENDING",
+  "buildHost": "macOS arm64",
+  "target": "Windows x64",
+  "firstAcceptanceTarget": "Windows 11 x64",
+  "runtimeLock": {
+    "platform": "Windows x64",
+    "javaMajor": 21,
+    "piVersion": "1.5.0",
+    "nodeVersion": "22.23.2",
+    "nodeArchive": "node-v22.23.2-win-x64.zip",
+    "nodeURL": "https://nodejs.org/dist/v22.23.2/node-v22.23.2-win-x64.zip",
+    "nodeSha256": "1177b4137ba5adaa56354ae40f1080c7450e8ae09cecb47da459d1c52ac99f97",
+    "javaVersion": "21.0.13+100000002.0.LTS",
+    "javaArchive": "OpenJDK21U-jre_x64_windows_hotspot_21.0.13.1_2.zip",
+    "javaURL": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.13.1%2B2/OpenJDK21U-jre_x64_windows_hotspot_21.0.13.1_2.zip",
+    "javaSha256": "e15ee1e54a5a3b38027a09cedfa87bc3348d7dd3ce50866dd3d9671d7fffc6c1"
+  },
+  "dotnetSdk": "10.0.404",
+  "dotnetRuntime": [
+    {
+      "name": "Microsoft.NETCore.App",
+      "version": "10.0.15"
+    },
+    {
+      "name": "Microsoft.WindowsDesktop.App",
+      "version": "10.0.15"
+    }
+  ],
+  "webView2Sdk": "1.0.4370.26",
+  "webView2Runtime": "Shared Evergreen; not included in ZIP",
+  "windowsCrossCompile": {
+    "status": "PASS",
+    "warnings": 0,
+    "errors": 0
+  },
+  "artifacts": {
+    "zip": "target/windows-x64-release/DataAgent-windows-x64.zip",
+    "zipSha256": "565c09818ed1eb3c5c05987be5face56e2e122d4beae5a3ab6e696d43db8278e",
+    "zipBytes": 240592248,
+    "fileCount": 12875,
+    "nativeExecutableSha256": "ebec999a26d879a4fcfefc43111ee371ca20a25507b1abc5e04eb2522eb2fa60",
+    "runtimeBundleManifestSha256": "e3e12ccdd3fb2ebb22b06c2d0f16f5f683efd79c60fbcdb2e0c50eccefb601d9",
+    "nativePackageReceiptSha256": "891cbff191b3ad37120776271c6a3c9cf8612c56853f1c528bb937e3f848f24d",
+    "signing": "unsigned development preview",
+    "userConfigurationIncluded": false,
+    "bundledDriverSha256": {
+      "mysql-connector-j-8.3.0.jar": "94e7fa815370cdcefed915db7f53f88445fac110f8c3818392b992ec9ee6d295"
+    }
+  },
+  "staticPayloadValidation": {
+    "verifiedAt": "2026-11-26T16:01:06.005554+00:00",
+    "status": "PASS",
+    "scope": "Static package integrity and x64 PE checks; no Windows process executed",
+    "fileCount": 12875,
+    "nativeFiles": {
+      "DataAgent.exe": {
+        "machine": "AMD64",
+        "subsystem": 2
+      },
+      "bundle/runtime/node/bin/node.exe": {
+        "machine": "AMD64",
+        "subsystem": 3
+      },
+      "bundle/runtime/java/bin/java.exe": {
+        "machine": "AMD64",
+        "subsystem": 3
+      },
+      "runtimes/win-x64/native/WebView2Loader.dll": {
+        "machine": "AMD64",
+        "subsystem": 3
+      }
+    },
+    "zipSha256": "565c09818ed1eb3c5c05987be5face56e2e122d4beae5a3ab6e696d43db8278e",
+    "zipBytes": 240592248,
+    "receiptSha256": "891cbff191b3ad37120776271c6a3c9cf8612c56853f1c528bb937e3f848f24d",
+    "windowsRuntimeVerified": false
+  },
+  "sharedHostMacOSRegression": {
+    "verifiedAt": "2026-11-26T15:54:41.306928+00:00",
+    "platform": "macOS arm64",
+    "bundleManifestSha256": "c8a2d9481e5fe460baf484a2490f337f57b09a0db4d532e7cf9317f0ff1b4293",
+    "checks": [
+      {
+        "case": "packaged-ui-java-worker-start-without-path",
+        "status": "PASS"
+      },
+      {
+        "case": "origin-host-and-static-path-isolation",
+        "status": "PASS"
+      },
+      {
+        "case": "private-bootstrap-and-authenticated-backend",
+        "status": "PASS"
+      },
+      {
+        "case": "packaged-jre-mysql-driver-read-only-query",
+        "status": "PASS"
+      },
+      {
+        "case": "two-instances-use-independent-ports-and-data",
+        "status": "PASS"
+      },
+      {
+        "case": "graceful-exit-cleans-backend-without-affecting-other-instance",
+        "status": "PASS"
+      },
+      {
+        "case": "killed-host-eof-cleans-backend",
+        "status": "PASS"
+      },
+      {
+        "case": "parent-eof-before-job-release-spawns-no-backend",
+        "status": "PASS"
+      },
+      {
+        "case": "missing-jar-fails-without-false-ready",
+        "status": "PASS"
+      }
+    ],
+    "modelCalls": 0,
+    "status": "PASS",
+    "bundleUnchanged": true,
+    "originalConfigurationUnchanged": true
+  },
+  "windowsExecution": {
+    "status": "NOT_RUN",
+    "reason": "No Windows machine, VM or Windows runner was executed in this session",
+    "nativeSmokeImplementedCases": 6,
+    "optionalJdbcCase": true,
+    "realModelCalls": 0,
+    "installerSource": "scripts/desktop/windows/installer.iss",
+    "installerBuilt": false,
+    "installerExecuted": false,
+    "workflow": ".github/workflows/desktop-windows.yml",
+    "workflowYamlParsed": true,
+    "workflowTriggered": false,
+    "platformGuard": "Native Windows smoke rejected execution on macOS as expected"
+  },
+  "sourceSha256": {
+    ".github/workflows/desktop-windows.yml": "b040d6473843efd5216777d2d887b36e938ea5a474276e57bdd5727bf6ca7d9b",
+    "scripts/desktop/build.py": "c132046775a0182b29791773a52d3f14d87f84d1286159c4d60dd3ab8e9f2540",
+    "scripts/desktop/host.mjs": "674faa12bd67fa1dea500384c8b60cab717a7e72b9d3d9a59dcbbb58b66c4062",
+    "scripts/desktop/package_windows.py": "5999b26e1790f8cbd5842913e8ab17e9b8295a743748846fdf86aef05470e540",
+    "scripts/desktop/runtime-lock.windows-x64.json": "ae4c34e7c2e8426dbcb5b57053099e1e5dfe4a59643e00b76817c8ab771b7f1b",
+    "scripts/desktop/windows/.gitignore": "6c5082c7e6de3e350189c67a1aacf757485ecc26e0a3cf96683528565f3e5f12",
+    "scripts/desktop/windows/DataAgent.Windows.csproj": "63db78feb3e720e37a177f6e6595a2b171bb5561c817a684bc1750460c893bd9",
+    "scripts/desktop/windows/Program.cs": "ca6853d312f16733cba2ce28746828f88f70a3c067895daddfd10a4937c041da",
+    "scripts/desktop/windows/global.json": "3d8b00074b0d3c97f6dd0862c3426d5e83ca6a796100cde5ddb097d75a8462d6",
+    "scripts/desktop/windows/installer.iss": "48bc548be1214b4268ea1b7f5c8ab1cf554a70ada0d9b65b7994db531365164b",
+    "scripts/desktop/windows/packages.lock.json": "24308feb77e499f29dcf693bafefbedc8bbfcd3b44fff3d97f747442423580e7",
+    "scripts/validation/desktop_smoke.py": "4981f7cb6569be3ae558a15fafd855a84ae58a1a8a7f43b4aacd67e58b924ac1",
+    "scripts/validation/native_windows_smoke.py": "ce023f1fc59972158704905bc032fe23f0d85704524390e640ca6ff80d3352dc",
+    "scripts/validation/windows_bundle_check.py": "3d6bcfe91a370fd94e0849d4c9d8a74504e4c1b68ada3a5814c37fb24bbb4a9b"
+  },
+  "remaining": [
+    "Windows 11 x64 clean-machine installation and visible workbench/SQL shortcut/model acceptance",
+    "Native empty-PATH, Unicode path, parallel-instance, restart and Job Object lifecycle checks on Windows",
+    "Read-only installed payload, WebView2 missing-runtime UX, export/file selection on Windows",
+    "Active JDBC query and Pi model stream cancellation on normal and abrupt Windows exit",
+    "Inno installer execution, upgrade/uninstall preserving real user configuration",
+    "Windows Authenticode signing, cross-version data migration, DM8 driver/database acceptance"
+  ]
+}

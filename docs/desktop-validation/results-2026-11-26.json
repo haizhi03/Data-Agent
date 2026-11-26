@@ -355,5 +355,14 @@
     "automatedChecksPassed": 19,
     "visibleNativeUI": "PASS",
     "releaseStatus": "DEVELOPMENT_PREVIEW_PENDING_SIGNING_NOTARIZATION_AND_PLATFORM_ACCEPTANCE"
+  },
+  "nativeWindowsValidation": {
+    "report": "native-windows-2026-11-26.json",
+    "crossCompile": "PASS",
+    "staticPayload": "PASS",
+    "sharedHostMacOSChecksPassed": 9,
+    "windowsRuntime": "NOT_RUN",
+    "installerBuilt": false,
+    "releaseStatus": "DEVELOPMENT_PREVIEW_CROSS_BUILT_WINDOWS_RUNTIME_PENDING"
   }
 }

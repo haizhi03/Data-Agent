@@ -1,6 +1,6 @@
 # macOS 原生窗口与 DMG 开发包
 
-2026-11-26，`feature/desktop-pi`。本机 macOS 26.5 / arm64 验证；当前为本地开发包。
+2026-11-26，`feature/desktop-pi`。本机 macOS 26.5 / arm64 验证；当前为本地开发包。后续补充的 Windows x64 开发包及其验收边界见 [Windows 记录](WINDOWS-NATIVE-PACKAGE-2026-11-26.md)。
 
 ## 当前产物与构建
 
