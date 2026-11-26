@@ -272,6 +272,42 @@ class DmTableStructureDialectTest {
     }
 
     @Test
+    void quotesNumericLookingStringDefaultWhenLengthChanges() {
+        Column before = valued("DIGIT_TXT", "VARCHAR", "VARCHAR(10)", "0001");
+        Column after = valued("DIGIT_TXT", "VARCHAR", "VARCHAR(11)", "0001");
+        TableStructure baseline = copy(sample(), List.of(column("ID"), column("NAME"), before));
+        TableStructure draft = copy(baseline, List.of(column("ID"), column("NAME"), after));
+
+        String sql = DmTableStructureDialect.preview(null, "HR", baseline, draft).statements().get(0);
+
+        assertEquals("ALTER TABLE \"HR\".\"DEMO\" MODIFY \"DIGIT_TXT\" VARCHAR(11) DEFAULT '0001' NULL", sql);
+    }
+
+    @Test
+    void quotesExpressionLookingStringDefaultWhenLengthChanges() {
+        Column before = valued("LABEL_TXT", "VARCHAR", "VARCHAR(20)", "(1+1)");
+        Column after = valued("LABEL_TXT", "VARCHAR", "VARCHAR(22)", "(1+1)");
+        TableStructure baseline = copy(sample(), List.of(column("ID"), column("NAME"), before));
+        TableStructure draft = copy(baseline, List.of(column("ID"), column("NAME"), after));
+
+        String sql = DmTableStructureDialect.preview(null, "HR", baseline, draft).statements().get(0);
+
+        assertEquals("ALTER TABLE \"HR\".\"DEMO\" MODIFY \"LABEL_TXT\" VARCHAR(22) DEFAULT '(1+1)' NULL", sql);
+    }
+
+    @Test
+    void keepsNumericColumnDefaultUnquoted() {
+        Column before = valued("QTY", "INT", "INT", "0001");
+        Column after = valued("QTY", "BIGINT", "BIGINT", "0001");
+        TableStructure baseline = copy(sample(), List.of(column("ID"), column("NAME"), before));
+        TableStructure draft = copy(baseline, List.of(column("ID"), column("NAME"), after));
+
+        String sql = DmTableStructureDialect.preview(null, "HR", baseline, draft).statements().get(0);
+
+        assertEquals("ALTER TABLE \"HR\".\"DEMO\" MODIFY \"QTY\" BIGINT DEFAULT 0001 NULL", sql);
+    }
+
+    @Test
     void primaryKeyOnNewColumnComesAfterAdd() {
         Column code = column("CODE", null, "VARCHAR(100)", true, "");
         TableStructure baseline = sample();
@@ -330,6 +366,28 @@ class DmTableStructureDialectTest {
 
     private static Column added(String name) {
         return column(name, null, "VARCHAR(255)", true, "");
+    }
+
+    private static Column valued(String name, String typeName, String columnType, String defaultValue) {
+        return new Column(
+                name,
+                name,
+                typeName,
+                columnType,
+                null,
+                null,
+                true,
+                false,
+                false,
+                StructureDefaultKind.VALUE,
+                defaultValue,
+                null,
+                "",
+                null,
+                null,
+                null,
+                false
+        );
     }
 
     private static Column column(String name, String originalName, String columnType, boolean nullable, String comment) {

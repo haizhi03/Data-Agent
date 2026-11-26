@@ -1,6 +1,7 @@
 package edu.zsc.ai.plugin.dm.structure;
 
 import edu.zsc.ai.plugin.dm.util.DmIdentifierEscaper;
+import edu.zsc.ai.plugin.dm.value.DmDataTypeEnum;
 import edu.zsc.ai.plugin.model.structure.StructureDefaultKind;
 import edu.zsc.ai.plugin.model.structure.StructurePreview;
 import edu.zsc.ai.plugin.model.structure.StructurePreview.Change;
@@ -361,10 +362,26 @@ public final class DmTableStructureDialect {
         if (value == null) {
             return "";
         }
-        if (NUMERIC_LITERAL.matcher(value).matches()) {
+        if (unquotedNumericDefault(column, value)) {
             return " DEFAULT " + value;
         }
         return " DEFAULT '" + ESCAPER.escapeStringLiteral(value) + "'";
+    }
+
+    private static boolean unquotedNumericDefault(Column column, String value) {
+        if (!NUMERIC_LITERAL.matcher(value).matches()) {
+            return false;
+        }
+        String type = StringUtils.defaultIfBlank(column.typeName(), column.columnType());
+        DmDataTypeEnum parsed = DmDataTypeEnum.fromTypeName(type);
+        if (parsed == null) {
+            return false;
+        }
+        return switch (parsed) {
+            case NUMBER, NUMERIC, DECIMAL, DEC, INTEGER, INT, BIGINT, TINYINT, SMALLINT,
+                    FLOAT, DOUBLE, DOUBLE_PRECISION, REAL -> true;
+            default -> false;
+        };
     }
 
     private static String expressionDefault(String expression, List<String> warnings) {
