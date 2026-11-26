@@ -342,6 +342,8 @@ export const I18N_KEYS = {
     STRUCTURE_CHECKS: 'explorer.structure_checks',
     STRUCTURE_DIFF: 'explorer.structure_diff',
     STRUCTURE_SQL_PREVIEW: 'explorer.structure_sql_preview',
+    STRUCTURE_RESIZE_PREVIEW: 'explorer.structure_resize_preview',
+    STRUCTURE_RESIZE_COLUMN: 'explorer.structure_resize_column',
     STRUCTURE_EXECUTE: 'explorer.structure_execute',
     STRUCTURE_EXECUTING: 'explorer.structure_executing',
     STRUCTURE_REFRESH: 'explorer.structure_refresh',

@@ -215,7 +215,7 @@ export default function Home() {
                     return (
                         <div
                             key={tab.id}
-                            className={`absolute inset-0 isolate overflow-hidden bg-background ${retained ? 'z-0 opacity-0 pointer-events-none' : 'z-10'}`}
+                            className={`absolute inset-0 isolate overflow-hidden theme-bg-panel ${retained ? 'z-0 opacity-0 pointer-events-none' : 'z-10'}`}
                             ref={(node) => {
                                 if (node) node.inert = retained;
                             }}

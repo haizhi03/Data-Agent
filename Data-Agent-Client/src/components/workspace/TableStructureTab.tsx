@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { Group, Panel, Separator, useDefaultLayout } from 'react-resizable-panels';
 import { useTranslation } from 'react-i18next';
 import { ChevronDown, ChevronUp, Copy, Database, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { DatabaseTypeIcon } from '../common/DatabaseTypeIcon';
@@ -44,7 +45,8 @@ interface TableStructureTabProps {
 
 type SectionId = 'ddl' | 'columns' | 'indexes' | 'foreignKeys' | 'triggers' | 'checks' | 'diff';
 
-const FIELD = 'h-8 w-full min-w-0 rounded border border-border bg-transparent px-2 text-sm font-semibold outline-none focus:border-primary';
+const CONTROL = 'h-8 rounded border border-border bg-transparent px-2 text-sm font-semibold outline-none focus:border-primary';
+const FIELD = `${CONTROL} w-full min-w-0`;
 const DEFAULT_KINDS: StructureDefaultKind[] = ['NONE', 'NULL', 'VALUE', 'EXPRESSION'];
 const RULES = ['RESTRICT', 'CASCADE', 'SET NULL', 'NO ACTION', 'SET DEFAULT'];
 
@@ -67,6 +69,10 @@ export function TableStructureTab({ tabId, metadata }: TableStructureTabProps) {
   const [triggers, setTriggers] = useState<TriggerMetadata[]>([]);
   const [selectedTrigger, setSelectedTrigger] = useState<string | null>(null);
   const [triggerDdl, setTriggerDdl] = useState('');
+  const { defaultLayout: previewLayout, onLayoutChanged: onPreviewLayoutChanged } = useDefaultLayout({
+    id: 'table-structure-sql-preview',
+    storage: localStorage,
+  });
 
   const scope = {
     connectionId: metadata.connectionId,
@@ -240,7 +246,7 @@ export function TableStructureTab({ tabId, metadata }: TableStructureTabProps) {
   const dm = isDmDbType(metadata.dbType);
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-background">
+    <div className="flex h-full min-h-0 flex-col theme-bg-panel">
       <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-3 py-2.5">
         <div className="flex min-w-0 items-center gap-2 text-sm font-medium theme-text-secondary">
           <Database className="h-4 w-4 shrink-0 text-teal-500" />
@@ -300,7 +306,14 @@ export function TableStructureTab({ tabId, metadata }: TableStructureTabProps) {
         ))}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto px-3 py-2">
+      <Group
+        orientation="vertical"
+        className="min-h-0 flex-1"
+        defaultLayout={previewLayout}
+        onLayoutChanged={onPreviewLayoutChanged}
+      >
+      <Panel id="structure-editor" className="min-h-0">
+      <div className="h-full overflow-auto px-3 py-2">
         {error ? <div className="mb-2 rounded border border-destructive/40 px-2 py-1 text-xs text-destructive">{error}</div> : null}
         {section === 'ddl' ? (
           <div className="flex h-full min-h-[160px] flex-col gap-2">
@@ -339,13 +352,19 @@ export function TableStructureTab({ tabId, metadata }: TableStructureTabProps) {
           <DiffSection preview={currentPreview} previewing={previewPending} />
         ) : null}
       </div>
-
-      <div className="flex h-40 shrink-0 flex-col border-t border-border">
-        <div className="flex items-center justify-between px-3 py-1.5">
-          <span className="text-xs theme-text-secondary">
+      </Panel>
+      <Separator
+        className="workbench-horizontal-resize-handle"
+        title={t(I18N_KEYS.EXPLORER.STRUCTURE_RESIZE_PREVIEW)}
+        aria-label={t(I18N_KEYS.EXPLORER.STRUCTURE_RESIZE_PREVIEW)}
+      />
+      <Panel id="structure-sql-preview" defaultSize="30%" minSize="15%" className="workbench-results-panel relative flex min-h-0 flex-col border-t theme-border">
+        <div className="workbench-header flex h-11 shrink-0 items-center px-3">
+          <span className="workbench-chip workbench-chip--active flex h-7 items-center rounded-lg px-3 text-[11px] font-medium theme-text-primary">
             {t(I18N_KEYS.EXPLORER.STRUCTURE_SQL_PREVIEW)}
             {previewPending ? ` · ${t(I18N_KEYS.EXPLORER.STRUCTURE_PREVIEWING)}` : ''}
           </span>
+          <div className="flex-1" />
           <div className="flex gap-2">
             <Button size="sm" variant="outline" onClick={() => void copySql()} disabled={!currentPreview?.statements.length}>
               <Copy className="mr-1 h-3.5 w-3.5" />
@@ -357,24 +376,174 @@ export function TableStructureTab({ tabId, metadata }: TableStructureTabProps) {
           </div>
         </div>
         {currentPreview?.warnings.length ? (
-          <div className="mx-3 mb-1 rounded border border-amber-500/40 px-2 py-1 text-[11px] text-amber-600">
+          <div className="mx-3 mb-1 rounded border border-amber-500/40 px-2 py-1 text-[13px] leading-5 text-amber-600">
             {currentPreview.warnings.join(' · ')}
           </div>
         ) : null}
-        <pre className="min-h-0 flex-1 overflow-auto px-3 pb-2 font-mono text-[11px] leading-5 theme-text-secondary">
+        <pre className="min-h-0 flex-1 overflow-auto px-3 pb-2 font-mono text-[13px] leading-5 theme-text-primary">
           {previewPending
             ? t(I18N_KEYS.EXPLORER.STRUCTURE_PREVIEWING)
             : currentPreview?.statements.length
               ? `${currentPreview.statements.join(';\n\n')};`
               : t(I18N_KEYS.EXPLORER.STRUCTURE_NO_CHANGES)}
         </pre>
-      </div>
+      </Panel>
+      </Group>
     </div>
   );
 }
 
+const COLUMN_WIDTH_KEY = 'table-structure-column-widths';
+
+const DEFAULT_COLUMN_WIDTHS = {
+  index: 40,
+  name: 180,
+  type: 200,
+  length: 88,
+  nullable: 64,
+  primaryKey: 64,
+  autoIncrement: 64,
+  defaultValue: 240,
+  comment: 240,
+  actions: 112,
+} as const;
+
+type ColumnWidthKey = keyof typeof DEFAULT_COLUMN_WIDTHS;
+
+const MIN_COLUMN_WIDTH: Record<ColumnWidthKey, number> = {
+  index: 32,
+  name: 72,
+  type: 88,
+  length: 56,
+  nullable: 48,
+  primaryKey: 48,
+  autoIncrement: 48,
+  defaultValue: 200,
+  comment: 80,
+  actions: 96,
+};
+
+const textMeasure = document.createElement('canvas');
+
+function textWidth(text: string, font: string): number {
+  const context = textMeasure.getContext('2d');
+  if (!context) return 0;
+  context.font = font;
+  return context.measureText(text).width;
+}
+
+function readColumnWidths(): Record<ColumnWidthKey, number> {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(COLUMN_WIDTH_KEY) ?? '') as Partial<Record<ColumnWidthKey, number>>;
+    const next = { ...DEFAULT_COLUMN_WIDTHS };
+    (Object.keys(DEFAULT_COLUMN_WIDTHS) as ColumnWidthKey[]).forEach((key) => {
+      const value = parsed[key];
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        next[key] = Math.max(MIN_COLUMN_WIDTH[key], value);
+      }
+    });
+    return next;
+  } catch {
+    return { ...DEFAULT_COLUMN_WIDTHS };
+  }
+}
+
 function ColumnSection({ draft, updateDraft }: { draft: TableDraft; updateDraft: (recipe: (current: TableDraft) => TableDraft) => void }) {
   const { t } = useTranslation();
+  const [widths, setWidths] = useState(readColumnWidths);
+  const widthsRef = useRef(widths);
+  const tableRef = useRef<HTMLTableElement>(null);
+  const dragRef = useRef<{ key: ColumnWidthKey; startX: number; startWidth: number } | null>(null);
+
+  useEffect(() => {
+    const move = (event: PointerEvent) => {
+      const drag = dragRef.current;
+      if (!drag) return;
+      const next = Math.max(MIN_COLUMN_WIDTH[drag.key], Math.round(drag.startWidth + event.clientX - drag.startX));
+      setWidths((current) => {
+        if (current[drag.key] === next) return current;
+        const updated = { ...current, [drag.key]: next };
+        widthsRef.current = updated;
+        return updated;
+      });
+    };
+    const stop = () => {
+      if (!dragRef.current) return;
+      dragRef.current = null;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      localStorage.setItem(COLUMN_WIDTH_KEY, JSON.stringify(widthsRef.current));
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', stop);
+    window.addEventListener('pointercancel', stop);
+    return () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', stop);
+      window.removeEventListener('pointercancel', stop);
+    };
+  }, []);
+
+  const startResize = (key: ColumnWidthKey, event: ReactPointerEvent<HTMLSpanElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    dragRef.current = { key, startX: event.clientX, startWidth: widthsRef.current[key] };
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  };
+
+  const headers: Array<{ key: ColumnWidthKey; label: string; align?: 'center' }> = [
+    { key: 'index', label: '#' },
+    { key: 'name', label: t(I18N_KEYS.EXPLORER.STRUCTURE_NAME) },
+    { key: 'type', label: t(I18N_KEYS.EXPLORER.STRUCTURE_TYPE) },
+    { key: 'length', label: t(I18N_KEYS.EXPLORER.STRUCTURE_LENGTH) },
+    { key: 'nullable', label: t(I18N_KEYS.EXPLORER.STRUCTURE_NULLABLE), align: 'center' },
+    { key: 'primaryKey', label: t(I18N_KEYS.EXPLORER.STRUCTURE_PRIMARY_KEY), align: 'center' },
+    { key: 'autoIncrement', label: t(I18N_KEYS.EXPLORER.STRUCTURE_AUTO_INCREMENT), align: 'center' },
+    { key: 'defaultValue', label: t(I18N_KEYS.EXPLORER.STRUCTURE_DEFAULT) },
+    { key: 'comment', label: t(I18N_KEYS.EXPLORER.STRUCTURE_COLUMN_COMMENT) },
+    { key: 'actions', label: '' },
+  ];
+  const tableWidth = headers.reduce((sum, header) => sum + widths[header.key], 0);
+
+  const commitWidth = (key: ColumnWidthKey, width: number) => {
+    const next = Math.max(MIN_COLUMN_WIDTH[key], Math.min(640, Math.round(width)));
+    setWidths((current) => {
+      const updated = { ...current, [key]: next };
+      widthsRef.current = updated;
+      localStorage.setItem(COLUMN_WIDTH_KEY, JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const fitColumn = (key: ColumnWidthKey) => {
+    const font = tableRef.current ? getComputedStyle(tableRef.current).font : '600 14px sans-serif';
+    const header = headers.find((item) => item.key === key)?.label ?? '';
+    const inputPad = 38;
+    let width = textWidth(header, font) + 24;
+    if (key === 'index') {
+      width = Math.max(width, textWidth(String(draft.columns.length), font) + 16);
+    } else if (key === 'name') {
+      draft.columns.forEach((column) => { width = Math.max(width, textWidth(column.name, font) + inputPad); });
+    } else if (key === 'type') {
+      draft.columns.forEach((column) => { width = Math.max(width, textWidth(column.columnType, font) + inputPad); });
+    } else if (key === 'length') {
+      draft.columns.forEach((column) => { width = Math.max(width, textWidth(column.length == null ? '' : String(column.length), font) + inputPad); });
+    } else if (key === 'nullable' || key === 'primaryKey' || key === 'autoIncrement') {
+      width = Math.max(width, 36);
+    } else if (key === 'defaultValue') {
+      draft.columns.forEach((column) => {
+        const hasValue = column.defaultKind === 'VALUE' || column.defaultKind === 'EXPRESSION';
+        const valueWidth = hasValue ? textWidth(column.defaultValue ?? '', font) + 26 : 0;
+        width = Math.max(width, 128 + valueWidth);
+      });
+    } else if (key === 'comment') {
+      draft.columns.forEach((column) => { width = Math.max(width, textWidth(column.comment, font) + inputPad); });
+    } else {
+      width = Math.max(width, 108);
+    }
+    commitWidth(key, width);
+  };
   const patch = (clientId: string, recipe: (column: TableDraft['columns'][number]) => TableDraft['columns'][number]) => {
     updateDraft((current) => ({
       ...current,
@@ -394,19 +563,33 @@ function ColumnSection({ draft, updateDraft }: { draft: TableDraft; updateDraft:
   return (
     <div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[920px] border-collapse text-sm font-semibold">
+        <table ref={tableRef} className="border-collapse text-sm font-semibold" style={{ width: tableWidth, tableLayout: 'fixed' }}>
+          <colgroup>
+            {headers.map((header) => <col key={header.key} style={{ width: widths[header.key] }} />)}
+          </colgroup>
           <thead className="theme-text-secondary">
             <tr className="border-b border-border text-left">
-              <th className="w-8 py-1">#</th>
-              <th className="py-1 pr-2">{t(I18N_KEYS.EXPLORER.STRUCTURE_NAME)}</th>
-              <th className="py-1 pr-2">{t(I18N_KEYS.EXPLORER.STRUCTURE_TYPE)}</th>
-              <th className="w-16 py-1 pr-2">{t(I18N_KEYS.EXPLORER.STRUCTURE_LENGTH)}</th>
-              <th className="w-12 py-1">{t(I18N_KEYS.EXPLORER.STRUCTURE_NULLABLE)}</th>
-              <th className="w-12 py-1">{t(I18N_KEYS.EXPLORER.STRUCTURE_PRIMARY_KEY)}</th>
-              <th className="w-12 py-1">{t(I18N_KEYS.EXPLORER.STRUCTURE_AUTO_INCREMENT)}</th>
-              <th className="py-1 pr-2">{t(I18N_KEYS.EXPLORER.STRUCTURE_DEFAULT)}</th>
-              <th className="py-1 pr-2">{t(I18N_KEYS.EXPLORER.STRUCTURE_COLUMN_COMMENT)}</th>
-              <th className="w-16 py-1" />
+              {headers.map((header) => (
+                <th key={header.key} className={`relative py-1 ${header.align === 'center' ? 'text-center' : 'pr-2 text-left'}`}>
+                  <span className="block truncate">{header.label}</span>
+                  <span
+                    role="separator"
+                    aria-orientation="vertical"
+                    aria-label={t(I18N_KEYS.EXPLORER.STRUCTURE_RESIZE_COLUMN)}
+                    title={t(I18N_KEYS.EXPLORER.STRUCTURE_RESIZE_COLUMN)}
+                    className="absolute inset-y-0 -right-1 z-10 w-2 cursor-col-resize touch-none hover:bg-primary/30"
+                    onPointerDown={(event) => startResize(header.key, event)}
+                    onDoubleClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      dragRef.current = null;
+                      document.body.style.cursor = '';
+                      document.body.style.userSelect = '';
+                      fitColumn(header.key);
+                    }}
+                  />
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
@@ -416,8 +599,8 @@ function ColumnSection({ draft, updateDraft }: { draft: TableDraft; updateDraft:
               const commentLocked = generated && column.generationExpression?.trim() === '';
               return (
                 <tr key={column.clientId} className="border-b border-border/60">
-                  <td className="py-1 theme-text-secondary">{index + 1}</td>
-                  <td className="py-1 pr-2">
+                  <td className="overflow-hidden py-1 theme-text-secondary">{index + 1}</td>
+                  <td className="overflow-hidden py-1 pr-2">
                     <input
                       className={FIELD}
                       value={column.name}
@@ -431,8 +614,8 @@ function ColumnSection({ draft, updateDraft }: { draft: TableDraft; updateDraft:
                       }}
                     />
                   </td>
-                  <td className="py-1 pr-2"><input className={FIELD} value={column.columnType} disabled={generated} onChange={(event) => patch(column.clientId, (item) => applyColumnType(item, event.target.value))} /></td>
-                  <td className="py-1 pr-2">
+                  <td className="overflow-hidden py-1 pr-2"><input className={FIELD} value={column.columnType} disabled={generated} onChange={(event) => patch(column.clientId, (item) => applyColumnType(item, event.target.value))} /></td>
+                  <td className="overflow-hidden py-1 pr-2">
                     <input
                       className={FIELD}
                       type="number"
@@ -454,10 +637,10 @@ function ColumnSection({ draft, updateDraft }: { draft: TableDraft; updateDraft:
                     />
                   </td>
                   <td className="py-1 text-center"><input type="checkbox" checked={column.autoIncrement} disabled={generated} onChange={(event) => patch(column.clientId, (item) => ({ ...item, autoIncrement: event.target.checked }))} /></td>
-                  <td className="py-1 pr-2">
-                    <div className="flex gap-1">
+                  <td className="overflow-hidden py-1 pr-2">
+                    <div className="flex min-w-0 gap-1">
                       <select
-                        className={`${FIELD} w-24`}
+                        className={`${CONTROL} w-24 shrink-0`}
                         value={column.defaultKind}
                         disabled={generated}
                         onChange={(event) => patch(column.clientId, (item) => ({ ...item, defaultKind: event.target.value as StructureDefaultKind }))}
@@ -465,12 +648,12 @@ function ColumnSection({ draft, updateDraft }: { draft: TableDraft; updateDraft:
                         {DEFAULT_KINDS.map((kind) => <option key={kind} value={kind}>{t(defaultKindKey(kind))}</option>)}
                       </select>
                       {column.defaultKind === 'VALUE' || column.defaultKind === 'EXPRESSION' ? (
-                        <input className={FIELD} value={column.defaultValue ?? ''} disabled={generated} onChange={(event) => patch(column.clientId, (item) => ({ ...item, defaultValue: event.target.value }))} />
+                        <input className={`${CONTROL} min-w-[4.5rem] flex-1`} value={column.defaultValue ?? ''} disabled={generated} onChange={(event) => patch(column.clientId, (item) => ({ ...item, defaultValue: event.target.value }))} />
                       ) : null}
                     </div>
                   </td>
-                  <td className="py-1 pr-2"><input className={FIELD} value={column.comment} disabled={commentLocked} onChange={(event) => patch(column.clientId, (item) => ({ ...item, comment: event.target.value }))} /></td>
-                  <td className="py-1">
+                  <td className="overflow-hidden py-1 pr-2"><input className={FIELD} value={column.comment} disabled={commentLocked} onChange={(event) => patch(column.clientId, (item) => ({ ...item, comment: event.target.value }))} /></td>
+                  <td className="overflow-hidden py-1">
                     <div className="flex">
                       <IconButton label={t(I18N_KEYS.EXPLORER.STRUCTURE_MOVE_UP)} disabled={generated} onClick={() => move(index, -1)}><ChevronUp className="h-3.5 w-3.5" /></IconButton>
                       <IconButton label={t(I18N_KEYS.EXPLORER.STRUCTURE_MOVE_DOWN)} disabled={generated} onClick={() => move(index, 1)}><ChevronDown className="h-3.5 w-3.5" /></IconButton>

@@ -578,6 +578,8 @@
     "structure_checks": "检查",
     "structure_diff": "差异",
     "structure_sql_preview": "SQL 预览",
+    "structure_resize_preview": "拖动调整 SQL 预览高度",
+    "structure_resize_column": "拖动调整列宽，双击按内容适配",
     "structure_execute": "执行",
     "structure_executing": "执行中...",
     "structure_refresh": "刷新结构",

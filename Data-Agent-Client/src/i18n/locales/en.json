@@ -578,6 +578,8 @@
     "structure_checks": "Checks",
     "structure_diff": "Diff",
     "structure_sql_preview": "SQL preview",
+    "structure_resize_preview": "Drag to resize the SQL preview",
+    "structure_resize_column": "Drag to resize the column, double-click to fit content",
     "structure_execute": "Execute",
     "structure_executing": "Executing...",
     "structure_refresh": "Reload",
