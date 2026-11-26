@@ -40,6 +40,7 @@ interface SqlCompletionContext {
 interface MonacoEditorProps {
   value: string;
   onChange?: (value: string | undefined) => void;
+  onExecute?: () => void;
   onSelectionChange?: (content: string, start: number, end: number) => void;
   language?: string;
   readOnly?: boolean;
@@ -92,6 +93,7 @@ export const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(
   ({
     value,
     onChange,
+    onExecute,
     onSelectionChange,
     language = 'sql',
     readOnly = false,
@@ -105,6 +107,8 @@ export const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(
     const translateRef = useRef(t);
     translateRef.current = t;
     const editorRef = useRef<any>(null);
+    const executeCallback = useRef(onExecute);
+    executeCallback.current = onExecute;
     const selectionCallback = useRef(onSelectionChange);
     selectionCallback.current = onSelectionChange;
     const selectionListeners = useRef<monacoRuntime.IDisposable[]>([]);
@@ -393,6 +397,12 @@ export const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(
           };
           selectionListeners.current.forEach(listener => listener.dispose());
           selectionListeners.current = [editor.onDidChangeCursorSelection(reportSelection), editor.onDidChangeModelContent(reportSelection)];
+          if (onExecute) selectionListeners.current.push(editor.addAction({
+            id: 'data-agent.execute-sql',
+            label: 'Execute SQL',
+            keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter],
+            run: () => executeCallback.current?.(),
+          }));
           reportSelection();
           editorRef.current.updateOptions({ wordBasedSuggestions: 'off' });
           registerLanguageProviders(monaco);

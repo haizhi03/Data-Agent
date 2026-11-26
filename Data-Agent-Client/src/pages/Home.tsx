@@ -263,6 +263,7 @@ export default function Home() {
                                             schemaName: sqlContext?.schemaName,
                                         }}
                                         onChange={(val) => updateTabContent(activeTab.id, val || '')}
+                                        onExecute={handleRunStatement}
                                         onSelectionChange={(content, start, end) => useTabStore.getState().updateTabSelection(activeTab.id, content, start, end)}
                                     />
                                 ) : activeTab?.type === 'table' && activeTab.metadata ? (
