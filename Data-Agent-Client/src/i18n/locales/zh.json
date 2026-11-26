@@ -1305,10 +1305,10 @@
       "close_models": "收起模型列表",
       "custom_model_hint": "没有匹配的预置项，将使用你输入的模型 ID。",
       "qwen_presets_hint": "预置候选，支持手动输入其他 ID；是否可用请测试连接。",
-      "candidate_limits": "上下文 {{context}} · 最大输出 {{output}} Token",
-      "candidate_thinking_limit": "思考模式最大输出 {{output}} Token",
-      "known_context_hint": "官方上下文上限：{{context}} Token。留空按此规格自动设置，也可手动缩小窗口。",
-      "known_output_hint": "当前模式官方最大输出：{{output}} Token。留空按任务分配请求预算；手动值范围从 256 到此上限，且须小于上下文窗口。启用思考时实际至少使用 8192 Token。",
+      "candidate_limits": "上下文 {{context}} · 最大输出 {{output}}",
+      "candidate_thinking_limit": "思考模式最大输出 {{output}}",
+      "known_context_hint": "官方上下文上限：{{context}}。留空按此规格自动设置，也可手动缩小窗口。",
+      "known_output_hint": "当前模式官方最大输出：{{output}}。留空按任务分配请求预算；手动值范围从 256 到此上限，且须小于上下文窗口。启用思考时实际至少使用 8192 Token。",
       "spec_source": "官方规格（{{date}} 核对）",
       "model_hint": "填写厂商提供的模型名称。测试连接和对话都会使用这个 ID。",
       "key_placeholder": "密钥已保存，留空保留",
@@ -1321,7 +1321,8 @@
       "context_hint": "单位：token。留空自动推断，未识别的模型使用 32768；本地／自定义模型建议手动设置。",
       "output_hint": "可选的单配置输出上限，会发送给 AI 服务商。范围：256–1000000。启用思考时至少使用 8192 token，实际输出上限须小于上下文窗口。",
       "output_placeholder": "自动（按操作类型）",
-      "threshold_placeholder": "自动（根据上下文窗口设置）",
+      "threshold_placeholder": "自动（按上下文窗口比例）",
+      "threshold_hint": "留空时按官方窗口的 {{percent}}% 自动设置，约 {{value}} Token；可随时手动调整。",
       "advanced": "更多设置",
       "availability": "使用设置",
       "back_to_list": "返回配置列表",
@@ -1335,7 +1336,8 @@
         "responses-reasoning-v1": "OpenAI 推理与工具",
         "anthropic-tools-v1": "Claude 文本与工具",
         "anthropic-thinking-v1": "Claude 思考与工具",
-        "anthropic-adaptive-v1": "Claude 自适应思考"
+        "anthropic-adaptive-v1": "Claude 自适应思考",
+        "deepseek-thinking-tools-v1": "DeepSeek 思考与工具（默认开启，可关闭）"
       },
       "default": "默认",
       "ready": "已启用",
@@ -1395,6 +1397,7 @@
       "OPENAI": "OpenAI",
       "QWEN": "通义千问（Qwen）",
       "ANTHROPIC": "Anthropic（Claude）",
+      "DEEPSEEK": "DeepSeek",
       "CUSTOM": "自定义服务"
     },
     "provider_hints": {

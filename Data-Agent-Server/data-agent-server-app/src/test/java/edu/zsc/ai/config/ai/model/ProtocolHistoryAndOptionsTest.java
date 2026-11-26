@@ -7,6 +7,7 @@ import dev.langchain4j.http.client.HttpClient;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.request.ToolChoice;
 import dev.langchain4j.model.chat.request.json.*;
+import dev.langchain4j.model.chat.response.ChatResponse;
 import edu.zsc.ai.common.converter.ai.StoredMessageToResponseConverter;
 import edu.zsc.ai.common.enums.org.WorkspaceTypeEnum;
 import edu.zsc.ai.domain.model.entity.ai.StoredChatMessage;
@@ -165,6 +166,43 @@ class ProtocolHistoryAndOptionsTest {
                 assertEquals("call-a", output.path("tool_use_id").asText()); assertTrue(output.path("is_error").asBoolean());
             }
         }
+    }
+
+    @Test void deepSeekSendsNestedThinkingAndEffortAndDropsTemperatureWhileThinking() {
+        var thinking = deepseek(ThinkingMode.ENABLED, "low", "deepseek-flash");
+        var enabled = configured(thinking);
+        assertEquals(Map.of("thinking", Map.of("type", "enabled")), enabled.customParameters());
+        assertEquals("low", enabled.reasoningEffort());assertNull(enabled.temperature());assertEquals(8192, enabled.maxOutputTokens());
+
+        var plain = deepseek(ThinkingMode.DISABLED, null, "deepseek-flash");
+        var disabled = configured(plain);
+        assertEquals(Map.of("thinking", Map.of("type", "disabled")), disabled.customParameters());
+        assertNull(disabled.reasoningEffort());assertEquals(0.3, disabled.temperature());
+    }
+
+    @Test void deepSeekReplaysItsOwnReasoningAndDropsForeignOne() {
+        var config = deepseek(ThinkingMode.ENABLED, "high", "deepseek-flash");
+        var response = ChatResponse.builder().aiMessage(AiMessage.builder().text("ok").thinking("step").build()).build();
+        AiMessage captured = ProtocolHistory.capture(response, config).aiMessage();
+        assertNotNull(ProtocolStateCodec.read(captured));
+        assertSame(captured, ProtocolHistory.forTarget(List.of(captured), config).get(0));
+        AiMessage portable = (AiMessage) ProtocolHistory.forTarget(List.of(captured), deepseek(ThinkingMode.ENABLED, "high", "deepseek-v4-pro")).get(0);
+        assertNull(portable.thinking());assertTrue(portable.attributes().isEmpty());
+    }
+
+    private static dev.langchain4j.model.openai.OpenAiChatRequestParameters configured(ResolvedModelConfig config) {
+        var builder = dev.langchain4j.model.openai.OpenAiChatRequestParameters.builder()
+                .temperature(config.options().temperature()).maxOutputTokens(config.options().maxOutputTokens());
+        OpenAiChatCompatibility.forConfig(config).configure(builder, config);
+        return builder.build();
+    }
+
+    private static ResolvedModelConfig deepseek(ThinkingMode mode, String effort, String modelId) {
+        return new ResolvedModelConfig("config", 1, "connection-deepseek", 1, new ModelAccessContext(1, WorkspaceTypeEnum.PERSONAL, 1),
+                "DEEPSEEK", ModelApiStyle.OPENAI_CHAT_COMPLETIONS, modelId, "DeepSeek", URI.create("https://api.deepseek.com/"),
+                "env:FIXTURE_KEY", 1, "deepseek-thinking-tools-v1", "deepseek-chat-v1",
+                new ResolvedModelConfig.EffectiveOptions(mode, null, mode == ThinkingMode.DISABLED ? 0.3 : null, 8192, effort),
+                1_000_000, 700_000, true, Set.of());
     }
 
     private static AiMessage decode(ResolvedModelConfig config, ArrayNode blocks) {

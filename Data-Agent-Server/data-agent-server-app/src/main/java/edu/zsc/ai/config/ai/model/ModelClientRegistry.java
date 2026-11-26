@@ -54,7 +54,7 @@ public class ModelClientRegistry {
                 beforeCall(config, run);
                 try (var ignored = new ModelContextScope(requestContext, agentContext)) {
                     ChatRequest effective = request.toBuilder().messages(ProtocolHistory.forTarget(request.messages(), config)).build();
-                    ChatResponse response = raw.chatModel().chat(effective);
+                    ChatResponse response = ProtocolHistory.capture(raw.chatModel().chat(effective), config);
                     validateResponse(response, request);
                     resolver.reauthorize(config);
                     run.ensureActive();
@@ -83,6 +83,7 @@ public class ModelClientRegistry {
                     @Override public void onPartialToolCall(PartialToolCall call, PartialToolCallContext context) { if (!terminal.get()) handler.onPartialToolCall(call, context); }
                     @Override public void onCompleteResponse(ChatResponse response) {
                         if (!terminal.compareAndSet(false, true)) return;
+                        response = ProtocolHistory.capture(response, config);
                         try {
                             validateResponse(response, request);
                             resolver.reauthorize(config);

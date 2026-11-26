@@ -8,6 +8,8 @@ public final class ModelTokenPolicy {
     private ModelTokenPolicy() {}
     public static final int FALLBACK_CONTEXT = 32768;
     public static final int MAX_OUTPUT = 1_000_000;
+    /** Compression start point, shared by every provider so large windows are not wasted by a fixed cap. */
+    public static final double MEMORY_RATIO = 0.7;
     private static final Pattern NAMED_WINDOW = Pattern.compile("(?:^|[-_/])(\\d{1,5})([km])(?:$|[-_/])");
 
     public static int context(String modelId, Integer override) {
@@ -27,6 +29,11 @@ public final class ModelTokenPolicy {
         }
         // Unknown names (including gateways/local aliases) stay conservative and remain overridable.
         return FALLBACK_CONTEXT;
+    }
+
+    /** Default compression trigger; callers still accept an explicit per-model override. */
+    public static int memoryThreshold(int context) {
+        return Math.max(1, Math.min(context - 1, (int) Math.round(context * MEMORY_RATIO)));
     }
 
     public static int output(Integer override, int context, MultiProviderProperties.ThinkingMode thinking,

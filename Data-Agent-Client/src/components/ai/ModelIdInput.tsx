@@ -2,7 +2,7 @@ import { useRef, useState, type KeyboardEvent } from 'react';
 import { Check, ChevronDown } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Input } from '../ui/Input';
-import { filterModelCandidates } from '../../lib/modelSpecifications';
+import { filterModelCandidates, formatTokenBudget } from '../../lib/modelSpecifications';
 import type { ModelSpecification } from '../../types/modelManagement';
 
 /** Editable combobox: choosing a candidate and entering a custom ID share the same field. */
@@ -53,8 +53,8 @@ export function ModelIdInput({ id, value, onChange, specifications = [], candida
           aria-selected={active === index} className={`flex min-h-10 w-full items-center justify-between gap-3 rounded-md px-3 py-2 text-left text-sm ${active === index ? 'bg-accent text-accent-foreground' : 'hover:bg-accent hover:text-accent-foreground'}`}
           onMouseDown={(event) => event.preventDefault()} onMouseEnter={() => setActive(index)} onClick={() => choose(model)}>
           <span><span className="block">{model}</span>{specification && <span className="mt-1 block text-xs text-muted-foreground">
-            {tr('candidate_limits', { context: specification.contextTokens.toLocaleString(), output: specification.maxOutputTokens.toLocaleString() })}
-            {specification.maxOutputTokens !== specification.maxThinkingOutputTokens && <span className="block">{tr('candidate_thinking_limit', { output: specification.maxThinkingOutputTokens.toLocaleString() })}</span>}
+            {tr('candidate_limits', { context: formatTokenBudget(specification.contextTokens), output: formatTokenBudget(specification.maxOutputTokens) })}
+            {specification.maxOutputTokens !== specification.maxThinkingOutputTokens && <span className="block">{tr('candidate_thinking_limit', { output: formatTokenBudget(specification.maxThinkingOutputTokens) })}</span>}
           </span>}</span>{value === model && <Check size={15} className="text-primary" />}
         </button>;
         })}

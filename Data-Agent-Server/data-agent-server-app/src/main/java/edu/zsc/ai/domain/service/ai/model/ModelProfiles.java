@@ -14,6 +14,8 @@ public final class ModelProfiles {
     private static final ModelOptionRules RESPONSES_REASONING = rules(List.of("low","medium","high"),"medium",null,false,List.of(),2,false,4096,8192,8192);
     private static final ModelOptionRules ANTHROPIC_TEXT = rules(List.of(),null,null,false,List.of(DISABLED),1,false,4096,256,8192);
     private static final ModelOptionRules ANTHROPIC_THINKING = rules(List.of(),null,1024,true,List.of(DISABLED),1,false,4096,256,8192);
+    // DeepSeek defaults to thinking with effort "high"; temperature only applies outside thinking mode.
+    private static final ModelOptionRules DEEPSEEK = rules(List.of("low","high","max"),"high",null,false,List.of(DISABLED),2,true,16384,8192,16384);
     private static final List<Profile> PROFILES = List.of(
         profile(ModelApiStyle.OPENAI_CHAT_COMPLETIONS,"openai-chat-v1","text-tools-v1",List.of(DISABLED),"chat/completions",TEXT),
         profile(ModelApiStyle.OPENAI_CHAT_COMPLETIONS,"qwen-chat-v1","qwen-tools-v1",List.of(DISABLED,ENABLED),"chat/completions",QWEN),
@@ -24,7 +26,9 @@ public final class ModelProfiles {
         profile(ModelApiStyle.OPENAI_RESPONSES,"openai-responses-v1","responses-reasoning-v1",List.of(ENABLED),"responses",RESPONSES_REASONING),
         profile(ModelApiStyle.ANTHROPIC_MESSAGES,"anthropic-messages-v1","anthropic-tools-v1",List.of(DISABLED),"messages",ANTHROPIC_TEXT),
         profile(ModelApiStyle.ANTHROPIC_MESSAGES,"anthropic-messages-v1","anthropic-thinking-v1",List.of(DISABLED,ENABLED),"messages",ANTHROPIC_THINKING),
-        profile(ModelApiStyle.ANTHROPIC_MESSAGES,"anthropic-messages-v1","anthropic-adaptive-v1",List.of(DISABLED,ADAPTIVE),"messages",ANTHROPIC_TEXT)
+        profile(ModelApiStyle.ANTHROPIC_MESSAGES,"anthropic-messages-v1","anthropic-adaptive-v1",List.of(DISABLED,ADAPTIVE),"messages",ANTHROPIC_TEXT),
+        // Thinking stays switchable: the provider enables it by default, so ENABLED must lead the list.
+        profile(ModelApiStyle.OPENAI_CHAT_COMPLETIONS,"deepseek-chat-v1","deepseek-thinking-tools-v1",List.of(ENABLED,DISABLED),"chat/completions",DEEPSEEK)
     );
     public static List<Profile> all() { return PROFILES; }
     public static Profile find(ModelApiStyle style,String compatibility,String capability) {

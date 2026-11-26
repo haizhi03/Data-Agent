@@ -1304,10 +1304,10 @@
       "close_models": "Hide model list",
       "custom_model_hint": "No preset matches. The model ID you entered will be used.",
       "qwen_presets_hint": "Preset suggestions; other IDs are welcome. Test the connection to check availability.",
-      "candidate_limits": "Context {{context}} · Maximum output {{output}} tokens",
-      "candidate_thinking_limit": "Thinking mode maximum output {{output}} tokens",
-      "known_context_hint": "Official context limit: {{context}} tokens. Leave blank to use this specification, or set a smaller window.",
-      "known_output_hint": "Official output limit for this mode: {{output}} tokens. Blank uses a task-specific request budget; manual values start at 256 and must stay below the context window. Thinking uses at least 8192 tokens.",
+      "candidate_limits": "Context {{context}} · Maximum output {{output}}",
+      "candidate_thinking_limit": "Thinking mode maximum output {{output}}",
+      "known_context_hint": "Official context limit: {{context}}. Leave blank to use this specification, or set a smaller window.",
+      "known_output_hint": "Official output limit for this mode: {{output}}. Blank uses a task-specific request budget; manual values start at 256 and must stay below the context window. Thinking uses at least 8192 tokens.",
       "spec_source": "Official specification (checked {{date}})",
       "model_hint": "Enter the provider's model name. Connection tests and chats use this same ID.",
       "key_placeholder": "Key saved; leave blank to keep it",
@@ -1320,7 +1320,8 @@
       "context_hint": "Unit: tokens. Leave blank to infer; unknown models use 32768. Set local or custom models manually.",
       "output_hint": "Optional per-configuration output limit, sent to the provider. Range: 256–1000000. Thinking uses at least 8192 tokens; the effective limit must stay below the context window.",
       "output_placeholder": "Automatic (by operation type)",
-      "threshold_placeholder": "Automatic (based on context window)",
+      "threshold_placeholder": "Automatic (share of the context window)",
+      "threshold_hint": "Left empty, compression starts at {{percent}}% of the official window (about {{value}} tokens); adjust any time.",
       "advanced": "More settings",
       "availability": "Usage settings",
       "back_to_list": "Back to configurations",
@@ -1334,7 +1335,8 @@
         "responses-reasoning-v1": "OpenAI reasoning and tools",
         "anthropic-tools-v1": "Claude text and tools",
         "anthropic-thinking-v1": "Claude thinking and tools",
-        "anthropic-adaptive-v1": "Claude adaptive thinking"
+        "anthropic-adaptive-v1": "Claude adaptive thinking",
+        "deepseek-thinking-tools-v1": "DeepSeek thinking and tools (on by default, switchable)"
       },
       "default": "Default",
       "ready": "Enabled",
@@ -1394,6 +1396,7 @@
       "OPENAI": "OpenAI",
       "QWEN": "Qwen",
       "ANTHROPIC": "Anthropic (Claude)",
+      "DEEPSEEK": "DeepSeek",
       "CUSTOM": "Custom service"
     },
     "provider_hints": {

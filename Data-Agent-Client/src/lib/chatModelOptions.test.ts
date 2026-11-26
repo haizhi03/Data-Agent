@@ -20,11 +20,11 @@ describe('chat model provider groups', () => {
 
   it('keeps distinct vendors using OpenAI-compatible APIs separate and supports missing metadata', () => {
     const groups = groupChatModels([model('claude', 'CLAUDE'), model('anthropic', 'ANTHROPIC'),
-      model('deepseek', 'DeepSeek', { compatibilityProfile: 'openai-chat-v1' }), model('other', 'Another vendor'),
+      model('deepseek', 'DeepSeek', { compatibilityProfile: 'deepseek-chat-v1' }), model('other', 'Another vendor'),
       model('no-provider'), model('custom', 'CUSTOM')]);
     expect(groups.map((group) => group.id)).toEqual(['ANTHROPIC', 'DEEPSEEK', 'ANOTHER VENDOR', 'UNSPECIFIED', 'CUSTOM']);
     expect(groups[1].label).toBe('DeepSeek');
-    expect(groups[1].labelKey).toBeUndefined();
+    expect(groups[1].labelKey).toBe('model_settings.providers.DEEPSEEK');
     expect(groups[3].labelKey).toBe('chat_model_selector.other_provider');
     expect(groups[4].labelKey).toBe('model_settings.providers.CUSTOM');
   });

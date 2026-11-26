@@ -80,11 +80,12 @@ public class ModelConnectionTestService {
         Set<String> allowed = new HashSet<>(properties.getModelRouting().getAllowedPrivateHosts());
         if (existing != null) allowed.addAll(existing.allowedPrivateHosts());
         String id = "connection-test/" + UUID.randomUUID();
+        int context = ModelTokenPolicy.context(input.modelId(), null);
         return new ResolvedModelConfig(id, 1, existing == null ? id : existing.id(), existing == null ? 1 : existing.version(), scope,
                 input.provider().trim(), input.apiStyle(), input.modelId().trim(), "Connection test", ModelEndpointPolicy.normalize(input.endpoint()),
                 input.apiKey() != null ? "transient:" + id : "credential:" + existing.credentialId(), existing == null ? 0 : existing.credentialVersion(),
                 profile.capabilityProfile(), input.compatibilityProfile(), new ResolvedModelConfig.EffectiveOptions(options.getThinkingMode(), options.getThinkingBudget(), null, profile.optionRules().testMaxOutputTokens(),effort),
-                32768, 24000, false, allowed);
+                context, ModelTokenPolicy.memoryThreshold(context), false, allowed);
     }
 
     private FileModelState.Connection saved(ModelAccessContext scope, ModelManagementRequests.ConnectionTest input) {

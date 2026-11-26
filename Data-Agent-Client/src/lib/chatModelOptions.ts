@@ -16,13 +16,14 @@ function providerGroup(model: ModelOption): Omit<ChatModelGroup, 'models'> {
   const label = model.provider?.trim() ?? '';
   let id = label.toUpperCase();
   // Preserve custom vendor labels even when they use another vendor's wire protocol.
-  if (!id || ['OPENAI', 'QWEN', 'DASHSCOPE', 'ALIBABA_CLOUD', 'ANTHROPIC', 'CLAUDE'].includes(id)) {
+  if (!id || ['OPENAI', 'QWEN', 'DASHSCOPE', 'ALIBABA_CLOUD', 'ANTHROPIC', 'CLAUDE', 'DEEPSEEK'].includes(id)) {
     if (model.compatibilityProfile === 'qwen-chat-v1') id = 'QWEN';
     else if (model.compatibilityProfile === 'anthropic-messages-v1') id = 'ANTHROPIC';
+    else if (model.compatibilityProfile === 'deepseek-chat-v1') id = 'DEEPSEEK';
   }
   if (['QWEN', 'DASHSCOPE', 'ALIBABA_CLOUD'].includes(id)) id = 'QWEN';
   if (id === 'CLAUDE') id = 'ANTHROPIC';
-  if (['OPENAI', 'QWEN', 'ANTHROPIC', 'CUSTOM'].includes(id)) {
+  if (['OPENAI', 'QWEN', 'ANTHROPIC', 'DEEPSEEK', 'CUSTOM'].includes(id)) {
     return { id, label, labelKey: `model_settings.providers.${id}` };
   }
   return { id: id || 'UNSPECIFIED', label, ...(!id ? { labelKey: 'chat_model_selector.other_provider' } : {}) };

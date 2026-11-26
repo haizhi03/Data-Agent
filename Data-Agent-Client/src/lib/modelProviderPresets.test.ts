@@ -13,6 +13,7 @@ const profiles: ModelProfile[] = [
   { apiStyle: 'DASHSCOPE_CHAT', compatibilityProfile: 'qwen-chat-v1', capabilityProfile: 'qwen-tools-v1', thinkingModes: ['DISABLED', 'ENABLED'], resource: 'services/aigc/text-generation/generation' },
   { apiStyle: 'OPENAI_RESPONSES', compatibilityProfile: 'openai-responses-v1', capabilityProfile: 'responses-tools-v1', thinkingModes: ['DISABLED'], resource: 'responses' },
   { apiStyle: 'ANTHROPIC_MESSAGES', compatibilityProfile: 'anthropic-messages-v1', capabilityProfile: 'anthropic-tools-v1', thinkingModes: ['DISABLED'], resource: 'messages' },
+  { apiStyle: 'OPENAI_CHAT_COMPLETIONS', compatibilityProfile: 'deepseek-chat-v1', capabilityProfile: 'deepseek-thinking-tools-v1', thinkingModes: ['ENABLED', 'DISABLED'], resource: 'chat/completions' },
 ];
 const initial: ConnectionInput = { code: 'primary', name: 'Primary', provider: 'OPENAI', apiStyle: 'OPENAI_RESPONSES', compatibilityProfile: 'openai-responses-v1', endpoint: 'https://api.openai.com/v1', enabled: true, expectedVersion: 7 };
 
@@ -47,7 +48,7 @@ describe('provider-specific model connections', () => {
     expect(inferProvider({ provider: 'Company gateway', compatibilityProfile: 'openai-chat-v1' })).toBe('CUSTOM');
     const custom = selectProvider(initial, 'CUSTOM', profiles);
     expect(custom).toEqual({ ...initial, provider: '' });
-    expect(providerApis('CUSTOM', profiles)).toHaveLength(5);
+    expect(providerApis('CUSTOM', profiles)).toHaveLength(6);
   });
 
   it('uses the fixed native DashScope endpoint even from a custom provider', () => {
@@ -61,10 +62,19 @@ describe('provider-specific model connections', () => {
     expect(providerApis('ANTHROPIC', [])).toEqual([]);
   });
 
+  it('switches to DeepSeek on the official endpoint and keeps the profile recognizable', () => {
+    const deepseek = selectProvider(initial, 'DEEPSEEK', profiles);
+    expect(deepseek).toMatchObject({ provider: 'DEEPSEEK', apiStyle: 'OPENAI_CHAT_COMPLETIONS', compatibilityProfile: 'deepseek-chat-v1', endpoint: 'https://api.deepseek.com' });
+    expect(connectionRequestUrl(deepseek, profiles)).toBe('https://api.deepseek.com/chat/completions');
+    expect(inferProvider({ provider: 'DEEPSEEK', compatibilityProfile: 'deepseek-chat-v1' })).toBe('DEEPSEEK');
+    expect(providerApis('DEEPSEEK', profiles)).toHaveLength(1);
+  });
+
   it.each([
     ['OPENAI', ['openai-chat-v1', 'openai-responses-v1']],
     ['QWEN', ['qwen-chat-v1', 'qwen-chat-v1']],
     ['ANTHROPIC', ['anthropic-messages-v1']],
+    ['DEEPSEEK', ['deepseek-chat-v1']],
   ] as const)('shows only %s APIs and never renders saved credentials in the edit form', (preset, compatibility) => {
     expect(providerApis(preset, profiles).map((p) => p.compatibilityProfile)).toEqual(compatibility);
     const markup = renderToStaticMarkup(createElement(ModelConnectionFields, {

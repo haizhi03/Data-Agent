@@ -1,5 +1,15 @@
 import type { ModelSpecification, ThinkingMode } from '../types/modelManagement';
 
+/** Share of the context window used as the automatic compression trigger; mirrors the server policy. */
+export const AUTO_THRESHOLD_RATIO = 0.7;
+
+/** Vendors quote budgets as "1M" / "384K"; show the same shorthand instead of raw token counts. */
+export function formatTokenBudget(tokens: number): string {
+  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
+  if (tokens >= 1_024) return `${Math.round(tokens / 1_024)}K`;
+  return String(tokens);
+}
+
 export function filterModelCandidates(query: string, candidates: readonly string[]): readonly string[] {
   const normalize = (value: string) => value.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
   const normalized = normalize(query);

@@ -134,7 +134,7 @@ public class ModelManagementService {
                 context=ModelTokenPolicy.context(input.modelId(),limits.maxContextTokens());
                 options.setMaxOutputTokens(ModelTokenPolicy.output(input.modelId(),c.compatibilityProfile(),limits.maxOutputTokens(),context,source.getThinkingMode(),source.getThinkingBudget(),ModelPurpose.MAIN_CHAT));
             } catch(IllegalArgumentException e) { throw new ModelManagementException("MODEL_TOKEN_LIMITS_INVALID",org.springframework.http.HttpStatus.BAD_REQUEST); }
-            int threshold=input.memoryThreshold()==null?Math.min(24000,context-1):input.memoryThreshold();
+            int threshold=input.memoryThreshold()==null?ModelTokenPolicy.memoryThreshold(context):input.memoryThreshold();
             var modelInput=new ModelManagementRequests.Model(null,oldModel==null?"model-"+UUID.randomUUID():oldModel.code(),c.id(),name,
                     input.modelId(),capability,options,context,threshold,visible,enabled);
             var effective=validate(modelInput,connectionResponse(s,c));
@@ -217,7 +217,7 @@ public class ModelManagementService {
                 var options=ModelProfiles.defaultOptions(ModelProfiles.find(c.apiStyle(),c.compatibilityProfile(),spec.capabilityProfile()));
                 options.setMaxOutputTokens(ModelTokenPolicy.output(spec.modelId(),c.compatibilityProfile(),null,spec.contextTokens(),options.getThinkingMode(),options.getThinkingBudget(),ModelPurpose.MAIN_CHAT));
                 var modelInput=new ModelManagementRequests.Model(null,reusable==null?"model-"+UUID.randomUUID():reusable.code(),c.id(),spec.modelId(),spec.modelId(),spec.capabilityProfile(),options,
-                        spec.contextTokens(),Math.min(24000,spec.contextTokens()-1),purpose==ModelPurpose.MAIN_CHAT || reusable!=null && reusable.chatVisible(),true);
+                        spec.contextTokens(),ModelTokenPolicy.memoryThreshold(spec.contextTokens()),purpose==ModelPurpose.MAIN_CHAT || reusable!=null && reusable.chatVisible(),true);
                 selected=modelData(id,reusable==null?1:reusable.version()+1,modelInput,validate(modelInput,connectionResponse(s,c)))
                         .withTokenLimits(new ConfiguredTokenLimits(null,null)).withTaskPreset(true);
                 s.models.put(id,selected);
