@@ -8,6 +8,7 @@ export const ApiPaths = {
   TABLES_ER_DIAGRAM: '/tables/er-diagram',
   TABLES_DDL: '/tables/ddl',
   TABLES_STRUCTURE: '/tables/structure',
+  TABLES_STRUCTURE_RULES: '/tables/structure/rules',
   TABLES_STRUCTURE_PREVIEW: '/tables/structure/preview',
   TABLES_STRUCTURE_APPLY: '/tables/structure/apply',
   TABLES_SQL_TEMPLATE: '/tables/sql-template',

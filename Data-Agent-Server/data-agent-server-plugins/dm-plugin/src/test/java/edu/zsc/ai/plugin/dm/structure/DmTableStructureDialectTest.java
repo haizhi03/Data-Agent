@@ -1,6 +1,7 @@
 package edu.zsc.ai.plugin.dm.structure;
 
 import edu.zsc.ai.plugin.model.structure.StructureDefaultKind;
+import edu.zsc.ai.plugin.model.structure.StructureDiagnostic;
 import edu.zsc.ai.plugin.model.structure.StructurePreview;
 import edu.zsc.ai.plugin.model.structure.TableStructure;
 import edu.zsc.ai.plugin.model.structure.TableStructure.Check;
@@ -75,7 +76,7 @@ class DmTableStructureDialectTest {
         StructurePreview preview = DmTableStructureDialect.preview(null, "HR", baseline, draft);
 
         assertTrue(preview.statements().isEmpty());
-        assertTrue(preview.warnings().stream().anyMatch(warning -> warning.contains("cannot reorder")));
+        assertTrue(hasCode(preview, StructureDiagnostic.DM_CANNOT_REORDER));
     }
 
     @Test
@@ -148,7 +149,7 @@ class DmTableStructureDialectTest {
         StructurePreview preview = DmTableStructureDialect.preview(null, "HR", baseline, draft);
 
         assertTrue(preview.statements().isEmpty());
-        assertTrue(preview.warnings().stream().anyMatch(warning -> warning.contains("character set")));
+        assertTrue(hasCode(preview, StructureDiagnostic.DM_IGNORES_TABLE_OPTIONS));
     }
 
     @Test
@@ -212,7 +213,7 @@ class DmTableStructureDialectTest {
 
         assertTrue(preview.statements().isEmpty());
         assertTrue(preview.changes().isEmpty());
-        assertTrue(preview.warnings().stream().anyMatch(warning -> warning.contains("Index has no columns: UK_CODE")));
+        assertTrue(hasCode(preview, StructureDiagnostic.INDEX_HAS_NO_COLUMNS));
     }
 
     @Test
@@ -255,7 +256,7 @@ class DmTableStructureDialectTest {
         StructurePreview preview = DmTableStructureDialect.preview(null, "HR", baseline, draft);
 
         assertTrue(preview.statements().stream().noneMatch(sql -> sql.contains("CREATE INDEX")));
-        assertTrue(preview.warnings().stream().anyMatch(warning -> warning.contains("prefix")));
+        assertTrue(hasCode(preview, StructureDiagnostic.DM_INDEX_PREFIX));
     }
 
     @Test
@@ -268,7 +269,7 @@ class DmTableStructureDialectTest {
         StructurePreview preview = DmTableStructureDialect.preview(null, "HR", baseline, draft);
 
         assertTrue(preview.statements().stream().noneMatch(sql -> sql.contains("CREATE INDEX")));
-        assertTrue(preview.warnings().stream().anyMatch(warning -> warning.contains("missing column")));
+        assertTrue(hasCode(preview, StructureDiagnostic.INDEX_MISSING_COLUMN));
     }
 
     @Test
@@ -410,6 +411,10 @@ class DmTableStructureDialectTest {
                 null,
                 false
         );
+    }
+
+    private static boolean hasCode(StructurePreview preview, String code) {
+        return preview.warnings().stream().anyMatch(warning -> code.equals(warning.code()));
     }
 
     private static int indexOf(List<String> statements, String part) {

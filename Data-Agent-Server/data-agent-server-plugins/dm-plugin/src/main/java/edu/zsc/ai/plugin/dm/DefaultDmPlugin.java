@@ -452,6 +452,11 @@ public abstract class DefaultDmPlugin extends AbstractDatabasePlugin
         return tableStructureManager.preview(catalog, schema, baseline, draft);
     }
 
+    @Override
+    public edu.zsc.ai.plugin.model.structure.StructureTypeRules typeRules() {
+        return tableStructureManager.typeRules();
+    }
+
     // ========== FunctionManager ==========
 
     @Override

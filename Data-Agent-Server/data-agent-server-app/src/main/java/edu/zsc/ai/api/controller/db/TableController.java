@@ -24,6 +24,7 @@ import edu.zsc.ai.domain.service.db.SqlTemplateService;
 import edu.zsc.ai.domain.service.db.TableService;
 import edu.zsc.ai.domain.service.db.TableStructureService;
 import edu.zsc.ai.plugin.model.structure.StructurePreview;
+import edu.zsc.ai.plugin.model.structure.StructureTypeRules;
 import edu.zsc.ai.plugin.model.structure.TableStructure;
 import edu.zsc.ai.domain.service.db.transfer.TableDataExporter;
 import edu.zsc.ai.plugin.model.db.TableRowValue;
@@ -134,6 +135,14 @@ public class TableController {
                 connectionId, tableName, catalog, schema);
         return ApiResponse.success(tableStructureService.load(
                 new DbContext(connectionId, catalog, schema), tableName));
+    }
+
+    @GetMapping("/structure/rules")
+    public ApiResponse<StructureTypeRules> structureRules(
+            @RequestParam @NotNull(message = "connectionId is required") Long connectionId,
+            @RequestParam(required = false) String catalog,
+            @RequestParam(required = false) String schema) {
+        return ApiResponse.success(tableStructureService.typeRules(new DbContext(connectionId, catalog, schema)));
     }
 
     @PostMapping("/structure/preview")

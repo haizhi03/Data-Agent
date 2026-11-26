@@ -8,7 +8,9 @@ import edu.zsc.ai.domain.service.db.SqlCompletionService;
 import edu.zsc.ai.domain.service.db.TableStructureService;
 import edu.zsc.ai.plugin.capability.TableStructureManager;
 import edu.zsc.ai.plugin.manager.DefaultPluginManager;
+import edu.zsc.ai.plugin.model.structure.StructureDiagnostic;
 import edu.zsc.ai.plugin.model.structure.StructurePreview;
+import edu.zsc.ai.plugin.model.structure.StructureTypeRules;
 import edu.zsc.ai.plugin.model.structure.TableStructure;
 import edu.zsc.ai.plugin.model.structure.TableStructureEquality;
 import lombok.RequiredArgsConstructor;
@@ -23,8 +25,6 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 public class TableStructureServiceImpl implements TableStructureService {
-
-    static final String STALE_STRUCTURE_MESSAGE = "表结构已变化，请刷新后再执行";
 
     private final ConnectionService connectionService;
     private final SqlCompletionService completionService;
@@ -48,6 +48,12 @@ public class TableStructureServiceImpl implements TableStructureService {
     }
 
     @Override
+    public StructureTypeRules typeRules(DbContext db) {
+        connectionService.openConnection(db);
+        return requireManager(ActiveConnectionRegistry.getOwnedConnection(db)).typeRules();
+    }
+
+    @Override
     public ApplyTableStructureResponse apply(DbContext db, TableStructure baseline, TableStructure draft) {
         connectionService.openConnection(db);
         ActiveConnectionRegistry.ActiveConnection active = ActiveConnectionRegistry.getOwnedConnection(db);
@@ -60,7 +66,7 @@ public class TableStructureServiceImpl implements TableStructureService {
             Connection connection = borrowed.connection();
             TableStructure live = reload(manager, connection, db, tableName, null);
             if (!TableStructureEquality.same(baseline, live)) {
-                return new ApplyTableStructureResponse(null, List.of(), List.of(), -1, STALE_STRUCTURE_MESSAGE);
+                return new ApplyTableStructureResponse(null, List.of(), List.of(), -1, StructureDiagnostic.STRUCTURE_STALE, null);
             }
             StructurePreview preview = manager.preview(db.catalog(), db.schema(), baseline, draft);
             List<String> statements = preview.statements();
@@ -80,7 +86,7 @@ public class TableStructureServiceImpl implements TableStructureService {
             }
             TableStructure fresh = reload(manager, connection, db, tableName, errorMessage);
             return new ApplyTableStructureResponse(
-                    fresh, statements, preview.changes(), failedIndex, errorMessage);
+                    fresh, statements, preview.changes(), failedIndex, null, errorMessage);
         }
     }
 

@@ -2,6 +2,8 @@ package edu.zsc.ai.plugin.mysql.structure;
 
 import edu.zsc.ai.plugin.capability.MysqlIdentifierEscaper;
 import edu.zsc.ai.plugin.model.structure.StructureDefaultKind;
+import edu.zsc.ai.plugin.model.structure.StructureDiagnostic;
+import edu.zsc.ai.plugin.model.structure.StructureTypeRules;
 import edu.zsc.ai.plugin.model.structure.StructurePreview;
 import edu.zsc.ai.plugin.model.structure.StructurePreview.Change;
 import edu.zsc.ai.plugin.model.structure.TableStructure;
@@ -36,10 +38,10 @@ public final class MysqlTableStructureDialect {
     public static StructurePreview preview(String catalog, String schema, TableStructure baseline, TableStructure draft) {
         TableStructure base = normalize(baseline);
         TableStructure next = normalize(draft);
-        List<String> warnings = new ArrayList<>();
+        List<StructureDiagnostic> warnings = new ArrayList<>();
         String tableName = StringUtils.defaultIfBlank(base.name(), next.name());
         if (StringUtils.isBlank(tableName)) {
-            warnings.add("Table name is required");
+            warnings.add(StructureDiagnostic.of(StructureDiagnostic.TABLE_NAME_REQUIRED));
             return empty(warnings);
         }
         if (hasBlockers(base, next, warnings)) {
@@ -83,30 +85,30 @@ public final class MysqlTableStructureDialect {
         return new StructurePreview(List.copyOf(statements), List.copyOf(changes), List.copyOf(warnings));
     }
 
-    private static boolean hasBlockers(TableStructure base, TableStructure next, List<String> warnings) {
+    private static boolean hasBlockers(TableStructure base, TableStructure next, List<StructureDiagnostic> warnings) {
         boolean blocked = false;
         List<String> names = new ArrayList<>();
         for (Column column : next.columns()) {
             boolean existing = StringUtils.isNotBlank(column.originalName());
             if (StringUtils.isBlank(column.name())) {
                 if (existing) {
-                    warnings.add("Column name cannot be empty: " + column.originalName());
+                    warnings.add(StructureDiagnostic.of(StructureDiagnostic.COLUMN_NAME_EMPTY, StringUtils.defaultString(column.originalName())));
                     blocked = true;
                 }
                 continue;
             }
             if (names.stream().anyMatch(name -> name.equalsIgnoreCase(column.name()))) {
-                warnings.add("Duplicate column name: " + column.name());
+                warnings.add(StructureDiagnostic.of(StructureDiagnostic.DUPLICATE_COLUMN_NAME, column.name()));
                 blocked = true;
             }
             names.add(column.name());
             if (existing && base.columns().stream().noneMatch(item -> column.originalName().equals(item.name()))) {
-                warnings.add("Column no longer exists in the loaded structure: " + column.originalName());
+                warnings.add(StructureDiagnostic.of(StructureDiagnostic.COLUMN_NOT_IN_BASELINE, StringUtils.defaultString(column.originalName())));
                 blocked = true;
             }
         }
         if (names.isEmpty() && !base.columns().isEmpty()) {
-            warnings.add("Table must keep at least one column");
+            warnings.add(StructureDiagnostic.of(StructureDiagnostic.TABLE_NEEDS_COLUMN));
             blocked = true;
         }
         long distinctOriginals = next.columns().stream()
@@ -116,7 +118,7 @@ public final class MysqlTableStructureDialect {
                 .count();
         long originalCount = next.columns().stream().map(Column::originalName).filter(StringUtils::isNotBlank).count();
         if (distinctOriginals != originalCount) {
-            warnings.add("Two draft columns point at the same original column");
+            warnings.add(StructureDiagnostic.of(StructureDiagnostic.DUPLICATE_ORIGINAL_COLUMN));
             blocked = true;
         }
         for (Column loaded : base.columns()) {
@@ -128,12 +130,12 @@ public final class MysqlTableStructureDialect {
                     .findFirst()
                     .orElse(null);
             if (draft == null || !loaded.name().equals(draft.name()) || !sameStructure(loaded, draft)) {
-                warnings.add("Generated columns cannot change structure: " + loaded.name());
+                warnings.add(StructureDiagnostic.of(StructureDiagnostic.GENERATED_COLUMN_LOCKED, loaded.name()));
                 blocked = true;
                 continue;
             }
             if (StringUtils.isBlank(loaded.generationExpression()) && !blankEquals(loaded.comment(), draft.comment())) {
-                warnings.add("Generated column cannot be edited: " + loaded.name());
+                warnings.add(StructureDiagnostic.of(StructureDiagnostic.GENERATED_COLUMN_NOT_EDITABLE, loaded.name()));
                 blocked = true;
             }
         }
@@ -146,7 +148,7 @@ public final class MysqlTableStructureDialect {
                     .findFirst()
                     .orElse(null);
             if (draft == null || !sameIndex(index, draft)) {
-                warnings.add("Expression indexes cannot be edited: " + index.name());
+                warnings.add(StructureDiagnostic.of(StructureDiagnostic.EXPRESSION_INDEX_LOCKED, index.name()));
                 blocked = true;
             }
         }
@@ -158,14 +160,14 @@ public final class MysqlTableStructureDialect {
             if (loaded == null || loaded.columns() == null || loaded.columns().isEmpty()) {
                 continue;
             }
-            warnings.add("Index has no columns: " + StringUtils.defaultIfBlank(index.name(), index.originalName()));
+            warnings.add(StructureDiagnostic.of(StructureDiagnostic.INDEX_HAS_NO_COLUMNS, StringUtils.defaultIfBlank(index.name(), index.originalName())));
             blocked = true;
         }
         return blocked;
     }
 
     private static void diffColumns(TableStructure base, List<Column> named, Map<String, Column> draftByOriginal,
-                                    List<Change> changes, List<String> body, List<String> warnings) {
+                                    List<Change> changes, List<String> body, List<StructureDiagnostic> warnings) {
         for (Column column : base.columns()) {
             if (!draftByOriginal.containsKey(column.name())) {
                 changes.add(new Change("COLUMN", "DROP", column.name(), true, null));
@@ -220,21 +222,21 @@ public final class MysqlTableStructureDialect {
             }
             for (Index index : base.indexes()) {
                 if (index.columns().stream().anyMatch(column.name()::equals)) {
-                    warnings.add("Dropped column " + column.name() + " is still used by index " + index.name());
+                    warnings.add(StructureDiagnostic.of(StructureDiagnostic.DROPPED_COLUMN_STILL_INDEXED, column.name(), index.name()));
                 }
             }
         }
     }
 
     private static void diffPrimaryKey(TableStructure base, TableStructure next, List<Column> named,
-                                       List<Change> changes, List<String> body, List<String> warnings) {
+                                       List<Change> changes, List<String> body, List<StructureDiagnostic> warnings) {
         List<String> before = keyColumns(base.primaryKey());
         List<String> after = keyColumns(next.primaryKey());
         if (before.equals(after)) {
             return;
         }
         if (!after.isEmpty() && after.stream().anyMatch(name -> named.stream().noneMatch(column -> name.equals(column.name())))) {
-            warnings.add("Primary key references a missing column");
+            warnings.add(StructureDiagnostic.of(StructureDiagnostic.PRIMARY_KEY_MISSING_COLUMN));
             return;
         }
         if (before.isEmpty()) {
@@ -254,7 +256,7 @@ public final class MysqlTableStructureDialect {
     }
 
     private static void diffIndexes(TableStructure base, TableStructure next, List<Change> changes,
-                                    List<String> drop, List<String> add, List<String> warnings) {
+                                    List<String> drop, List<String> add, List<StructureDiagnostic> warnings) {
         Map<String, Index> draftByOriginal = originals(next.indexes());
         for (Index index : base.indexes()) {
             Index draft = draftByOriginal.get(index.name());
@@ -270,7 +272,7 @@ public final class MysqlTableStructureDialect {
                 Index loaded = StringUtils.isBlank(index.originalName()) ? null : findIndex(base, index.originalName());
                 boolean alreadyEmpty = loaded != null && (loaded.columns() == null || loaded.columns().isEmpty());
                 if (!alreadyEmpty && (StringUtils.isNotBlank(index.name()) || StringUtils.isNotBlank(index.originalName()))) {
-                    warnings.add("Index has no columns: " + StringUtils.defaultIfBlank(index.name(), index.originalName()));
+                    warnings.add(StructureDiagnostic.of(StructureDiagnostic.INDEX_HAS_NO_COLUMNS, StringUtils.defaultIfBlank(index.name(), index.originalName())));
                 }
                 continue;
             }
@@ -280,7 +282,7 @@ public final class MysqlTableStructureDialect {
             }
             String name = StringUtils.defaultIfBlank(index.name(), generatedName("idx", next.name(), index.columns().get(0)));
             if (!SIMPLE_NAME.matcher(name).matches() && StringUtils.isBlank(index.name())) {
-                warnings.add("Generated index name is not a plain identifier");
+                warnings.add(StructureDiagnostic.of(StructureDiagnostic.INDEX_NAME_NOT_PLAIN));
                 continue;
             }
             changes.add(new Change("INDEX", loaded == null ? "ADD" : "MODIFY", name, loaded != null,
@@ -290,7 +292,7 @@ public final class MysqlTableStructureDialect {
     }
 
     private static void diffForeignKeys(TableStructure base, TableStructure next, List<Change> changes,
-                                        List<String> drop, List<String> add, List<String> warnings) {
+                                        List<String> drop, List<String> add, List<StructureDiagnostic> warnings) {
         Map<String, ForeignKey> draftByOriginal = new LinkedHashMap<>();
         for (ForeignKey foreignKey : next.foreignKeys()) {
             if (StringUtils.isNotBlank(foreignKey.originalName())) {
@@ -310,7 +312,7 @@ public final class MysqlTableStructureDialect {
             if (foreignKey.columns().isEmpty() || StringUtils.isBlank(foreignKey.referencedTable())
                     || foreignKey.referencedColumns().isEmpty()) {
                 if (StringUtils.isNotBlank(foreignKey.name()) || StringUtils.isNotBlank(foreignKey.originalName())) {
-                    warnings.add("Foreign key is incomplete: " + StringUtils.defaultIfBlank(foreignKey.name(), foreignKey.originalName()));
+                    warnings.add(StructureDiagnostic.of(StructureDiagnostic.FOREIGN_KEY_INCOMPLETE, StringUtils.defaultIfBlank(foreignKey.name(), foreignKey.originalName())));
                 }
                 continue;
             }
@@ -332,7 +334,7 @@ public final class MysqlTableStructureDialect {
     }
 
     private static void diffChecks(TableStructure base, TableStructure next, List<Change> changes,
-                                   List<String> drop, List<String> add, List<String> warnings) {
+                                   List<String> drop, List<String> add, List<StructureDiagnostic> warnings) {
         Map<String, Check> draftByOriginal = new LinkedHashMap<>();
         for (Check check : next.checks()) {
             if (StringUtils.isNotBlank(check.originalName())) {
@@ -353,7 +355,7 @@ public final class MysqlTableStructureDialect {
                 continue;
             }
             if (check.expression().indexOf(';') >= 0) {
-                warnings.add("Check expression cannot contain a semicolon: " + check.name());
+                warnings.add(StructureDiagnostic.of(StructureDiagnostic.CHECK_HAS_SEMICOLON, check.name()));
                 continue;
             }
             Check loaded = StringUtils.isBlank(check.originalName()) ? null : base.checks().stream()
@@ -372,7 +374,7 @@ public final class MysqlTableStructureDialect {
     }
 
     private static void addTableOptions(List<String> statements, String table, TableStructure base, TableStructure next,
-                                        List<Change> changes, List<String> warnings) {
+                                        List<Change> changes, List<StructureDiagnostic> warnings) {
         List<String> clauses = new ArrayList<>();
         boolean engineChanged = !equalsIgnoreCase(base.engine(), next.engine());
         boolean charsetChanged = !equalsIgnoreCase(base.charset(), next.charset());
@@ -400,14 +402,14 @@ public final class MysqlTableStructureDialect {
     }
 
     private static void warnAutoIncrement(List<Column> columns, PrimaryKey primaryKey, List<Index> indexes,
-                                          List<String> warnings) {
+                                          List<StructureDiagnostic> warnings) {
         List<String> keyed = new ArrayList<>(keyColumns(primaryKey));
         for (Index index : indexes) {
             keyed.addAll(index.columns());
         }
         for (Column column : columns) {
             if (column.autoIncrement() && keyed.stream().noneMatch(name -> name.equalsIgnoreCase(column.name()))) {
-                warnings.add("AUTO_INCREMENT column must be indexed: " + column.name());
+                warnings.add(StructureDiagnostic.of(StructureDiagnostic.AUTO_INCREMENT_NEEDS_INDEX, column.name()));
             }
         }
     }
@@ -495,13 +497,7 @@ public final class MysqlTableStructureDialect {
         if (type.startsWith("bit")) {
             return NUMERIC_LITERAL.matcher(value).matches() || value.toLowerCase(Locale.ROOT).startsWith("b'");
         }
-        if (type.startsWith("tinyint") || type.startsWith("smallint") || type.startsWith("mediumint")
-                || type.startsWith("int") || type.startsWith("integer") || type.startsWith("bigint")
-                || type.startsWith("decimal") || type.startsWith("numeric") || type.startsWith("float")
-                || type.startsWith("double") || type.startsWith("real") || type.startsWith("year")) {
-            return NUMERIC_LITERAL.matcher(value).matches();
-        }
-        return false;
+        return StructureTypeRules.MYSQL.numericDefault(type) && NUMERIC_LITERAL.matcher(value).matches();
     }
 
     private static String position(String previous) {
@@ -662,13 +658,13 @@ public final class MysqlTableStructureDialect {
         return cleaned.length() > 64 ? cleaned.substring(0, 64) : cleaned;
     }
 
-    private static boolean acceptSimpleName(String value, String label, List<String> warnings) {
+    private static boolean acceptSimpleName(String value, String label, List<StructureDiagnostic> warnings) {
         if (StringUtils.isBlank(value)) {
-            warnings.add("Missing " + label);
+            warnings.add(StructureDiagnostic.of(StructureDiagnostic.OPTION_MISSING, label));
             return false;
         }
         if (!SIMPLE_NAME.matcher(value.trim()).matches()) {
-            warnings.add("Unsupported " + label + ": " + value);
+            warnings.add(StructureDiagnostic.of(StructureDiagnostic.OPTION_UNSUPPORTED, label, value));
             return false;
         }
         return true;
@@ -698,7 +694,7 @@ public final class MysqlTableStructureDialect {
         return StringUtils.defaultString(left).equals(StringUtils.defaultString(right));
     }
 
-    private static StructurePreview empty(List<String> warnings) {
+    private static StructurePreview empty(List<StructureDiagnostic> warnings) {
         return new StructurePreview(List.of(), List.of(), List.copyOf(warnings));
     }
 

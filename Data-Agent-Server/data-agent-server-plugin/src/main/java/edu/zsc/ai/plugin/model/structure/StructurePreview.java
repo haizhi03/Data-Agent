@@ -6,7 +6,7 @@ import java.util.List;
 public record StructurePreview(
         List<String> statements,
         List<Change> changes,
-        List<String> warnings
+        List<StructureDiagnostic> warnings
 ) {
     /**
      * @param objectType TABLE, COLUMN, PRIMARY_KEY, INDEX, FOREIGN_KEY, CHECK

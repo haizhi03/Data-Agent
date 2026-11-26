@@ -332,6 +332,11 @@ public abstract class DefaultMysqlPlugin extends AbstractDatabasePlugin
     }
 
     @Override
+    public edu.zsc.ai.plugin.model.structure.StructureTypeRules typeRules() {
+        return tableStructureManager.typeRules();
+    }
+
+    @Override
     public List<FunctionMetadata> getFunctions(Connection connection, String catalog, String schema) {
         return functionManager.getFunctions(connection, catalog, schema);
     }

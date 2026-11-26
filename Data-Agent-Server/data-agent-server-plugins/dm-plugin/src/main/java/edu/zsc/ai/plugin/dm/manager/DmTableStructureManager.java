@@ -6,6 +6,7 @@ import edu.zsc.ai.plugin.dm.structure.DmTableStructureLoader;
 import edu.zsc.ai.plugin.dm.support.DmMetadataSupport;
 import edu.zsc.ai.plugin.dm.support.DmObjectQuerySupport;
 import edu.zsc.ai.plugin.model.structure.StructurePreview;
+import edu.zsc.ai.plugin.model.structure.StructureTypeRules;
 import edu.zsc.ai.plugin.model.structure.TableStructure;
 
 import java.sql.Connection;
@@ -26,5 +27,10 @@ public final class DmTableStructureManager implements TableStructureManager {
     @Override
     public StructurePreview preview(String catalog, String schema, TableStructure baseline, TableStructure draft) {
         return DmTableStructureDialect.preview(catalog, schema, baseline, draft);
+    }
+
+    @Override
+    public StructureTypeRules typeRules() {
+        return StructureTypeRules.DM;
     }
 }

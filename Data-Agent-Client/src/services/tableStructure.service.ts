@@ -1,5 +1,6 @@
 import http from '../lib/http';
 import { ApiPaths } from '../constants/apiPaths';
+import type { StructureTypeRules } from '../lib/structureTypeRules';
 import type { ApplyTableStructureResponse, StructurePreview, TableStructure } from '../types/tableStructure';
 
 export interface TableStructureScope {
@@ -15,6 +16,14 @@ export interface TableStructureDraftBody extends TableStructureScope {
 }
 
 export const tableStructureService = {
+  rules: async ({ connectionId, catalog, schema }: Omit<TableStructureScope, 'tableName'>): Promise<StructureTypeRules> => {
+    const params: Record<string, string> = { connectionId: String(connectionId) };
+    if (catalog) params.catalog = catalog;
+    if (schema) params.schema = schema;
+    const response = await http.get<StructureTypeRules>(ApiPaths.TABLES_STRUCTURE_RULES, { params, timeout: 60000 });
+    return response.data;
+  },
+
   load: async ({ connectionId, catalog, schema, tableName }: TableStructureScope): Promise<TableStructure> => {
     const params: Record<string, string> = { connectionId: String(connectionId), tableName };
     if (catalog) params.catalog = catalog;

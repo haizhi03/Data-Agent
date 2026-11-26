@@ -72,10 +72,15 @@ export interface StructureChange {
   detail: string | null;
 }
 
+export interface StructureDiagnostic {
+  code: string;
+  args: string[];
+}
+
 export interface StructurePreview {
   statements: string[];
   changes: StructureChange[];
-  warnings: string[];
+  warnings: StructureDiagnostic[];
 }
 
 export interface ApplyTableStructureResponse {
@@ -83,6 +88,7 @@ export interface ApplyTableStructureResponse {
   statements: string[];
   changes: StructureChange[];
   failedIndex: number;
+  errorCode: string | null;
   errorMessage: string | null;
 }
 

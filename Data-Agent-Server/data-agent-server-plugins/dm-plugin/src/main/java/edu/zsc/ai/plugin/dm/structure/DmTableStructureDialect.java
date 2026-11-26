@@ -1,8 +1,9 @@
 package edu.zsc.ai.plugin.dm.structure;
 
 import edu.zsc.ai.plugin.dm.util.DmIdentifierEscaper;
-import edu.zsc.ai.plugin.dm.value.DmDataTypeEnum;
 import edu.zsc.ai.plugin.model.structure.StructureDefaultKind;
+import edu.zsc.ai.plugin.model.structure.StructureDiagnostic;
+import edu.zsc.ai.plugin.model.structure.StructureTypeRules;
 import edu.zsc.ai.plugin.model.structure.StructurePreview;
 import edu.zsc.ai.plugin.model.structure.StructurePreview.Change;
 import edu.zsc.ai.plugin.model.structure.TableStructure;
@@ -38,10 +39,10 @@ public final class DmTableStructureDialect {
     public static StructurePreview preview(String catalog, String schema, TableStructure baseline, TableStructure draft) {
         TableStructure base = normalize(baseline);
         TableStructure next = normalize(draft);
-        List<String> warnings = new ArrayList<>();
+        List<StructureDiagnostic> warnings = new ArrayList<>();
         String tableName = StringUtils.defaultIfBlank(base.name(), next.name());
         if (StringUtils.isBlank(tableName)) {
-            warnings.add("Table name is required");
+            warnings.add(StructureDiagnostic.of(StructureDiagnostic.TABLE_NAME_REQUIRED));
             return empty(warnings);
         }
         warnIgnoredTableOptions(base, next, warnings);
@@ -91,7 +92,7 @@ public final class DmTableStructureDialect {
 
     private static void diffColumns(String owner, String table, TableStructure base, List<Column> named,
                                     Map<String, Column> draftByOriginal, List<Change> changes,
-                                    List<String> statements, List<String> warnings) {
+                                    List<String> statements, List<StructureDiagnostic> warnings) {
         for (Column column : base.columns()) {
             if (!draftByOriginal.containsKey(column.name())) {
                 changes.add(new Change("COLUMN", "DROP", column.name(), true, null));
@@ -128,10 +129,10 @@ public final class DmTableStructureDialect {
             boolean commentChanged = !blankEquals(loaded.comment(), column.comment());
             boolean positionChanged = !Objects.equals(livePrevious, previous);
             if (positionChanged) {
-                warnings.add("DM cannot reorder columns: " + column.name());
+                warnings.add(StructureDiagnostic.of(StructureDiagnostic.DM_CANNOT_REORDER, column.name()));
             }
             if (loaded.autoIncrement() != column.autoIncrement()) {
-                warnings.add("DM cannot toggle IDENTITY on an existing column: " + column.name());
+                warnings.add(StructureDiagnostic.of(StructureDiagnostic.DM_CANNOT_TOGGLE_IDENTITY, column.name()));
             }
             if (renamed) {
                 changes.add(new Change("COLUMN", definitionChanged || commentChanged ? "MODIFY" : "RENAME",
@@ -155,14 +156,14 @@ public final class DmTableStructureDialect {
     }
 
     private static void diffPrimaryKey(String table, TableStructure base, TableStructure next, List<Column> named,
-                                       List<Change> changes, List<String> drops, List<String> adds, List<String> warnings) {
+                                       List<Change> changes, List<String> drops, List<String> adds, List<StructureDiagnostic> warnings) {
         List<String> before = keyColumns(base.primaryKey());
         List<String> after = keyColumns(next.primaryKey());
         if (before.equals(after)) {
             return;
         }
         if (!after.isEmpty() && after.stream().anyMatch(name -> named.stream().noneMatch(column -> name.equals(column.name())))) {
-            warnings.add("Primary key references a missing column");
+            warnings.add(StructureDiagnostic.of(StructureDiagnostic.PRIMARY_KEY_MISSING_COLUMN));
             return;
         }
         String constraint = StringUtils.firstNonBlank(
@@ -185,7 +186,7 @@ public final class DmTableStructureDialect {
 
     private static void diffIndexes(String owner, String table, TableStructure base, TableStructure next,
                                     List<Column> named, List<Change> changes, List<String> drops, List<String> adds,
-                                    List<String> warnings) {
+                                    List<StructureDiagnostic> warnings) {
         Map<String, Index> draftByOriginal = new LinkedHashMap<>();
         for (Index index : next.indexes()) {
             if (StringUtils.isNotBlank(index.originalName())) {
@@ -206,7 +207,7 @@ public final class DmTableStructureDialect {
                 Index loaded = StringUtils.isBlank(index.originalName()) ? null : findIndex(base, index.originalName());
                 boolean alreadyEmpty = loaded != null && (loaded.columns() == null || loaded.columns().isEmpty());
                 if (!alreadyEmpty && (StringUtils.isNotBlank(index.name()) || StringUtils.isNotBlank(index.originalName()))) {
-                    warnings.add("Index has no columns: " + StringUtils.defaultIfBlank(index.name(), index.originalName()));
+                    warnings.add(StructureDiagnostic.of(StructureDiagnostic.INDEX_HAS_NO_COLUMNS, StringUtils.defaultIfBlank(index.name(), index.originalName())));
                 }
                 continue;
             }
@@ -214,16 +215,16 @@ public final class DmTableStructureDialect {
             boolean prefixed = index.prefixLengths() != null && index.prefixLengths().stream().anyMatch(prefix -> prefix != null && prefix > 0);
             if (loaded != null && sameIndex(loaded, index)) {
                 if (prefixed) {
-                    warnings.add("DM indexes do not keep a MySQL-style prefix length: " + index.name());
+                    warnings.add(StructureDiagnostic.of(StructureDiagnostic.DM_INDEX_PREFIX, index.name()));
                 }
                 continue;
             }
             if (prefixed) {
-                warnings.add("DM indexes do not keep a MySQL-style prefix length: " + StringUtils.defaultIfBlank(index.name(), index.originalName()));
+                warnings.add(StructureDiagnostic.of(StructureDiagnostic.DM_INDEX_PREFIX, StringUtils.defaultIfBlank(index.name(), index.originalName())));
                 continue;
             }
             if (index.columns().stream().anyMatch(column -> named.stream().noneMatch(item -> column.equals(item.name())))) {
-                warnings.add("Index references a missing column: " + StringUtils.defaultIfBlank(index.name(), index.originalName()));
+                warnings.add(StructureDiagnostic.of(StructureDiagnostic.INDEX_MISSING_COLUMN, StringUtils.defaultIfBlank(index.name(), index.originalName())));
                 continue;
             }
             String name = StringUtils.defaultIfBlank(index.name(), generatedName("IDX", next.name(), index.columns().get(0)));
@@ -235,7 +236,7 @@ public final class DmTableStructureDialect {
     }
 
     private static void diffForeignKeys(String owner, String table, TableStructure base, TableStructure next,
-                                        List<Change> changes, List<String> drops, List<String> adds, List<String> warnings) {
+                                        List<Change> changes, List<String> drops, List<String> adds, List<StructureDiagnostic> warnings) {
         Map<String, ForeignKey> draftByOriginal = new LinkedHashMap<>();
         for (ForeignKey foreignKey : next.foreignKeys()) {
             if (StringUtils.isNotBlank(foreignKey.originalName())) {
@@ -255,7 +256,7 @@ public final class DmTableStructureDialect {
             if (foreignKey.columns().isEmpty() || StringUtils.isBlank(foreignKey.referencedTable())
                     || foreignKey.referencedColumns().isEmpty()) {
                 if (StringUtils.isNotBlank(foreignKey.name()) || StringUtils.isNotBlank(foreignKey.originalName())) {
-                    warnings.add("Foreign key is incomplete: " + StringUtils.defaultIfBlank(foreignKey.name(), foreignKey.originalName()));
+                    warnings.add(StructureDiagnostic.of(StructureDiagnostic.FOREIGN_KEY_INCOMPLETE, StringUtils.defaultIfBlank(foreignKey.name(), foreignKey.originalName())));
                 }
                 continue;
             }
@@ -278,7 +279,7 @@ public final class DmTableStructureDialect {
     }
 
     private static void diffChecks(String table, TableStructure base, TableStructure next,
-                                   List<Change> changes, List<String> drops, List<String> adds, List<String> warnings) {
+                                   List<Change> changes, List<String> drops, List<String> adds, List<StructureDiagnostic> warnings) {
         Map<String, Check> draftByOriginal = new LinkedHashMap<>();
         for (Check check : next.checks()) {
             if (StringUtils.isNotBlank(check.originalName())) {
@@ -299,7 +300,7 @@ public final class DmTableStructureDialect {
                 continue;
             }
             if (check.expression().indexOf(';') >= 0) {
-                warnings.add("Check expression cannot contain a semicolon: " + check.name());
+                warnings.add(StructureDiagnostic.of(StructureDiagnostic.CHECK_HAS_SEMICOLON, check.name()));
                 continue;
             }
             Check loaded = StringUtils.isBlank(check.originalName()) ? null
@@ -327,15 +328,15 @@ public final class DmTableStructureDialect {
                 + ESCAPER.escapeStringLiteral(StringUtils.defaultString(next.comment())) + "'");
     }
 
-    private static void warnIgnoredTableOptions(TableStructure base, TableStructure next, List<String> warnings) {
+    private static void warnIgnoredTableOptions(TableStructure base, TableStructure next, List<StructureDiagnostic> warnings) {
         if (!equalsIgnoreCase(base.engine(), next.engine())
                 || !equalsIgnoreCase(base.charset(), next.charset())
                 || !equalsIgnoreCase(base.collation(), next.collation())) {
-            warnings.add("DM does not apply storage engine, character set, or collation");
+            warnings.add(StructureDiagnostic.of(StructureDiagnostic.DM_IGNORES_TABLE_OPTIONS));
         }
     }
 
-    private static String columnDefinition(Column column, List<String> warnings) {
+    private static String columnDefinition(Column column, List<StructureDiagnostic> warnings) {
         StringBuilder sql = new StringBuilder();
         sql.append(quote(column.name())).append(' ');
         sql.append(StringUtils.defaultIfBlank(column.columnType(), StringUtils.defaultIfBlank(column.typeName(), "VARCHAR(255)")));
@@ -347,7 +348,7 @@ public final class DmTableStructureDialect {
         return sql.toString();
     }
 
-    private static String defaultClause(Column column, List<String> warnings) {
+    private static String defaultClause(Column column, List<StructureDiagnostic> warnings) {
         String kind = StringUtils.defaultIfBlank(column.defaultKind(), StructureDefaultKind.NONE).trim().toUpperCase(Locale.ROOT);
         return switch (kind) {
             case StructureDefaultKind.NULL -> " DEFAULT NULL";
@@ -373,20 +374,12 @@ public final class DmTableStructureDialect {
             return false;
         }
         String type = StringUtils.defaultIfBlank(column.typeName(), column.columnType());
-        DmDataTypeEnum parsed = DmDataTypeEnum.fromTypeName(type);
-        if (parsed == null) {
-            return false;
-        }
-        return switch (parsed) {
-            case NUMBER, NUMERIC, DECIMAL, DEC, INTEGER, INT, BIGINT, TINYINT, SMALLINT,
-                    FLOAT, DOUBLE, DOUBLE_PRECISION, REAL -> true;
-            default -> false;
-        };
+        return StructureTypeRules.DM.numericDefault(type);
     }
 
-    private static String expressionDefault(String expression, List<String> warnings) {
+    private static String expressionDefault(String expression, List<StructureDiagnostic> warnings) {
         if (StringUtils.isBlank(expression) || expression.indexOf(';') >= 0) {
-            warnings.add("Default expression was skipped");
+            warnings.add(StructureDiagnostic.of(StructureDiagnostic.DEFAULT_EXPRESSION_SKIPPED));
             return "";
         }
         return " DEFAULT " + expression.trim();
@@ -460,26 +453,26 @@ public final class DmTableStructureDialect {
         return StringUtils.defaultIfBlank(kind, StructureDefaultKind.NONE).trim().toUpperCase(Locale.ROOT);
     }
 
-    private static boolean hasBlockers(TableStructure base, TableStructure next, List<String> warnings) {
+    private static boolean hasBlockers(TableStructure base, TableStructure next, List<StructureDiagnostic> warnings) {
         boolean blocked = false;
         List<String> names = new ArrayList<>();
         for (Column column : next.columns()) {
             boolean existing = StringUtils.isNotBlank(column.originalName());
             if (StringUtils.isBlank(column.name())) {
                 if (existing) {
-                    warnings.add("Column name cannot be empty: " + column.originalName());
+                    warnings.add(StructureDiagnostic.of(StructureDiagnostic.COLUMN_NAME_EMPTY, StringUtils.defaultString(column.originalName())));
                     blocked = true;
                 }
                 continue;
             }
             if (names.stream().anyMatch(name -> name.equalsIgnoreCase(column.name()))) {
-                warnings.add("Duplicate column name: " + column.name());
+                warnings.add(StructureDiagnostic.of(StructureDiagnostic.DUPLICATE_COLUMN_NAME, column.name()));
                 blocked = true;
             }
             names.add(column.name());
         }
         if (names.isEmpty() && !base.columns().isEmpty()) {
-            warnings.add("Table must keep at least one column");
+            warnings.add(StructureDiagnostic.of(StructureDiagnostic.TABLE_NEEDS_COLUMN));
             blocked = true;
         }
         for (Index index : next.indexes()) {
@@ -490,7 +483,7 @@ public final class DmTableStructureDialect {
             if (loaded == null || loaded.columns() == null || loaded.columns().isEmpty()) {
                 continue;
             }
-            warnings.add("Index has no columns: " + StringUtils.defaultIfBlank(index.name(), index.originalName()));
+            warnings.add(StructureDiagnostic.of(StructureDiagnostic.INDEX_HAS_NO_COLUMNS, StringUtils.defaultIfBlank(index.name(), index.originalName())));
             blocked = true;
         }
         return blocked;
@@ -544,7 +537,7 @@ public final class DmTableStructureDialect {
         return StringUtils.defaultString(left).equals(StringUtils.defaultString(right));
     }
 
-    private static StructurePreview empty(List<String> warnings) {
+    private static StructurePreview empty(List<StructureDiagnostic> warnings) {
         return new StructurePreview(List.of(), List.of(), List.copyOf(warnings));
     }
 

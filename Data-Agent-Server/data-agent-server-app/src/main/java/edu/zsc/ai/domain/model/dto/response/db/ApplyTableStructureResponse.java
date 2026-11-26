@@ -14,6 +14,7 @@ public record ApplyTableStructureResponse(
         List<String> statements,
         List<StructurePreview.Change> changes,
         int failedIndex,
+        String errorCode,
         String errorMessage
 ) {
 }

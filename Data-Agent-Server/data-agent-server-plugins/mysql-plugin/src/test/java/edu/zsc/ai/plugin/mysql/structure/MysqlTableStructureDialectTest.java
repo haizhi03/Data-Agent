@@ -1,6 +1,7 @@
 package edu.zsc.ai.plugin.mysql.structure;
 
 import edu.zsc.ai.plugin.model.structure.StructureDefaultKind;
+import edu.zsc.ai.plugin.model.structure.StructureDiagnostic;
 import edu.zsc.ai.plugin.model.structure.StructurePreview;
 import edu.zsc.ai.plugin.model.structure.TableStructure;
 import edu.zsc.ai.plugin.model.structure.TableStructure.Check;
@@ -125,7 +126,7 @@ class MysqlTableStructureDialectTest {
         StructurePreview preview = MysqlTableStructureDialect.preview("crm", null, baseline, draft);
 
         assertTrue(preview.statements().isEmpty());
-        assertTrue(preview.warnings().stream().anyMatch(warning -> warning.contains("cannot be empty")));
+        assertTrue(hasCode(preview, StructureDiagnostic.COLUMN_NAME_EMPTY));
     }
 
     @Test
@@ -232,7 +233,7 @@ class MysqlTableStructureDialectTest {
         StructurePreview preview = MysqlTableStructureDialect.preview("crm", null, baseline, draft);
 
         assertTrue(preview.statements().isEmpty());
-        assertTrue(preview.warnings().stream().anyMatch(warning -> warning.contains("cannot change structure")));
+        assertTrue(hasCode(preview, StructureDiagnostic.GENERATED_COLUMN_LOCKED));
     }
 
     @Test
@@ -250,7 +251,7 @@ class MysqlTableStructureDialectTest {
         StructurePreview preview = MysqlTableStructureDialect.preview("crm", null, baseline, draft);
 
         assertTrue(preview.statements().isEmpty());
-        assertTrue(preview.warnings().stream().anyMatch(warning -> warning.contains("Expression indexes")));
+        assertTrue(hasCode(preview, StructureDiagnostic.EXPRESSION_INDEX_LOCKED));
     }
 
     @Test
@@ -267,7 +268,7 @@ class MysqlTableStructureDialectTest {
 
         assertTrue(preview.statements().isEmpty());
         assertTrue(preview.changes().isEmpty());
-        assertTrue(preview.warnings().stream().anyMatch(warning -> warning.contains("Index has no columns: uk_name")));
+        assertTrue(hasCode(preview, StructureDiagnostic.INDEX_HAS_NO_COLUMNS));
     }
 
     @Test
@@ -403,5 +404,9 @@ class MysqlTableStructureDialectTest {
     private static Column generated(String columnType, String expression, boolean stored, String comment) {
         return new Column("name", "name", "varchar", columnType, null, null, true, false, false,
                 StructureDefaultKind.NONE, null, null, comment, null, null, expression, stored);
+    }
+
+    private static boolean hasCode(StructurePreview preview, String code) {
+        return preview.warnings().stream().anyMatch(warning -> code.equals(warning.code()));
     }
 }
