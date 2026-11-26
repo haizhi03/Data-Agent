@@ -12,6 +12,7 @@ import path from 'node:path';
 import url from 'node:url';
 import os from 'node:os';
 import fs from 'node:fs';
+import { DatabaseSync } from 'node:sqlite';
 import { startFixtureServer, textResponse, toolCallResponse } from './fixture-openai-server.js';
 
 const WORKER = path.join(path.dirname(url.fileURLToPath(import.meta.url)), '..', 'src', 'worker.js');
@@ -425,17 +426,42 @@ test('M9 sqlite: the credential gate is bounded; a run nobody re-attaches fails 
 // Security: credentials never touch disk (journal or sqlite).
 // ---------------------------------------------------------------------------
 test('security: the apiKey never lands in durable files', async (t) => {
-  const server = await startFixtureServer(toolThenText());
+  const server = await startFixtureServer(toolThenText('inventory-answer-marker'));
   t.after(() => server.close());
   const env = sqliteEnv(t);
   const worker = startWorker(env);
   await waitHello(worker);
-  worker.send(startMessage({ baseUrl: server.baseUrl }));
+  worker.send(startMessage({ baseUrl: server.baseUrl, systemPrompt: 'inventory-system-marker', message: 'inventory-user-marker' }));
   await worker.waitFor((m) => m.type === 'tool_call');
   worker.send({ type: 'tool_result', runId: 'run-1', toolCallId: 'call_1', isError: false, result: '{"tables":["orders"]}' });
   assert.equal((await worker.waitFor((m) => m.type === 'finished')).status, 'SUCCEEDED');
   worker.process.stdin.end();
   await worker.exited;
+
+  const database = new DatabaseSync(env.DURABLE_SQLITE_PATH, { readOnly: true });
+  const inventory = {};
+  const rows = [];
+  try {
+    const tables = database.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all();
+    for (const { name } of tables) {
+      const records = database.prepare(`SELECT * FROM "${name.replaceAll('"', '""')}"`).all();
+      inventory[name] = records.length;
+      rows.push(...records);
+    }
+  } finally {
+    database.close();
+  }
+  const stored = JSON.stringify(rows);
+  const markers = ['inventory-system-marker', 'inventory-user-marker', 'inventory-answer-marker', 'orders'];
+  for (const marker of markers) assert.ok(stored.includes(marker), `stored content includes ${marker}`);
+  assert.ok(!stored.includes('fixture-key'));
+  const output = path.resolve('target/storage-inventory.json');
+  fs.mkdirSync(path.dirname(output), { recursive: true });
+  fs.writeFileSync(output, JSON.stringify({
+    verifiedAt: new Date().toISOString(), storage: 'node:sqlite', tables: inventory,
+    persisted: { systemPrompt: true, userMessage: true, modelOutput: true, toolResult: true },
+    apiKeyFound: false, perSessionDeletion: 'not implemented',
+  }, null, 2));
 
   const journalText = fs.readFileSync(`${env.DURABLE_SQLITE_PATH}.journal.jsonl`, 'utf8');
   assert.ok(!journalText.includes('fixture-key'), 'journal must not contain the apiKey');
@@ -535,4 +561,16 @@ test('baseline: busy session rejects a second run like v1', async (t) => {
   worker.send({ type: 'cancel', runId: 'run-1' });
   assert.equal((await worker.waitFor((m) => m.type === 'finished' && m.runId === 'run-1')).status, 'CANCELLED');
   assert.equal(server.calls.length, 1, 'rejected run must not call the model');
+});
+
+// Startup must fail visibly instead of silently recreating a damaged store.
+test('corrupt sqlite storage fails without replacing its contents', async (t) => {
+  const env = sqliteEnv(t);
+  const original = Buffer.from('intentionally invalid SQLite file');
+  fs.writeFileSync(env.DURABLE_SQLITE_PATH, original);
+  const worker = startWorker(env);
+  assert.equal(await worker.exited, 1);
+  assert.equal(worker.messages.some(message => message.type === 'hello'), false);
+  assert.match(worker.stderr, /boot failed/);
+  assert.deepEqual(fs.readFileSync(env.DURABLE_SQLITE_PATH), original);
 });

@@ -1,0 +1,464 @@
+{
+  "verifiedAt": "2026-11-26T06:25:58.713265Z",
+  "scope": "macOS arm64; existing MySQL sys_demo; configured Qwen models",
+  "frameworkDecision": "continue-core-1.5.0",
+  "stageA": "pending DM8, complete controlled comparison and final business-meaning live acceptance",
+  "liveCases": [
+    {
+      "scenario": "discovery-and-count",
+      "validated": true,
+      "status": "SUCCEEDED",
+      "elapsedMs": 20001,
+      "engine": "pi",
+      "model": "qwen3.8-max",
+      "statistics": {
+        "modelCalls": 3,
+        "toolCalls": 3,
+        "inputTokens": 4792,
+        "outputTokens": 778,
+        "usageComplete": true
+      },
+      "querySql": [
+        "SELECT COUNT(*) AS total_users FROM sys_demo.sys_user"
+      ],
+      "queryResults": [
+        {
+          "executionId": "480ad5b2-1d20-4398-bd39-ff26ad332ca1",
+          "success": true,
+          "statementState": "EXECUTED",
+          "transactionOutcome": "NONE",
+          "truncated": false,
+          "returnedRows": 1
+        }
+      ]
+    },
+    {
+      "scenario": "follow-up-count",
+      "validated": true,
+      "status": "SUCCEEDED",
+      "elapsedMs": 8941,
+      "engine": "pi",
+      "model": "qwen3.8-max",
+      "statistics": {
+        "modelCalls": 2,
+        "toolCalls": 1,
+        "inputTokens": 2434,
+        "outputTokens": 325,
+        "usageComplete": true
+      },
+      "querySql": [
+        "SELECT COUNT(*) AS disabled_users FROM sys_demo.sys_user WHERE status = 0"
+      ],
+      "queryResults": [
+        {
+          "executionId": "a7e6bc4f-e712-46e9-90c1-17426bfb371b",
+          "success": true,
+          "statementState": "EXECUTED",
+          "transactionOutcome": "NONE",
+          "truncated": false,
+          "returnedRows": 1
+        }
+      ]
+    },
+    {
+      "scenario": "driver-row-limit",
+      "validated": true,
+      "status": "SUCCEEDED",
+      "elapsedMs": 10541,
+      "engine": "pi",
+      "model": "qwen3.8-max",
+      "statistics": {
+        "modelCalls": 2,
+        "toolCalls": 1,
+        "inputTokens": 6992,
+        "outputTokens": 334,
+        "usageComplete": true
+      },
+      "querySql": [
+        "SELECT u.id AS user_id, rp.role_id, rp.permission_id FROM sys_demo.sys_user u CROSS JOIN sys_demo.sys_role_permission rp ORDER BY u.id,rp.role_id,rp.permission_id"
+      ],
+      "queryResults": [
+        {
+          "executionId": "d9a63abf-9e05-4452-afc4-5ce5c518323b",
+          "success": true,
+          "statementState": "EXECUTED",
+          "transactionOutcome": "NONE",
+          "truncated": true,
+          "returnedRows": 200
+        }
+      ]
+    },
+    {
+      "scenario": "missing-table",
+      "validated": true,
+      "status": "SUCCEEDED",
+      "elapsedMs": 12815,
+      "engine": "pi",
+      "model": "qwen3.8-max",
+      "statistics": {
+        "modelCalls": 2,
+        "toolCalls": 1,
+        "inputTokens": 1520,
+        "outputTokens": 474,
+        "usageComplete": true
+      },
+      "querySql": [
+        "SELECT COUNT(*) FROM sys_demo.pi_live_missing_b411f10b89c74a7d8f041a51c2bcd47a"
+      ],
+      "queryResults": [
+        {
+          "executionId": "a44b0a6d-3e1c-4e78-b5bb-2526689e8016",
+          "success": false,
+          "statementState": "FAILED",
+          "transactionOutcome": "NONE",
+          "truncated": false,
+          "returnedRows": 0
+        }
+      ]
+    },
+    {
+      "scenario": "real-model-stream-cancel",
+      "validated": true,
+      "status": "CANCELLED",
+      "elapsedMs": 21583
+    },
+    {
+      "scenario": "empty-result",
+      "validated": true,
+      "status": "SUCCEEDED",
+      "elapsedMs": 9135,
+      "engine": "pi",
+      "model": "qwen3.8-max",
+      "statistics": {
+        "modelCalls": 2,
+        "toolCalls": 1,
+        "inputTokens": 1400,
+        "outputTokens": 288,
+        "usageComplete": true
+      },
+      "querySql": [
+        "SELECT id FROM sys_demo.sys_user WHERE 1=0"
+      ],
+      "queryResults": [
+        {
+          "executionId": "bfb7d8a4-952f-4a9c-97d9-08d223578445",
+          "success": true,
+          "statementState": "EXECUTED",
+          "transactionOutcome": "NONE",
+          "truncated": false,
+          "returnedRows": 0
+        }
+      ],
+      "observedToolCalls": 1
+    },
+    {
+      "scenario": "comparison-java-1",
+      "validated": true,
+      "status": "SUCCEEDED",
+      "elapsedMs": 2883,
+      "engine": "java",
+      "model": "qwen3.8-max",
+      "statistics": {
+        "outputTokens": 73,
+        "inputTokens": 3156,
+        "usageReports": 2,
+        "modelCalls": 2,
+        "toolCalls": 0,
+        "usageComplete": true
+      },
+      "querySql": [
+        "SELECT COUNT(*) FROM sys_demo.sys_user"
+      ],
+      "queryResults": [
+        {
+          "executionId": null,
+          "success": true,
+          "statementState": "EXECUTED",
+          "transactionOutcome": "NONE",
+          "truncated": null,
+          "returnedRows": 1
+        }
+      ],
+      "observedToolCalls": 1,
+      "arm": "java",
+      "repetition": 1,
+      "expectedUsers": 12,
+      "identityEvidence": "request target; Java result omits executionId and target",
+      "comparisonScope": "smoke; engine toolsets and Explorer model binding differ"
+    },
+    {
+      "scenario": "comparison-pi-direct-1",
+      "validated": true,
+      "status": "SUCCEEDED",
+      "elapsedMs": 8149,
+      "engine": "pi",
+      "model": "qwen3.8-max",
+      "statistics": {
+        "modelCalls": 2,
+        "toolCalls": 1,
+        "inputTokens": 1405,
+        "outputTokens": 255,
+        "usageComplete": true
+      },
+      "querySql": [
+        "SELECT COUNT(*) AS total_rows FROM sys_demo.sys_user"
+      ],
+      "queryResults": [
+        {
+          "executionId": "e0d94f6d-cab3-4db3-8292-9a67fee19d23",
+          "success": true,
+          "statementState": "EXECUTED",
+          "transactionOutcome": "NONE",
+          "truncated": false,
+          "returnedRows": 1
+        }
+      ],
+      "observedToolCalls": 1,
+      "arm": "pi-direct",
+      "repetition": 1,
+      "expectedUsers": 12,
+      "comparisonScope": "smoke; engine toolsets and Explorer model binding differ"
+    },
+    {
+      "scenario": "comparison-pi-explorer-1",
+      "validated": true,
+      "status": "SUCCEEDED",
+      "elapsedMs": 12972,
+      "engine": "pi",
+      "model": "qwen3.8-max",
+      "statistics": {
+        "modelCalls": 4,
+        "toolCalls": 2,
+        "inputTokens": 5118,
+        "outputTokens": 552,
+        "usageComplete": true
+      },
+      "querySql": [
+        "SELECT COUNT(*) FROM sys_demo.sys_user"
+      ],
+      "queryResults": [
+        {
+          "executionId": "5ff59c7a-e690-4351-9983-ba70c8e1f35a",
+          "success": true,
+          "statementState": "EXECUTED",
+          "transactionOutcome": "NONE",
+          "truncated": false,
+          "returnedRows": 1
+        }
+      ],
+      "observedToolCalls": 2,
+      "arm": "pi-explorer",
+      "repetition": 1,
+      "expectedUsers": 12,
+      "comparisonScope": "smoke; engine toolsets and Explorer model binding differ"
+    },
+    {
+      "scenario": "comparison-java-2",
+      "validated": true,
+      "status": "SUCCEEDED",
+      "elapsedMs": 3310,
+      "engine": "java",
+      "model": "qwen3.8-max",
+      "statistics": {
+        "outputTokens": 73,
+        "inputTokens": 3156,
+        "usageReports": 2,
+        "modelCalls": 2,
+        "toolCalls": 0,
+        "usageComplete": true
+      },
+      "querySql": [
+        "SELECT COUNT(*) FROM sys_demo.sys_user"
+      ],
+      "queryResults": [
+        {
+          "executionId": null,
+          "success": true,
+          "statementState": "EXECUTED",
+          "transactionOutcome": "NONE",
+          "truncated": null,
+          "returnedRows": 1
+        }
+      ],
+      "observedToolCalls": 1,
+      "arm": "java",
+      "repetition": 2,
+      "expectedUsers": 12,
+      "identityEvidence": "request target; Java result omits executionId and target",
+      "comparisonScope": "smoke; engine toolsets and Explorer model binding differ"
+    },
+    {
+      "scenario": "comparison-pi-direct-2",
+      "validated": true,
+      "status": "SUCCEEDED",
+      "elapsedMs": 9680,
+      "engine": "pi",
+      "model": "qwen3.8-max",
+      "statistics": {
+        "modelCalls": 2,
+        "toolCalls": 1,
+        "inputTokens": 1420,
+        "outputTokens": 273,
+        "usageComplete": true
+      },
+      "querySql": [
+        "SELECT COUNT(*) AS total_rows FROM sys_demo.sys_user"
+      ],
+      "queryResults": [
+        {
+          "executionId": "ff3824e9-e28e-4a3e-a319-b04b5e5fdbbe",
+          "success": true,
+          "statementState": "EXECUTED",
+          "transactionOutcome": "NONE",
+          "truncated": false,
+          "returnedRows": 1
+        }
+      ],
+      "observedToolCalls": 1,
+      "arm": "pi-direct",
+      "repetition": 2,
+      "expectedUsers": 12,
+      "comparisonScope": "smoke; engine toolsets and Explorer model binding differ"
+    },
+    {
+      "scenario": "comparison-pi-explorer-2",
+      "validated": true,
+      "status": "SUCCEEDED",
+      "elapsedMs": 31281,
+      "engine": "pi",
+      "model": "qwen3.8-max",
+      "statistics": {
+        "modelCalls": 3,
+        "toolCalls": 2,
+        "inputTokens": 2335,
+        "outputTokens": 1008,
+        "usageComplete": false
+      },
+      "querySql": [
+        "SELECT COUNT(*) FROM sys_demo.sys_user",
+        "SELECT COUNT(*) AS total_rows FROM sys_demo.sys_user"
+      ],
+      "queryResults": [
+        {
+          "executionId": "4573eeb2-6c95-4065-80d9-911618d11b7f",
+          "success": true,
+          "statementState": "EXECUTED",
+          "transactionOutcome": "NONE",
+          "truncated": false,
+          "returnedRows": 1
+        }
+      ],
+      "observedToolCalls": 3,
+      "arm": "pi-explorer",
+      "repetition": 2,
+      "expectedUsers": 12,
+      "comparisonScope": "smoke; engine toolsets and Explorer model binding differ"
+    }
+  ],
+  "liveCaseCount": 12,
+  "configurationUnchangedAcrossLiveRuns": true,
+  "durableStorageInventory": {
+    "verifiedAt": "2026-11-26T07:46:46.419Z",
+    "storage": "node:sqlite",
+    "tables": {
+      "conversations": 1,
+      "document_revisions": 6,
+      "documents": 5,
+      "durable_metadata": 1,
+      "durable_schema": 1,
+      "entries": 5,
+      "record_ids": 15,
+      "submissions": 1,
+      "tasks": 3
+    },
+    "persisted": {
+      "systemPrompt": true,
+      "userMessage": true,
+      "modelOutput": true,
+      "toolResult": true
+    },
+    "apiKeyFound": false,
+    "perSessionDeletion": "not implemented"
+  },
+  "limitations": [
+    "No configured DM8 connection",
+    "Two repetitions per comparison arm",
+    "Explorer uses its existing model binding; full engine toolsets/budgets differ",
+    "One Explorer repetition has usageComplete=false",
+    "No configured token prices or billable cost acceptance",
+    "Final business-meaning clarification acceptance interrupted twice by PI_MODEL_ERROR"
+  ],
+  "liveFailures": [
+    {
+      "scenario": "ambiguous-business-meaning",
+      "attempts": 2,
+      "status": "FAILED",
+      "errorCode": "PI_MODEL_ERROR",
+      "acceptance": "pending; partial clarification is insufficient"
+    }
+  ],
+  "contractValidation": {
+    "verifiedAt": "2026-11-26T07:46:25.159569+00:00",
+    "commit": "8965f33be4041f4a01af8a23c4204f849eaaf270",
+    "corpusSha256": "30c1bb2c2ff797a1684fa08b02cca4b6a50030ff97148d33a200760ae1e031f8",
+    "sourceSha256": {
+      "Data-Agent-Client/src/components/ai/LocalAssistant.context.test.tsx": "aff8c1ea191c16ca8e1ac148e00b64816723b33a1a3833642ef0b5de0f13e4f5",
+      "Data-Agent-Client/src/components/ai/LocalAssistant.tsx": "119d86b9be8b3213c6d7f3285a49801cd428740f1335127463d7cb07e7cc60e1",
+      "Data-Agent-Pi-Worker/durable-prototype/package-lock.json": "0ce4ba11bf90a3cd33899165fa31f0a99b5c2ae5c0530d92edef729b4cbd249e",
+      "Data-Agent-Pi-Worker/durable-prototype/src/journal.js": "a07194492541883a27cf1aab41f0a2d949f113fb2efa52d3d181ffdad105dfec",
+      "Data-Agent-Pi-Worker/durable-prototype/src/models.js": "e5839a98796693a5fafb05d528b74249d7fedd1017208c4afe967a39336b9ccb",
+      "Data-Agent-Pi-Worker/durable-prototype/src/protocol.js": "7f6becf151ca93da2a650f9539d0068bec863e4e4fba4575d939ef609be659ff",
+      "Data-Agent-Pi-Worker/durable-prototype/src/tools.js": "a30f881b26efa2f2978c926b42ded73b34e3cc7b97c9e80e32865333c79f9f61",
+      "Data-Agent-Pi-Worker/durable-prototype/src/worker.js": "05f4081df16e2c7025aefef878dfa71b8b975513e42fc2df9720459bcbf4b244",
+      "Data-Agent-Pi-Worker/package-lock.json": "7920d8b13d4999cd0ff792bc2d6b2be24ddc9b65c19dfce5bc30ca80a01e34ec",
+      "Data-Agent-Pi-Worker/src/model.js": "5abd81e5b3853750cfc6e9cf887995f7063d1dd9dda395768c2ed8b037fce303",
+      "Data-Agent-Pi-Worker/src/protocol.js": "2e8e7d63548e222df0c70bd136fba6a43009c645f2d8a9f0d33a914afe0a8b3f",
+      "Data-Agent-Pi-Worker/src/session.js": "62cd109249f991e4d8e8665613412ada0b0b4cc9133f790be0ebf2fc0280221d",
+      "Data-Agent-Pi-Worker/src/worker.js": "7c29630571e88186fc138d8c16134421c6d552763087bb4d8a2b1e46e70d3d97",
+      "Data-Agent-Server/data-agent-server-app/src/main/java/edu/zsc/ai/local/LocalPiChatService.java": "0ce631936c2e0e218abf3d641d594cbbd2b97552888c80796c945e5b82e56eea",
+      "Data-Agent-Server/data-agent-server-app/src/main/resources/prompt/pi-main-agent_zh.md": "11d0b9a051b75c117ab44e48efe97499a182650e2de7aadb3e550b9ed9df6a9c",
+      "Data-Agent-Server/data-agent-server-app/src/test/java/edu/zsc/ai/local/LocalPiMySqlLiveTest.java": "437b50a82b20047f28833fbddde712f27d86f295da25a82733faafa53acce57c"
+    },
+    "suites": [
+      {
+        "name": "core",
+        "exitCode": 0,
+        "elapsedSeconds": 5.642,
+        "tests": 25,
+        "passed": 25,
+        "skipped": 0,
+        "status": "PASS"
+      },
+      {
+        "name": "durable",
+        "exitCode": 0,
+        "elapsedSeconds": 14.668,
+        "tests": 16,
+        "passed": 16,
+        "skipped": 0,
+        "status": "PASS"
+      },
+      {
+        "name": "java-local",
+        "exitCode": 0,
+        "elapsedSeconds": 28.829,
+        "tests": 259,
+        "passed": 245,
+        "skipped": 14,
+        "status": "PASS"
+      },
+      {
+        "name": "frontend",
+        "exitCode": 0,
+        "elapsedSeconds": 1.91,
+        "tests": 51,
+        "passed": 51,
+        "skipped": 0,
+        "status": "PASS"
+      }
+    ],
+    "contractStatus": "PASS",
+    "tasksPassed": 16
+  },
+  "frontendProductionBuild": "PASS; existing browserslist and chunk-size warnings"
+}

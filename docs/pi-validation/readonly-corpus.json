@@ -1,0 +1,203 @@
+{
+  "formatVersion": 1,
+  "frozenAt": "2026-11-26",
+  "scope": "deterministic host contracts; real model/database evidence is scored separately",
+  "thresholds": {
+    "criticalContractPassRate": 1.0,
+    "missingOrSkippedCase": "FAIL",
+    "uniqueTerminalBlocks": 1,
+    "queryTimeoutMs": 15000,
+    "queryMaxRows": 200,
+    "foregroundTimeoutSeconds": 150
+  },
+  "tasks": [
+    {
+      "id": "A01",
+      "input": "无默认连接发现数据源",
+      "expected": "list_connections → list_namespaces，目标完整后读取结构",
+      "testClass": "LocalPiChatHttpTest",
+      "testMethod": "noDefaultConnectionCanDiscoverSourcesThenReadTheChosenDatabase"
+    },
+    {
+      "id": "A02",
+      "input": "DM Schema 发现",
+      "expected": "不制造 catalog，非法发现参数被拒绝",
+      "testClass": "LocalPiChatHttpTest",
+      "testMethod": "schemaOnlyDiscoveryDoesNotInventACatalogAndBadDiscoveryArgumentsFail"
+    },
+    {
+      "id": "A03",
+      "input": "同名表跨连接隔离",
+      "expected": "每个引用使用自己的连接和范围",
+      "testClass": "LocalPiChatHttpTest",
+      "testMethod": "secondConnectionSameTableNameUsesItsOwnIdentity"
+    },
+    {
+      "id": "A04",
+      "input": "显式引用覆盖默认目标",
+      "expected": "query_database 使用引用的连接和 Schema",
+      "testClass": "LocalPiChatHttpTest",
+      "testMethod": "referencedConnectionAndSchemaOverrideTheQueryDefault"
+    },
+    {
+      "id": "A05",
+      "input": "列名与批量结构参数错误",
+      "expected": "整批校验失败前不读取任何元数据",
+      "testClass": "LocalPiChatHttpTest",
+      "testMethod": "batchMetadataValidatesAllNamesBeforeReadingAnything"
+    },
+    {
+      "id": "A06",
+      "input": "结构探索约束",
+      "expected": "schema 模式拒绝业务 SQL",
+      "testClass": "LocalPiChatHttpTest",
+      "testMethod": "schemaProfileRejectsAWorkerAttemptToQueryBusinessData"
+    },
+    {
+      "id": "A07",
+      "input": "查询执行事实",
+      "expected": "执行编号、真实状态、目标、唯一 DONE 保留",
+      "testClass": "LocalPiChatHttpTest",
+      "testMethod": "discoveryStructureAndQueryFlowRetainsExecutionFactsAndOneDone"
+    },
+    {
+      "id": "A08",
+      "input": "危险 SQL",
+      "expected": "写入、锁、批量和非法参数不进入执行",
+      "testClass": "LocalPiChatHttpTest",
+      "testMethod": "unsafeQueriesAndMalformedArgumentsNeverReachExecution"
+    },
+    {
+      "id": "A09",
+      "input": "截断",
+      "expected": "返回行数与内容限制可见，保留执行编号",
+      "testClass": "LocalPiChatHttpTest",
+      "testMethod": "databaseAndContentTruncationStayVisibleWithExecutionIdentity"
+    },
+    {
+      "id": "A10",
+      "input": "查询超时",
+      "expected": "工具错误保留 UNKNOWN，不虚报 SQL 成功",
+      "testClass": "LocalPiChatHttpTest",
+      "testMethod": "queryTimeoutIsAToolErrorAndRetainsUnknownTransactionState"
+    },
+    {
+      "id": "A11",
+      "input": "查询中取消",
+      "expected": "取消传给 SQL，迟到结果丢弃",
+      "testClass": "LocalPiChatHttpTest",
+      "testMethod": "queryCancellationReachesTheSqlExecutionAndDropsItsLateResult"
+    },
+    {
+      "id": "A12",
+      "input": "Worker 退出",
+      "expected": "停止 SQL，本轮失败，后续新运行可重建",
+      "testClass": "LocalPiChatHttpTest",
+      "testMethod": "workerCrashDuringQueryCancelsSqlAndTheNextTurnRebuildsTheWorker"
+    },
+    {
+      "id": "A13",
+      "input": "连续追问",
+      "expected": "复用同一个 Worker 上下文",
+      "testClass": "LocalPiChatHttpTest",
+      "testMethod": "multiTurnReusesTheSameWorkerSession"
+    },
+    {
+      "id": "A14",
+      "input": "连接配置变更",
+      "expected": "固定的连接版本失效后禁止执行",
+      "testClass": "LocalPiChatHttpTest",
+      "testMethod": "changedConnectionVersionPreventsTheQueryFromExecuting"
+    },
+    {
+      "id": "A15",
+      "input": "伪造 Explorer 对象",
+      "expected": "未实际读取的对象不能成为结构证据",
+      "testClass": "LocalPiChatHttpTest",
+      "testMethod": "piExplorerRejectsInventedObjectsEvenWhenTheChildModelFinishesNormally"
+    },
+    {
+      "id": "A16",
+      "input": "父子取消",
+      "expected": "停止子查询且只有一条 CANCELLED DONE",
+      "testClass": "LocalPiChatHttpTest",
+      "testMethod": "cancellingTheParentStopsTheExplorerQueryAndEmitsOnlyOneCancelledDone"
+    }
+  ],
+  "releaseEvidenceRequired": [
+    "DM8 real database task corpus",
+    "MySQL real database task corpus",
+    "Java/Pi comparison with fixed models and budgets",
+    "single-agent/Explorer comparison with fixed models and budgets",
+    "accuracy, latency and cost thresholds frozen before comparative release evaluation"
+  ],
+  "liveDataset": {
+    "database": "MySQL sys_demo",
+    "tables": [
+      "sys_user",
+      "sys_role_permission"
+    ],
+    "writesRequired": false,
+    "baseline": [
+      "SELECT COUNT(*) FROM sys_demo.sys_user",
+      "SELECT COUNT(*) FROM sys_demo.sys_user WHERE status=0",
+      "SELECT COUNT(*) FROM sys_demo.sys_user u CROSS JOIN sys_demo.sys_role_permission rp"
+    ],
+    "prerequisites": [
+      "existing encrypted local configuration",
+      "MAIN_CHAT and EXPLORER bindings",
+      "cross join baseline above 200 rows"
+    ],
+    "dm8": "requires configured real DM8 test connection and approved test schema"
+  },
+  "liveTasks": [
+    {
+      "id": "A-L01",
+      "testClass": "LocalPiMySqlLiveTest",
+      "testMethod": "discoversStructureAndCountsUsersAgainstDirectSql",
+      "expected": "读取真实结构后聚合，目标和计数符合独立 SQL"
+    },
+    {
+      "id": "A-L02",
+      "testClass": "LocalPiMySqlLiveTest",
+      "testMethod": "followUpKeepsTheSameTableAndConnection",
+      "expected": "沿用 A-L01 会话，status=0 计数符合独立 SQL"
+    },
+    {
+      "id": "A-L03",
+      "testClass": "LocalPiMySqlLiveTest",
+      "testMethod": "realDriverReturnsAtMost200RowsAndReportsTruncation",
+      "expected": "原样执行指定 SQL，恰好 200 行并报告截断"
+    },
+    {
+      "id": "A-L04",
+      "testClass": "LocalPiMySqlLiveTest",
+      "testMethod": "missingTableIsARealQueryFailureWithoutRetry",
+      "expected": "不存在表仅查询一次，SQL FAILED，助手解释失败"
+    },
+    {
+      "id": "A-L05",
+      "testClass": "LocalPiMySqlLiveTest",
+      "testMethod": "cancellationDuringRealModelStreamingProducesOneCancelledDone",
+      "expected": "收到文本后取消，只有一个 CANCELLED DONE"
+    },
+    {
+      "id": "A-L06",
+      "testClass": "LocalPiMySqlLiveTest",
+      "testMethod": "anEmptyResultIsReportedWithoutInventingRows",
+      "expected": "WHERE 1=0 返回零行，回答说明空结果"
+    },
+    {
+      "id": "A-L07",
+      "testClass": "LocalPiMySqlLiveTest",
+      "testMethod": "ambiguousBusinessMeaningIsClarifiedBeforeCounting",
+      "expected": "未定义活跃口径时先询问，不执行统计 SQL"
+    },
+    {
+      "id": "A-L08",
+      "testClass": "LocalPiMySqlLiveTest",
+      "testMethod": "compareReadOnlyEnginesAgainstTheSameIndependentFacts",
+      "expected": "三组各两次，计数正确并实际走所请求的委派路径；差异和不完整用量单独记录"
+    }
+  ]
+}

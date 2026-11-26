@@ -140,6 +140,10 @@ export function LocalAssistant({ onClose }: { onClose: () => void }) {
           setStatus(metadata.status ?? 'FAILED'); setStatistics(metadata.statistics); if (metadata.errorCode && metadata.status !== 'CANCELLED') setError(metadata.errorCode);
         } else if (block.type === 'STATUS' && block.data === 'RUNNING') {
           setBackendRunning(true);
+        } else if (block.type === 'STATUS' && block.data === 'TEXT_RESET') {
+          setMessages(previous => previous.map((item, index) => index !== previous.length - 1 ? item : {
+            ...item, text: '', blocks: item.blocks?.filter(entry => entry.type !== 'TEXT'),
+          }));
         } else if (block.type === 'TEXT' || block.type === 'TOOL_CALL' || block.type === 'TOOL_RESULT' || block.type?.startsWith('SUB_AGENT_')) {
           setMessages(previous => previous.map((item, index) => index !== previous.length - 1 ? item : {
             ...item, text: block.type === 'TEXT' ? item.text + (block.data ?? '') : item.text,

@@ -90,6 +90,7 @@ class LocalPiMySqlLiveTest {
                 report="pi-explorer-natural-live-summary.json";
             if(!evidence.isEmpty() && evidence.stream().allMatch(item->item.get("scenario").toString().startsWith("discovery-")))
                 report="pi-discovery-mysql-live-summary.json";
+            if(evidence.stream().anyMatch(item->item.get("scenario").toString().startsWith("comparison-"))) report="pi-readonly-comparison.json";
             Files.writeString(Path.of("target",report),JSON.writerWithDefaultPrettyPrinter().writeValueAsString(summary));
             assertThat(unchanged).as("existing connection, credential, key and model files must stay unchanged").isTrue();
         }
@@ -155,8 +156,12 @@ class LocalPiMySqlLiveTest {
         }
     }
     static List<JsonNode> turn(long id,String message,String name) throws Exception {
+        return turn(id,message,name,"pi");
+    }
+    static List<JsonNode> turn(long id,String message,String name,String engine) throws Exception {
         long started=System.nanoTime();
-        var response=HTTP.send(request("POST","/api/local/pi/chat/stream",Map.of("conversationId",id,"message",message,"modelConfigId",modelId)),HttpResponse.BodyHandlers.ofString());
+        String endpoint=engine.equals("pi")?"/api/local/pi/chat/stream":"/api/local/chat/stream";
+        var response=HTTP.send(request("POST",endpoint,Map.of("conversationId",id,"message",message,"modelConfigId",modelId)),HttpResponse.BodyHandlers.ofString());
         assertThat(response.statusCode()).as("Pi HTTP status").isEqualTo(200);
         var blocks=new ArrayList<JsonNode>();
         for(String line:response.body().split("\n")) if(line.startsWith("data:")) blocks.add(JSON.readTree(line.substring(5).trim()));
@@ -167,6 +172,7 @@ class LocalPiMySqlLiveTest {
         record.put("validated",false);
         record.put("scenario",name); record.put("status",done.path("status").asText()); record.put("elapsedMs",(System.nanoTime()-started)/1_000_000);
         record.put("statistics",done.path("statistics"));
+        record.put("engine",engine); record.put("modelConfigId",modelId); record.put("model",modelName);
         var trace=new ArrayList<Map<String,Object>>();
         for(var block:blocks)if(block.path("type").asText().equals("TOOL_CALL")) {
             var tool=JSON.readTree(block.path("data").asText());
@@ -177,6 +183,7 @@ class LocalPiMySqlLiveTest {
             trace.add(item);
         }
         record.put("toolTrace",trace);
+        record.put("observedToolCalls",trace.size());
         var sqls=new ArrayList<String>();
         for(var block:blocks) if(block.path("type").asText().equals("TOOL_CALL")) {
             var tool=JSON.readTree(block.path("data").asText());
@@ -196,7 +203,7 @@ class LocalPiMySqlLiveTest {
             record.put("aggregateRows",rows(result));
         }
         assertThat(done.path("status").asText()).isEqualTo("SUCCEEDED");
-        assertThat(done.path("engine").asText()).isEqualTo("PI");
+        if(engine.equals("pi")) assertThat(done.path("engine").asText()).isEqualTo("PI");
         return blocks;
     }
     static List<JsonNode> queryResults(List<JsonNode> blocks) throws Exception {
@@ -208,7 +215,7 @@ class LocalPiMySqlLiveTest {
         return results;
     }
     static JsonNode rows(JsonNode result) {
-        var response=result.path("result");
+        var response=result.has("result")?result.path("result"):result;
         return response.path("rows").isArray()?response.path("rows"):response.path("resultSet").path("rows");
     }
     static String answer(List<JsonNode> blocks) {
@@ -242,6 +249,68 @@ class LocalPiMySqlLiveTest {
         }
         if(conditional>=0 && data.size()==1) return data.get(0).get(conditional).asLong();
         throw new AssertionError("Aggregate shape needs semantic review; do not assume the first cell is the count");
+    }
+
+
+    /** Same main model, data and explicit query. Explorer uses its existing purpose binding. */
+    @Test @Order(10) @Timeout(value=360,unit=TimeUnit.SECONDS)
+    @EnabledIfEnvironmentVariable(named="DATA_AGENT_PI_COMPARE_LIVE",matches="true")
+    void compareReadOnlyEnginesAgainstTheSameIndependentFacts() throws Exception {
+        String explorerId=null;
+        for(var binding:call("GET","/api/ai/model-bindings",null))
+            if(binding.path("purpose").asText().equals("EXPLORER")) explorerId=binding.path("modelConfigId").asText();
+        assertThat(explorerId).as("configured Explorer model").isNotBlank();
+        // Two repetitions are a smoke comparison. Distribution/cost acceptance needs the full corpus.
+        for(int repetition=1;repetition<=2;repetition++) {
+            for(String arm:List.of("java","pi-direct","pi-explorer")) {
+                String question="请实际执行 SELECT COUNT(*) FROM sys_demo.sys_user，只报告核实的总行数，禁止查询个人明细。";
+                if(arm.equals("pi-explorer")) question+="请通过 callingExplorerSubAgent 委派一个 general 模式的任务执行查询。connectionId="+connectionId+", catalogName=sys_demo，timeoutSeconds=45。";
+                else question+="请直接使用 query_database 完成，不委派子助手。";
+                var events=turn(create(),question,"comparison-"+arm+"-"+repetition,arm.equals("java")?"java":"pi");
+                var record=evidence.getLast();
+                record.put("validated",false);
+                record.put("arm",arm); record.put("repetition",repetition);
+                record.put("explorerModelConfigId",explorerId);
+                record.put("expectedUsers",totalUsers);
+                record.put("queryTimeoutMs",15000); record.put("queryMaxRows",200);
+                record.put("comparisonScope","smoke; engine toolsets and Explorer model binding differ");
+                if(arm.equals("java")) {
+                    var result=queryResults(events).getLast();
+                    assertThat(result.path("success").asBoolean()).isTrue();
+                    assertThat(rows(result).get(0).get(0).asLong()).isEqualTo(totalUsers);
+                    assertThat(answer(events)).containsPattern("(?<!\\d)"+totalUsers+"(?!\\d)");
+                    record.put("identityEvidence","request target; Java result omits executionId and target");
+                } else assertCount(events,totalUsers);
+                record.put("validated",false);
+                boolean delegated=events.stream().anyMatch(event->event.path("type").asText().equals("SUB_AGENT_START"));
+                assertThat(delegated).as("requested execution arm %s",arm).isEqualTo(arm.equals("pi-explorer"));
+                var results=queryResults(events);
+                assertThat(results).hasSize(1);
+                if(!arm.equals("java")) assertThat(results.getFirst().path("executionId").asText()).isNotBlank();
+                record.put("validated",true);
+            }
+        }
+    }
+
+    @Test @Order(11) void anEmptyResultIsReportedWithoutInventingRows() throws Exception {
+        var events=turn(create(),"请只执行一次 SELECT id FROM sys_demo.sys_user WHERE 1=0。说明返回行数，不推测任何用户记录。","empty-result");
+        var results=queryResults(events);
+        assertThat(results).hasSize(1);
+        var result=results.getFirst();
+        assertThat(result.path("success").asBoolean()).isTrue();
+        assertThat(rows(result)).isEmpty();
+        assertThat(result.path("target").path("connectionId").asLong()).isEqualTo(connectionId);
+        assertThat(answer(events)).containsPattern("0|空|没有|无记录|未返回");
+        evidence.getLast().put("validated",true);
+    }
+
+    @Test @Order(12) void ambiguousBusinessMeaningIsClarifiedBeforeCounting() throws Exception {
+        var events=turn(create(),"请统计本月活跃用户数量，并说明采用的统计口径。","ambiguous-business-meaning");
+        assertThat(queryResults(events)).as("Unconfirmed active-user definition must not become a query").isEmpty();
+        assertThat(events.stream().filter(event->event.path("type").asText().equals("TOOL_CALL"))).isEmpty();
+        assertThat(answer(events)).contains("活跃").containsPattern("定义|口径|确认|请问|哪种");
+        assertThat(answer(events)).containsPattern("年月|日期|时间范围|起止");
+        evidence.getLast().put("validated",true);
     }
 
     @Test @Order(1) void discoversStructureAndCountsUsersAgainstDirectSql() throws Exception {

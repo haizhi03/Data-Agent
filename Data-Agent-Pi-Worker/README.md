@@ -46,3 +46,8 @@ npm test    # node:test，真实子进程 + 脚本化 OpenAI 兼容夹具，无�
 
 接入基线见 [PI-M1](../docs/PI-M1-IMPLEMENTATION-2026-10-30.md)；只读查询及本轮验证见 [PI-M2](../docs/PI-M2-READONLY-QUERY-2026-11-04.md)。
 Explorer 任务、预算、取消及完整链路验证见 [PI-M3](../docs/PI-M3-EXPLORER-2026-11-04.md)。
+
+阶段 A 的固定任务集、验证脚本和阶段 B 的 Core / Durable 选型记录见
+[A/B 交付记录](../docs/PI-STAGES-AB-2026-11-26.md)。从仓库根目录执行
+`python3 scripts/validation/pi_stages_ab.py` 可生成本次合同验证报告。
+当前选型继续使用 Core 1.5.0，`durable-prototype` 保留为恢复机制原型。

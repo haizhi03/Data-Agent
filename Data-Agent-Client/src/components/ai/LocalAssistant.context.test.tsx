@@ -38,7 +38,10 @@ vi.mock('../../lib/explorerMetadataCache',()=>({
   getCachedExplorerFunctions:()=>undefined,getCachedExplorerProcedures:()=>undefined,getCachedExplorerTriggers:()=>undefined,
 }));
 vi.mock('./AIAssistantHeader',()=>({AIAssistantHeader:(props:any)=><button onClick={()=>props.onNewChat()}>普通新会话</button>}));
-vi.mock('./AIAssistantContent',()=>({AIAssistantContent:({messages}:any)=><output data-testid="response-blocks">{JSON.stringify(messages.at(-1)?.blocks??[])}</output>}));
+vi.mock('./AIAssistantContent',()=>({AIAssistantContent:({messages}:any)=><>
+  <output data-testid="response-blocks">{JSON.stringify(messages.at(-1)?.blocks??[])}</output>
+  <output data-testid="messages">{JSON.stringify(messages)}</output>
+</>}));
 vi.mock('./ChatInput',()=>({ChatInput:()=>{
   const c=useAIAssistantContext();
   return <div><textarea aria-label="message" value={c.input} onChange={e=>c.setInput(e.target.value)}/>
@@ -105,6 +108,34 @@ async function send(text:string) {
   await waitFor(()=>expect((screen.getByText('发送') as HTMLButtonElement).disabled).toBe(false));
   fireEvent.click(screen.getByText('发送'));
 }
+
+describe('durable text recovery',()=>{
+  it('replaces interrupted text and preserves tool evidence and earlier turns',async()=>{
+    piReady(true);
+    vi.mocked(api.chat).mockImplementationOnce(async function*(){
+      yield {done:false,type:'TEXT',data:'earlier answer'};
+      yield {done:true,data:'{"status":"SUCCEEDED"}'};
+    }).mockImplementationOnce(async function*(){
+      yield {done:false,type:'TOOL_CALL',data:'tool evidence'};
+      yield {done:false,type:'TEXT',data:'interrupted answer'};
+      yield {done:false,type:'STATUS',data:'TEXT_RESET'};
+      yield {done:false,type:'STATUS',data:'TEXT_RESET'};
+      yield {done:false,type:'TEXT',data:'recovered answer'};
+      yield {done:true,data:'{"status":"SUCCEEDED"}'};
+    });
+    render(<LocalAssistant onClose={()=>{}}/>,{wrapper});
+    await send('first question');
+    await waitFor(()=>expect(screen.getByTestId('messages').textContent).toContain('earlier answer'));
+    await send('second question');
+    await waitFor(()=>expect(screen.getByTestId('loading').textContent).toBe('false'));
+    const messages=JSON.parse(screen.getByTestId('messages').textContent!);
+    expect(messages[1].content).toBe('earlier answer');
+    expect(messages[3].content).toBe('recovered answer');
+    expect(messages[3].blocks).toEqual([
+      {done:false,type:'TOOL_CALL',data:'tool evidence'}, {done:false,type:'TEXT',data:'recovered answer'},
+    ]);
+  });
+});
 
 describe('local chat model availability',()=>{
   const qwenIds=['qwen3.8-max','qwen3.6-flash','qwen-plus','qwen3.5-plus'];
