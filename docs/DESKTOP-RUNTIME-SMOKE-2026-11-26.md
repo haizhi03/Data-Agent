@@ -2,6 +2,8 @@
 
 日期：2026-11-26。范围：`feature/desktop-pi`，本机 macOS 26.5 / arm64。
 
+同日更新：已补原生窗口与 DMG 开发包，最新状态及当前待办见 [原生包记录](MACOS-NATIVE-PACKAGE-2026-11-26.md)。以下目录包记录保留为验证基线。
+
 本步完成 NEXT-03 的目录包启动验证。使用一个 Node 宿主提供前端静态文件、代理 API，并管理 Java 子进程；沿用现有 React / Java / Pi 代码。启动不需要 Maven、Vite、全局 Java 或全局 Node。原生窗口、应用安装器及升级仍属后续阶段 D 的交付。
 
 ## 组装与启动

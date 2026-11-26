@@ -104,11 +104,12 @@
   "remaining": [
     "clean macOS installation",
     "Windows runtime and installer",
-    "native window lifecycle",
-    "read-only installation directory",
-    "upgrade and rollback",
     "DM8 driver and real database validation",
-    "packaged Explorer active task shutdown"
+    "packaged Explorer active task shutdown",
+    "cross-version configuration migration and automatic updater",
+    "Developer ID signing and notarization",
+    "native file export/download handling",
+    "native preferences/draft restoration"
   ],
   "remainingAtInitialValidation": [
     "clean macOS installation",
@@ -339,5 +340,20 @@
       "UI flow and active-task checks retain their own artifact fingerprints; the final keyboard fix changes frontend assets only.",
       "Development-machine validation; clean-machine installation and Windows remain pending."
     ]
+  },
+  "remainingBeforeNativePackage": [
+    "clean macOS installation",
+    "Windows runtime and installer",
+    "native window lifecycle",
+    "read-only installation directory",
+    "upgrade and rollback",
+    "DM8 driver and real database validation",
+    "packaged Explorer active task shutdown"
+  ],
+  "nativeMacOSValidation": {
+    "report": "native-macos-2026-11-26.json",
+    "automatedChecksPassed": 19,
+    "visibleNativeUI": "PASS",
+    "releaseStatus": "DEVELOPMENT_PREVIEW_PENDING_SIGNING_NOTARIZATION_AND_PLATFORM_ACCEPTANCE"
   }
 }

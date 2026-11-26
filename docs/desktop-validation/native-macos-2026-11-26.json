@@ -1,0 +1,208 @@
+{
+  "verifiedAt": "2026-11-26T15:33:15.803104+00:00",
+  "implementationCommit": "4d76cd560ea036640f6f485d326a0382cc54ffa1",
+  "scope": "local macOS native development preview; same-payload replacement and rollback",
+  "platform": {
+    "os": "Darwin",
+    "version": "26.5",
+    "architecture": "arm64"
+  },
+  "toolchain": "Apple Swift version 6.3.2 (swiftlang-6.3.2.1.108 clang-2100.1.1.101)\nTarget: arm64-apple-macosx26.0",
+  "artifacts": {
+    "app": "target/native-release/Data Agent.app",
+    "dmg": "target/native-release/DataAgent-macos-arm64.dmg",
+    "packageReceipt": {
+      "createdAt": "2026-11-26T15:05:30.184474+00:00",
+      "version": "0.1.0",
+      "buildNumber": "2",
+      "platform": "macOS arm64",
+      "signing": "ad-hoc development",
+      "runtimeBundleManifestSha256": "db93b0c4c00e6782b8da69b90c44383b88335238d0e9def05ae27be5c23c832b",
+      "sourceSha256": {
+        "scripts/desktop/macos/main.swift": "255be811a7cf9b9fcfc2dd03b40d03ae4747f878120b21b94257b85a3003b3e6",
+        "scripts/desktop/package_macos.py": "9beabe4304cac6abaf05ef1595f73a92d1e6ab09f929e01be28a2413899812d3"
+      },
+      "userConfigurationIncluded": false,
+      "executableSha256": "0ad60183fcec6d83374a4efb618c969e76677da66cdfeca6fe0d8a9c38583fa4",
+      "appPath": "Data Agent.app",
+      "dmgSha256": "f041837e69a6c48c830abbb532ff4c06de102143cad5c28e5950db565e58ef40",
+      "dmgBytes": 236587234
+    },
+    "nativeBuildSha256": "c13874cc5edeb4981f46f945bfd156b4a569b1296b4ef5b54959da02c9d649c5"
+  },
+  "prototypeFailure": {
+    "status": "FAILED",
+    "case": "query-SIGTERM",
+    "observedFailure": "Java exited but native application termination callback remained blocked",
+    "nativeExecutableSha256": "1b32f5f8b76191be2d6f727f24d1fd9c73e3bd090f5ca1ebca0208a605b313a3",
+    "nativeSourceSha256": {
+      "scripts/desktop/macos/main.swift": "922ba4dc7711868645266fce52ea1314b8845f70e2ba62fe3be9cc6d140d9fd9",
+      "scripts/desktop/package_macos.py": "9beabe4304cac6abaf05ef1595f73a92d1e6ab09f929e01be28a2413899812d3"
+    }
+  },
+  "nativeActiveTasks": {
+    "verifiedAt": "2026-11-26T15:21:56.572147+00:00",
+    "status": "PASS",
+    "launchMode": "native-app",
+    "modelTransport": "test-only fetch redirect to local SSE fixture; real packaged Pi worker",
+    "realModelVendorCalls": 0,
+    "bundleManifestSha256": "db93b0c4c00e6782b8da69b90c44383b88335238d0e9def05ae27be5c23c832b",
+    "checks": [
+      {
+        "case": "query-SIGTERM",
+        "status": "PASS",
+        "requestActiveBeforeShutdown": true,
+        "cleanupMs": 272,
+        "workers": 0,
+        "exitCode": 0
+      },
+      {
+        "case": "query-SIGKILL",
+        "status": "PASS",
+        "requestActiveBeforeShutdown": true,
+        "cleanupMs": 430,
+        "workers": 0,
+        "exitCode": -9
+      },
+      {
+        "case": "model-SIGTERM",
+        "status": "PASS",
+        "requestActiveBeforeShutdown": true,
+        "cleanupMs": 210,
+        "workers": 1,
+        "exitCode": 0
+      },
+      {
+        "case": "model-SIGKILL",
+        "status": "PASS",
+        "requestActiveBeforeShutdown": true,
+        "cleanupMs": 149,
+        "workers": 1,
+        "exitCode": -9
+      }
+    ],
+    "nativeExecutableSha256": "0ad60183fcec6d83374a4efb618c969e76677da66cdfeca6fe0d8a9c38583fa4",
+    "nativeBuildSha256": "c13874cc5edeb4981f46f945bfd156b4a569b1296b4ef5b54959da02c9d649c5",
+    "fixtureModelRequests": 2,
+    "originalConfigurationUnchanged": true,
+    "bundleUnchanged": true
+  },
+  "nativeInstallation": {
+    "verifiedAt": "2026-11-26T15:24:46.492735+00:00",
+    "status": "PASS",
+    "scope": "development-machine native packaging and same-payload replacement, not schema migration",
+    "dmgSha256": "f041837e69a6c48c830abbb532ff4c06de102143cad5c28e5950db565e58ef40",
+    "modelVendorCalls": 0,
+    "checks": [
+      {
+        "case": "signature-and-read-only-dmg-integrity",
+        "status": "PASS"
+      },
+      {
+        "case": "native-jre-worker-jdbc-start-from-read-only-image-with-empty-path",
+        "status": "PASS"
+      },
+      {
+        "case": "copied-application-loads-user-configuration",
+        "status": "PASS"
+      },
+      {
+        "case": "stopped-app-replacement-retains-connections-models-and-vault",
+        "status": "PASS"
+      },
+      {
+        "case": "old-temporary-conversation-rejected-after-replacement",
+        "status": "PASS"
+      },
+      {
+        "case": "stopped-app-rollback-retains-user-configuration",
+        "status": "PASS"
+      },
+      {
+        "case": "launchservices-finder-path-starts-with-external-user-data",
+        "status": "PASS"
+      }
+    ],
+    "originalConfigurationUnchanged": true,
+    "applicationUnchanged": true
+  },
+  "directoryHostRegression": {
+    "verifiedAt": "2026-11-26T15:09:57.687992+00:00",
+    "platform": "macOS arm64",
+    "bundleManifestSha256": "db93b0c4c00e6782b8da69b90c44383b88335238d0e9def05ae27be5c23c832b",
+    "checks": [
+      {
+        "case": "packaged-ui-java-worker-start-without-path",
+        "status": "PASS"
+      },
+      {
+        "case": "origin-host-and-static-path-isolation",
+        "status": "PASS"
+      },
+      {
+        "case": "private-bootstrap-and-authenticated-backend",
+        "status": "PASS"
+      },
+      {
+        "case": "packaged-jre-mysql-driver-read-only-query",
+        "status": "PASS"
+      },
+      {
+        "case": "two-instances-use-independent-ports-and-data",
+        "status": "PASS"
+      },
+      {
+        "case": "graceful-exit-cleans-backend-without-affecting-other-instance",
+        "status": "PASS"
+      },
+      {
+        "case": "killed-host-eof-cleans-backend",
+        "status": "PASS"
+      },
+      {
+        "case": "missing-jar-fails-without-false-ready",
+        "status": "PASS"
+      }
+    ],
+    "modelCalls": 0,
+    "status": "PASS",
+    "bundleUnchanged": true,
+    "originalConfigurationUnchanged": true
+  },
+  "visibleNativeUI": {
+    "status": "PASS",
+    "surface": "native AppKit/WKWebView window",
+    "observations": [
+      "Native window renders the local workbench without browser chrome or login",
+      "Expanded MySQL connection and opened sys_demo query console",
+      "Command+Return executed SELECT 41 AS n; result grid showed 41",
+      "Real configured Qwen answered 41 from attached SQL, SUCCEEDED, zero tool calls",
+      "Red close button exited native app, Node host, Java backend and its Pi worker"
+    ],
+    "originalConfigurationUnchanged": true,
+    "testInstancesExited": true,
+    "applicationExitCode": 0
+  },
+  "automatedChecksPassed": 19,
+  "sourceSha256": {
+    "scripts/desktop/host.mjs": "e850db6fe7e7ca5f761610c7559b2e95428384625ad46ffbbdfdf7adb8fd88b2",
+    "scripts/desktop/macos/main.swift": "255be811a7cf9b9fcfc2dd03b40d03ae4747f878120b21b94257b85a3003b3e6",
+    "scripts/desktop/package_macos.py": "9beabe4304cac6abaf05ef1595f73a92d1e6ab09f929e01be28a2413899812d3",
+    "scripts/validation/desktop_active_smoke.py": "8aa22615e7170a6eb1554d6cdd3eee771bf5a9d415875799f580f2b93bb9da56",
+    "scripts/validation/native_macos_smoke.py": "7f8daded2fa54909c713f5fb695f1a4e28b054d02f29ef035e20200eeea92895"
+  },
+  "originalConfigurationUnchanged": true,
+  "testInstancesAndCredentialCopiesRemoved": true,
+  "releaseStatus": "DEVELOPMENT_PREVIEW_PENDING_SIGNING_NOTARIZATION_AND_PLATFORM_ACCEPTANCE",
+  "remaining": [
+    "Developer ID signing and notarization",
+    "clean macOS installation",
+    "Windows runtime and installer",
+    "native file export and download handling",
+    "native frontend preferences and draft restoration",
+    "cross-version configuration migration and automatic updater",
+    "native packaged Explorer active-task exit",
+    "real DM8 validation",
+    "controlled engine comparison from stage A"
+  ]
+}
