@@ -2,7 +2,7 @@
   "verifiedAt": "2026-11-26T06:25:58.713265Z",
   "scope": "macOS arm64; existing MySQL sys_demo; configured Qwen models",
   "frameworkDecision": "continue-core-1.5.0",
-  "stageA": "pending DM8, complete controlled comparison and final business-meaning live acceptance",
+  "stageA": "pending DM8 and complete controlled comparative acceptance",
   "liveCases": [
     {
       "scenario": "discovery-and-count",
@@ -385,8 +385,7 @@
     "Two repetitions per comparison arm",
     "Explorer uses its existing model binding; full engine toolsets/budgets differ",
     "One Explorer repetition has usageComplete=false",
-    "No configured token prices or billable cost acceptance",
-    "Final business-meaning clarification acceptance interrupted twice by PI_MODEL_ERROR"
+    "No configured token prices or billable cost acceptance"
   ],
   "liveFailures": [
     {
@@ -394,7 +393,8 @@
       "attempts": 2,
       "status": "FAILED",
       "errorCode": "PI_MODEL_ERROR",
-      "acceptance": "pending; partial clarification is insufficient"
+      "acceptance": "pending; partial clarification is insufficient",
+      "resolvedBy": "followUp.mysqlLive.cases; successful real-model clarification with no tool calls"
     }
   ],
   "contractValidation": {
@@ -460,5 +460,155 @@
     "contractStatus": "PASS",
     "tasksPassed": 16
   },
-  "frontendProductionBuild": "PASS; existing browserslist and chunk-size warnings"
+  "frontendProductionBuild": "PASS; existing browserslist and chunk-size warnings",
+  "followUp": {
+    "verifiedAt": "2026-11-26T08:22:14.205871+00:00",
+    "contractValidation": {
+      "commit": "a8d0b0688ca8b30bf895055096d2ee098e0d76a8",
+      "sourceSha256": {
+        "Data-Agent-Client/src/components/ai/LocalAssistant.context.test.tsx": "aff8c1ea191c16ca8e1ac148e00b64816723b33a1a3833642ef0b5de0f13e4f5",
+        "Data-Agent-Client/src/components/ai/LocalAssistant.tsx": "119d86b9be8b3213c6d7f3285a49801cd428740f1335127463d7cb07e7cc60e1",
+        "Data-Agent-Pi-Worker/durable-prototype/package-lock.json": "0ce4ba11bf90a3cd33899165fa31f0a99b5c2ae5c0530d92edef729b4cbd249e",
+        "Data-Agent-Pi-Worker/durable-prototype/src/journal.js": "a07194492541883a27cf1aab41f0a2d949f113fb2efa52d3d181ffdad105dfec",
+        "Data-Agent-Pi-Worker/durable-prototype/src/models.js": "e5839a98796693a5fafb05d528b74249d7fedd1017208c4afe967a39336b9ccb",
+        "Data-Agent-Pi-Worker/durable-prototype/src/protocol.js": "7f6becf151ca93da2a650f9539d0068bec863e4e4fba4575d939ef609be659ff",
+        "Data-Agent-Pi-Worker/durable-prototype/src/tools.js": "a30f881b26efa2f2978c926b42ded73b34e3cc7b97c9e80e32865333c79f9f61",
+        "Data-Agent-Pi-Worker/durable-prototype/src/worker.js": "05f4081df16e2c7025aefef878dfa71b8b975513e42fc2df9720459bcbf4b244",
+        "Data-Agent-Pi-Worker/package-lock.json": "7920d8b13d4999cd0ff792bc2d6b2be24ddc9b65c19dfce5bc30ca80a01e34ec",
+        "Data-Agent-Pi-Worker/src/model.js": "5abd81e5b3853750cfc6e9cf887995f7063d1dd9dda395768c2ed8b037fce303",
+        "Data-Agent-Pi-Worker/src/protocol.js": "cdfc3b14d920b1b533f4f2450b1883dfeb13896a85d2d2067e42db919c2a9b67",
+        "Data-Agent-Pi-Worker/src/session.js": "e45da4badd8b07534076bd820dd4ff8ed3ae6e573d12fe60bca0b068417c715f",
+        "Data-Agent-Pi-Worker/src/worker.js": "7c29630571e88186fc138d8c16134421c6d552763087bb4d8a2b1e46e70d3d97",
+        "Data-Agent-Server/data-agent-server-app/src/main/java/edu/zsc/ai/local/LocalPiChatService.java": "0389bcb926add2a39e2c3229a645184c04aca3134ddab600e0a8a17ae91f8010",
+        "Data-Agent-Server/data-agent-server-app/src/main/resources/prompt/pi-main-agent_zh.md": "11d0b9a051b75c117ab44e48efe97499a182650e2de7aadb3e550b9ed9df6a9c",
+        "Data-Agent-Server/data-agent-server-app/src/test/java/edu/zsc/ai/local/LocalPiMySqlLiveTest.java": "a20c2b610906198ca86bfce639cea08272464319aad84edc4d242f26c2b73980"
+      },
+      "corpusSha256": "7738c3d5b22ca6c6f465c2640978a952f30f950806f0df950d5b8401ee1a715a",
+      "suites": [
+        {
+          "name": "core",
+          "exitCode": 0,
+          "elapsedSeconds": 5.839,
+          "tests": 26,
+          "passed": 26,
+          "skipped": 0,
+          "status": "PASS"
+        },
+        {
+          "name": "durable",
+          "exitCode": 0,
+          "elapsedSeconds": 14.649,
+          "tests": 16,
+          "passed": 16,
+          "skipped": 0,
+          "status": "PASS"
+        },
+        {
+          "name": "java-local",
+          "exitCode": 0,
+          "elapsedSeconds": 28.415,
+          "tests": 261,
+          "passed": 246,
+          "skipped": 15,
+          "status": "PASS"
+        },
+        {
+          "name": "frontend",
+          "exitCode": 0,
+          "elapsedSeconds": 1.909,
+          "tests": 51,
+          "passed": 51,
+          "skipped": 0,
+          "status": "PASS"
+        }
+      ],
+      "contractStatus": "PASS"
+    },
+    "mysqlLive": {
+      "verifiedAt": "2026-11-26T08:19:11.738977Z",
+      "model": "qwen3.8-max",
+      "connectionId": 1,
+      "target": {
+        "connectionId": 1,
+        "catalogName": "sys_demo"
+      },
+      "baseline": {
+        "users": 12,
+        "idPairs": 588,
+        "disabledUsers": 1
+      },
+      "cases": [
+        {
+          "validated": true,
+          "scenario": "discovery-and-count",
+          "status": "SUCCEEDED",
+          "elapsedMs": 27706,
+          "statistics": {
+            "modelCalls": 3,
+            "toolCalls": 3,
+            "inputTokens": 3341,
+            "outputTokens": 1036,
+            "usageComplete": true
+          },
+          "engine": "pi",
+          "modelConfigId": "fm-P-1-bfc7dc11-3b78-4f4d-9280-73ebbf4a060c",
+          "model": "qwen3.8-max",
+          "toolTrace": [
+            {
+              "tool": "list_tables",
+              "nested": false
+            },
+            {
+              "tool": "describe_table",
+              "nested": false,
+              "tableName": "sys_user"
+            },
+            {
+              "tool": "query_database",
+              "nested": false
+            }
+          ],
+          "observedToolCalls": 3,
+          "querySql": [
+            "SELECT COUNT(*) AS total_rows FROM sys_user"
+          ],
+          "answer": "我先列出目标库的表并读取 `sys_user` 的字段定义。\n\n**结论：`sys_user` 实际总行数为 12 行**（聚合查询，未取个人明细）。\n\n**目标**：连接 1 / 数据库 `sys_demo`（无 schema），三次工具调用均成功且 `truncated=false`。\n\n**库内表清单（11 张，已完整列出）**\npr20_demo、sys_department、sys_dict_item、sys_dict_type、sys_menu、sys_permission、sys_role、sys_role_permission、sys_user、sys_user_profile、sys_user_role\n\n**`sys_user` 字段定义（10 列）**\n\n| 列 | 类型 | 约束/默认 | 注释 |\n|---|---|---|---|\n| id | bigint | PK，自增，非空 | 用户主键 |\n| department_id | bigint | 非空 | 所属部门 |\n| manager_id | bigint | 可空 | 直属主管 |\n| username | varchar(50) | 非空 | 模拟登录名 |\n| nickname | varchar(100) | 非空 | 显示名称 |\n| email | varchar(150) | 可",
+          "queryResults": [
+            {
+              "executionId": "05ddf3c2-e13b-43c8-8e1b-2d342ca29e9b",
+              "success": true,
+              "statementState": "EXECUTED",
+              "transactionOutcome": "NONE",
+              "truncated": false,
+              "returnedRows": 1
+            }
+          ]
+        },
+        {
+          "validated": true,
+          "scenario": "ambiguous-business-meaning",
+          "status": "SUCCEEDED",
+          "elapsedMs": 18239,
+          "statistics": {
+            "modelCalls": 1,
+            "toolCalls": 0,
+            "inputTokens": 495,
+            "outputTokens": 650,
+            "usageComplete": true
+          },
+          "engine": "pi",
+          "modelConfigId": "fm-P-1-bfc7dc11-3b78-4f4d-9280-73ebbf4a060c",
+          "model": "qwen3.8-max",
+          "toolTrace": [],
+          "observedToolCalls": 0,
+          "querySql": [],
+          "answer": "暂不能直接出数，需要先确认两项口径，否则统计结果无法解释。\n\n**1. “活跃”的判定标准（必需）**\n- 以哪个事件/行为算活跃：登录、下单/支付、页面访问、接口调用，还是其他？\n- 是否需要满足状态条件：仅统计正常状态用户，排除注销、冻结、内部测试账号？\n- 计数方式：按用户去重的人数（活跃用户数），还是活跃次数/人次？\n- 是否要求最低频次：例如月内至少活跃 N 天才计入。\n\n**2. “本月”的具体范围（必需）**\n当前上下文未提供可靠的系统日期，我无法自行判定“本月”。请给出明确年月或起止日期，例如 2024-05（自然月 1 日至月末），或 2024-05-01 至 2024-05-31；若是“最近 30 天”也请说明截止日。\n\n**默认目标**：连接 1 的 `sys_demo` 库（未指定 Schema）。如需统计其他库或 Schema，请一并说明。\n\n在你给出上述口径前，我没有读取表结构，也没有执行任何查询——避免基于字段名猜测“活跃”的含义而得出错误结论。口径确认后，我会先定位承载该事件与用户状态的表，再执行一次聚合查询给出人数，并完整回述所采用的口径与数据限制。",
+          "queryResults": []
+        }
+      ],
+      "localConfigurationUnchanged": true
+    },
+    "dmAcceptance": "NOT_RUN; no configured DM connection",
+    "implementationScope": "Core model error metadata and existing live-test entry extended to DM"
+  }
 }

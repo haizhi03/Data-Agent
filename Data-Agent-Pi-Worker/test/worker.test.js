@@ -427,7 +427,7 @@ test('unsupported apiStyle fails clearly without calling any endpoint', async ()
 });
 
 test('provider HTTP error maps to FAILED PI_MODEL_ERROR', async () => {
-  const server = await startFixtureServer(() => ({ status: 401, json: { error: { message: 'bad key' } } }));
+  const server = await startFixtureServer(() => ({ status: 401, json: { error: { message: 'bad key fixture-key PRIVATE_PROVIDER_BODY' } } }));
   try {
     const worker = startWorker();
     await waitHello(worker);
@@ -435,8 +435,32 @@ test('provider HTTP error maps to FAILED PI_MODEL_ERROR', async () => {
     const finished = await worker.waitFor((m) => m.type === 'finished', 30000);
     assert.equal(finished.status, 'FAILED');
     assert.equal(finished.errorCode, 'PI_MODEL_ERROR');
+    assert.equal(finished.modelError.kind, 'AUTH');
+    assert.equal(finished.modelError.httpStatus, 401);
+    assert.ok(finished.modelError.elapsedMs >= 0);
+    assert.equal(finished.usage.usageComplete, false);
+    assert.ok(!JSON.stringify(worker.messages).includes('PRIVATE_PROVIDER_BODY'));
+    assert.ok(!worker.stderr.includes('PRIVATE_PROVIDER_BODY'));
     // Credentials must not leak to stdout protocol messages.
     assert.ok(!JSON.stringify(worker.messages).includes('fixture-key'));
+  } finally {
+    await server.close();
+  }
+});
+
+test('an interrupted model stream reports STREAM without claiming complete usage', async () => {
+  const server = await startFixtureServer(() => async write => {
+    await write(chunk({ role: 'assistant', content: 'partial answer' }));
+  });
+  try {
+    const worker = startWorker();
+    await waitHello(worker);
+    worker.send(startMessage({ baseUrl: server.baseUrl }));
+    const finished = await worker.waitFor(message => message.type === 'finished');
+    assert.equal(finished.status, 'FAILED');
+    assert.equal(finished.modelError.kind, 'STREAM');
+    assert.equal(finished.usage.usageComplete, false);
+    assert.equal(worker.messages.filter(message => message.type === 'finished').length, 1);
   } finally {
     await server.close();
   }

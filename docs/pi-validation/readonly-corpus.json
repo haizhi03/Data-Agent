@@ -8,7 +8,7 @@
     "uniqueTerminalBlocks": 1,
     "queryTimeoutMs": 15000,
     "queryMaxRows": 200,
-    "foregroundTimeoutSeconds": 150
+    "inactivityTimeoutSeconds": 150
   },
   "tasks": [
     {
@@ -198,6 +198,14 @@
       "testClass": "LocalPiMySqlLiveTest",
       "testMethod": "compareReadOnlyEnginesAgainstTheSameIndependentFacts",
       "expected": "三组各两次，计数正确并实际走所请求的委派路径；差异和不完整用量单独记录"
+    }
+  ],
+  "dmTasks": [
+    {
+      "id": "A-DM01",
+      "testClass": "LocalPiMySqlLiveTest",
+      "testMethod": "dmReadOnlyDiscoveryQueryFollowUpAndFailures",
+      "expected": "指定 DM 连接和 Schema 内完成发现、结构、独立计数核验、追问、空结果、真实 SQL 错误与流式取消；执行编号和目标可核对"
     }
   ]
 }

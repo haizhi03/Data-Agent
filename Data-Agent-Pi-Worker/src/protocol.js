@@ -10,7 +10,7 @@
  *   hello       { type, protocol, piAgentCore, piAi }
  *   text_delta  { type, runId, delta }
  *   tool_call   { type, runId, toolCallId, name, arguments }   // arguments is a JSON string
- *   finished    { type, runId, status, errorCode?, usage? }    // exactly once per run
+ *   finished    { type, runId, status, errorCode?, modelError?: {kind, httpStatus?, elapsedMs}, usage? }    // exactly once per run
  *   error       { type, errorCode, detail? }                    // protocol-level, no run
  *
  * Diagnostics go to stderr only. Credentials never appear on stdout/stderr.

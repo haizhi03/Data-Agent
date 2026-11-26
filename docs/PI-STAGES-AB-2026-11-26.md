@@ -72,3 +72,28 @@ Core / pi-ai 从 1.4.0 升级到 1.5.0 的改动见提交 `d0e5775`。现有 25 
 明确需要后台长任务、Java 重启后接回任务或长时间审批等待时，重新评估 Durable。复评需先补齐工具和模型预算、完整用量统计、数据清理、R3–R7 和平台分发证据，再用同一只读任务集与 Core 比较。压缩、追加指令和写入迁移按选型继续拆解，现有 Pi `/compact` 仍返回不支持。
 
 阶段 B 的交付是已有证据、继续 Core 的决定和上述复评条件。阶段 A 在 DM8 与完整同条件评测完成前维持进行中。
+
+## 同日后续小步
+
+Core 的 `PI_MODEL_ERROR` 现在可以附带 `modelError`，只包含固定错误分类、可识别的 HTTP 状态和最后一次模型调用耗时。Java 再次校验这些字段，将它们放入终态和运行日志，用现有 runId 关联。原始厂商报文、响应头和密钥不进入这些字段。Worker 也不再将完整模型错误文本写入 stderr。分类包括 AUTH、RATE_LIMIT、TIMEOUT、STREAM、NETWORK、HTTP 和 UNKNOWN，无法识别的原因保留 UNKNOWN。
+
+模型失败或中途取消时，用量标记为不完整，避免默认的零 Token 被计为完整统计。回归覆盖真实 Worker 的 401 与不完整流，以及宿主丢弃诊断中的任意字符串字段。
+
+实库验证仍复用 `LocalPiMySqlLiveTest`。新增 DM 模式通过已有配置中的连接 ID、Schema 和表名启动；只读基准与查询工具使用同一个目标。覆盖命名空间发现、结构、计数、连续追问、空结果、真实 SQL 错误和模型流式取消。MySQL 保留原来的演示任务与入口，两种数据集每次只运行一种。
+
+```sh
+# 替换为本地配置中的真实连接 ID、测试 Schema 与测试表。
+DATA_AGENT_PI_LOCAL_DIRECTORY="$HOME/.data-agent/local" \
+DATA_AGENT_PI_DM_CONNECTION_ID=2 \
+DATA_AGENT_PI_DM_SCHEMA=TEST_SCHEMA \
+DATA_AGENT_PI_DM_TABLE=TEST_TABLE \
+python3 scripts/validation/pi_stages_ab.py --live-dm
+```
+
+DM 模式将报告写入 `target/pi-dm-live-summary.json`，验证脚本还会保存到本次独立报告目录。当前配置只有 MySQL，DM 实库结果仍待获得。DM 驱动层的 200 行截断还需要有足够数据的测试用例。
+
+本轮重新跑通了 MySQL 结构与计数、业务口径澄清两项真实模型用例。口径用例没有调用数据库工具，先询问“活跃”的定义与具体年月，先前中断的口径验收已补上。具体结果追加在原结果文件的 `followUp` 字段，原有失败尝试继续保留。
+
+验证清单中的 150 秒已明确为事件间空闲超时，与宿主现有实现一致。
+
+本轮离线回归通过 Core 26 项、Durable 16 项、后端本地测试 246 项、前端 51 项；实库用例默认跳过 15 项。新增 DM 路径完成编译和入口检查，尚未作真实数据库验收。

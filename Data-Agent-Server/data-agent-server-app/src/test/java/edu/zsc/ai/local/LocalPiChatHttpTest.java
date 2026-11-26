@@ -542,6 +542,25 @@ class LocalPiChatHttpTest {
         assertThat(output).doesNotContain("FIXTURE_SECRET_NEVER_PRINT");
     }
 
+    @Test void modelErrorDiagnosticsAreBoundedAndNeverCopyProviderText(CapturedOutput output) throws Exception {
+        for(String input:List.of("model-error-diagnostics","model-error-invalid-diagnostics")) {
+            String body=piTurn(session(false),input,null);
+            var done=blocks(body).stream().filter(block->block.path("done").asBoolean()).toList();
+            assertThat(done).hasSize(1);
+            var result=JSON.readTree(done.getFirst().path("data").asText());
+            assertThat(result.path("status").asText()).isEqualTo("FAILED");
+            assertThat(result.path("errorCode").asText()).isEqualTo("PI_MODEL_ERROR");
+            var info=result.path("modelError");
+            assertThat(info.path("kind").asText()).isEqualTo(input.equals("model-error-diagnostics")?"AUTH":"UNKNOWN");
+            if(input.equals("model-error-diagnostics")) {
+                assertThat(info.path("httpStatus").asInt()).isEqualTo(401);
+                assertThat(info.path("elapsedMs").asLong()).isEqualTo(123);
+            } else assertThat(info.size()).isEqualTo(1);
+            assertThat(body).doesNotContain("FIXTURE_SECRET_NEVER_PRINT","requestId","detail");
+        }
+        assertThat(output).doesNotContain("FIXTURE_SECRET_NEVER_PRINT");
+    }
+
     @Test void unsupportedModelIsRejectedBeforeStartingTheWorker() throws Exception {
         var setup=new LinkedHashMap<String,Object>();
         setup.put("name","Unsupported Pi model"); setup.put("provider","CUSTOM"); setup.put("apiStyle","OPENAI_RESPONSES");

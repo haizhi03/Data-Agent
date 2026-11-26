@@ -481,6 +481,7 @@ final class LocalPiChatService implements AutoCloseable {
         private boolean gated;
         private final List<JsonNode> gatedToolCalls = new ArrayList<>();
         volatile boolean cancelRequested;
+        Map<String, Object> modelError = Map.of();
         volatile PiWorkerProcess worker;
 
         RunHandler(LocalConversationRegistry.Session session, ModelRunSnapshot run, FluxSink<ChatResponseBlock> sink,
@@ -550,11 +551,29 @@ final class LocalPiChatService implements AutoCloseable {
                     };
                     String code = message.hasNonNull("errorCode") ? message.path("errorCode").asText() : null;
                     if (cancelRequested) { status = "CANCELLED"; code = null; }
+                    if ("FAILED".equals(status) && "PI_MODEL_ERROR".equals(code)) {
+                        readModelError(message.path("modelError"));
+                    }
                     terminate(status, code, message.path("usage"));
                 }
                 case "error" -> terminate("FAILED", "PI_PROTOCOL_ERROR", null);
                 default -> log.info("Pi worker message ignored: conversationId={}, type={}", session.id, message.path("type").asText());
             }
+        }
+
+        private void readModelError(JsonNode source) {
+            if (!source.isObject()) return;
+            var info = new LinkedHashMap<String, Object>();
+            String kind = source.path("kind").asText();
+            info.put("kind", Set.of("AUTH", "RATE_LIMIT", "TIMEOUT", "STREAM", "NETWORK", "HTTP", "UNKNOWN").contains(kind) ? kind : "UNKNOWN");
+            var httpStatus = source.path("httpStatus");
+            if (httpStatus.isIntegralNumber() && httpStatus.canConvertToInt() && httpStatus.asInt() >= 400 && httpStatus.asInt() <= 599)
+                info.put("httpStatus", httpStatus.asInt());
+            var elapsed = source.path("elapsedMs");
+            if (elapsed.isIntegralNumber() && elapsed.canConvertToLong() && elapsed.asLong() >= 0)
+                info.put("elapsedMs", elapsed.asLong());
+            modelError = Map.copyOf(info);
+            log.warn("Pi model failure: conversationId={}, runId={}, modelError={}", session.id, run.runId(), modelError);
         }
 
         void beginGate() {
@@ -668,6 +687,7 @@ final class LocalPiChatService implements AutoCloseable {
             metadata.put("runId", run.runId());
             metadata.put("engine", "PI");
             if (code != null) metadata.put("errorCode", code);
+            if ("PI_MODEL_ERROR".equals(code) && !modelError.isEmpty()) metadata.put("modelError", modelError);
             var block = ChatResponseBlock.doneBlock(metadata);
             block.setConversationId(session.id);
             sink.next(block);

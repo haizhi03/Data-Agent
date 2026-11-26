@@ -69,6 +69,19 @@ function onStart(msg) {
     return;
   }
 
+  if (text === 'model-error-diagnostics') {
+    finish(runId, 'FAILED', { errorCode: 'PI_MODEL_ERROR', modelError: {
+      kind: 'AUTH', httpStatus: 401, elapsedMs: 123,
+      detail: msg.apiKey, requestId: msg.apiKey,
+    } });
+    return;
+  }
+  if (text === 'model-error-invalid-diagnostics') {
+    finish(runId, 'FAILED', { errorCode: 'PI_MODEL_ERROR', modelError: {
+      kind: msg.apiKey, httpStatus: msg.apiKey, elapsedMs: -1,
+    } });
+    return;
+  }
   if (text.includes('crash-now')) {
     process.exit(2);
   }

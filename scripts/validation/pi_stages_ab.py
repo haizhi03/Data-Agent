@@ -45,10 +45,17 @@ def score_tasks(tasks, cases):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--live-mysql", action="store_true", help="Call the configured real models and existing sys_demo MySQL")
+    live = parser.add_mutually_exclusive_group()
+    live.add_argument("--live-mysql", action="store_true", help="Call the configured real models and existing sys_demo MySQL")
+    live.add_argument("--live-dm", action="store_true", help="Call real models against a configured DM Schema and test table")
     args = parser.parse_args()
-    if args.live_mysql and not os.environ.get("DATA_AGENT_PI_LOCAL_DIRECTORY"):
-        parser.error("--live-mysql requires DATA_AGENT_PI_LOCAL_DIRECTORY")
+    if (args.live_mysql or args.live_dm) and not os.environ.get("DATA_AGENT_PI_LOCAL_DIRECTORY"):
+        parser.error("Live validation requires DATA_AGENT_PI_LOCAL_DIRECTORY")
+    if args.live_dm:
+        required = ["DATA_AGENT_PI_DM_CONNECTION_ID", "DATA_AGENT_PI_DM_SCHEMA", "DATA_AGENT_PI_DM_TABLE"]
+        missing = [name for name in required if not os.environ.get(name)]
+        if missing:
+            parser.error("Missing DM settings: " + ", ".join(missing))
     output = APP / "target" / ("pi-ab-" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S-%f"))
     output.mkdir(parents=True)
     corpus_path = ROOT / "docs/pi-validation/readonly-corpus.json"
@@ -75,6 +82,7 @@ def main():
         }.items()},
         "suites": [], "tasks": [],
         "liveTasks": [{**task, "status": "NOT_RUN"} for task in corpus["liveTasks"]],
+        "dmTasks": [{**task, "status": "NOT_RUN"} for task in corpus["dmTasks"]],
         "frameworkDecision": "continue-core",
         "releaseStatus": "PENDING_REAL_DATABASE_AND_COMPARATIVE_ACCEPTANCE",
         "releaseEvidenceRequired": corpus["releaseEvidenceRequired"],
@@ -102,26 +110,29 @@ def main():
     cases = run("java-local", SERVER, ["mvn", "-pl", "data-agent-server-app", "-am", "test",
                 "-Dtest=edu.zsc.ai.local.*Test", "-Dsurefire.failIfNoSpecifiedTests=false"],
                 lambda: list((APP / "target/surefire-reports").glob("TEST-edu.zsc.ai.local.*.xml")),
-                {**os.environ, "DATA_AGENT_PI_MYSQL_LIVE": "false", "DATA_AGENT_PI_COMPARE_LIVE": "false"})
+                {**os.environ, "DATA_AGENT_PI_MYSQL_LIVE": "false", "DATA_AGENT_PI_COMPARE_LIVE": "false", "DATA_AGENT_PI_DM_LIVE": "false"})
     report["tasks"] = score_tasks(corpus["tasks"], cases)
     xml = output / "frontend.xml"
     run("frontend", CLIENT, ["npm", "test", "--", "src/components/ai/LocalAssistant.context.test.tsx",
         "src/services/localAssistant.service.test.ts", "src/lib/localRuntime.test.ts", "--maxWorkers=1",
         "--reporter=junit", "--outputFile=" + str(xml)], lambda: [xml] if xml.exists() else [])
-    if args.live_mysql:
-        env = {**os.environ, "DATA_AGENT_PI_MYSQL_LIVE": "true", "DATA_AGENT_PI_COMPARE_LIVE": "true"}
-        live_report = APP / "target/pi-readonly-comparison.json"
+    if args.live_mysql or args.live_dm:
+        dataset = "dm" if args.live_dm else "mysql"
+        task_key = "dmTasks" if args.live_dm else "liveTasks"
+        env = {**os.environ, "DATA_AGENT_PI_MYSQL_LIVE": str(args.live_mysql).lower(),
+               "DATA_AGENT_PI_COMPARE_LIVE": str(args.live_mysql).lower(), "DATA_AGENT_PI_DM_LIVE": str(args.live_dm).lower()}
+        live_report = APP / "target" / ("pi-dm-live-summary.json" if args.live_dm else "pi-readonly-comparison.json")
         # Preserve this run's exact evidence alongside its logs and test results.
         started = time.time()
-        cases = run("mysql-live", SERVER, ["mvn", "-pl", "data-agent-server-app", "-am", "test",
+        cases = run(dataset + "-live", SERVER, ["mvn", "-pl", "data-agent-server-app", "-am", "test",
             "-Dtest=LocalPiMySqlLiveTest", "-Dsurefire.failIfNoSpecifiedTests=false"],
             lambda: list((APP / "target/surefire-reports").glob("TEST-*LocalPiMySqlLiveTest.xml")), env)
-        report["liveTasks"] = score_tasks(corpus["liveTasks"], cases)
+        report[task_key] = score_tasks(corpus[task_key], cases)
         if live_report.exists() and live_report.stat().st_mtime >= started - 1:
-            report["mysqlLive"] = json.loads(live_report.read_text())
+            report[dataset + "Live"] = json.loads(live_report.read_text())
     passed = all(item["status"] == "PASS" for item in report["suites"] + report["tasks"])
-    if args.live_mysql:
-        passed = passed and all(item["status"] == "PASS" for item in report["liveTasks"])
+    if args.live_mysql or args.live_dm:
+        passed = passed and all(item["status"] == "PASS" for item in report[task_key])
     report["contractStatus"] = "PASS" if passed else "FAIL"
     (output / "summary.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n")
     print(f"{report['contractStatus']}. Evidence saved to {output / 'summary.json'}")

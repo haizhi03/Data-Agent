@@ -31,6 +31,22 @@ const targetFields = {
   schemaName: Type.Optional(Type.String({ description: 'Schema name, when applicable.' })),
 };
 
+// pi-ai exposes a normalized error string. Only fixed categories and numbers
+// cross the host boundary, since provider text can contain credentials or bodies.
+function modelErrorInfo(error, elapsedMs) {
+  const text = String(error ?? '');
+  const statusMatch = text.match(/^(?:HTTP\s+)?([45]\d{2})(?:\b|:)/i);
+  const httpStatus = statusMatch ? Number(statusMatch[1]) : undefined;
+  let kind = 'UNKNOWN';
+  if (httpStatus === 401 || httpStatus === 403) kind = 'AUTH';
+  else if (httpStatus === 429) kind = 'RATE_LIMIT';
+  else if (/timeout|timed out|ETIMEDOUT/i.test(text)) kind = 'TIMEOUT';
+  else if (/finish_reason|stream ended|terminated|premature/i.test(text)) kind = 'STREAM';
+  else if (/connection|ECONN|ENOTFOUND|fetch failed|socket/i.test(text)) kind = 'NETWORK';
+  else if (httpStatus) kind = 'HTTP';
+  return { kind, ...(httpStatus ? { httpStatus } : {}), elapsedMs: Number.isFinite(elapsedMs) ? Math.max(0, Math.round(elapsedMs)) : 0 };
+}
+
 export class PiSession {
   /**
    * @param {string} sessionId
@@ -79,6 +95,7 @@ export class PiSession {
       modelCalls: 0,
       inputTokens: 0,
       outputTokens: 0,
+      usageComplete: true,
       finished: false,
     };
     this.activeRun = run;
@@ -104,6 +121,7 @@ export class PiSession {
               if (active) active.budgetExceeded = true;
               throw new Error('AGENT_BUDGET_EXCEEDED');
             }
+            active.modelStartedAt = performance.now();
             return this.endpoint.streams.streamSimple(model, context, options);
           },
           getApiKey: () => this.apiKey,
@@ -314,7 +332,8 @@ export class PiSession {
           if (usage && Number.isFinite(usage.input) && Number.isFinite(usage.output)) {
             run.inputTokens += usage.input;
             run.outputTokens += usage.output;
-          }
+          } else run.usageComplete = false;
+          if (message.stopReason === 'error' || message.stopReason === 'aborted') run.usageComplete = false;
         }
         break;
       }
@@ -334,15 +353,15 @@ export class PiSession {
       return;
     }
     if (lastAssistant?.stopReason === 'error') {
-      // Details (endpoint, provider message) stay in stderr; never on stdout.
-      logDiagnostic('model call failed:', lastAssistant.errorMessage ?? '<no message>');
-      this.#finish(run, 'FAILED', 'PI_MODEL_ERROR');
+      const info = modelErrorInfo(lastAssistant.errorMessage, performance.now() - run.modelStartedAt);
+      logDiagnostic('model call failed:', JSON.stringify(info));
+      this.#finish(run, 'FAILED', 'PI_MODEL_ERROR', info);
       return;
     }
     this.#finish(run, 'SUCCEEDED', null);
   }
 
-  #finish(run, status, errorCode) {
+  #finish(run, status, errorCode, modelError) {
     if (!this.activeRun || this.activeRun.runId !== run.runId || run.finished) return;
     if (run.budgetExceeded && status !== 'CANCELLED') { status = 'FAILED'; errorCode = 'AGENT_BUDGET_EXCEEDED'; }
     run.finished = true;
@@ -351,12 +370,13 @@ export class PiSession {
     this.activeRun = null;
     const message = { type: 'finished', runId: run.runId, status };
     if (errorCode) message.errorCode = errorCode;
+    if (errorCode === 'PI_MODEL_ERROR' && modelError) message.modelError = modelError;
     message.usage = {
       modelCalls: run.modelCalls,
       toolCalls: run.toolCalls,
       inputTokens: run.inputTokens,
       outputTokens: run.outputTokens,
-      usageComplete: run.modelCalls > 0,
+      usageComplete: run.modelCalls > 0 && run.usageComplete,
     };
     this.send(message);
   }
