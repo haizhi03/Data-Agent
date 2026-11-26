@@ -1,0 +1,13 @@
+{
+  "platform": "Windows x64",
+  "javaMajor": 21,
+  "piVersion": "1.5.0",
+  "nodeVersion": "22.23.2",
+  "nodeArchive": "node-v22.23.2-win-x64.zip",
+  "nodeURL": "https://nodejs.org/dist/v22.23.2/node-v22.23.2-win-x64.zip",
+  "nodeSha256": "1177b4137ba5adaa56354ae40f1080c7450e8ae09cecb47da459d1c52ac99f97",
+  "javaVersion": "21.0.13+100000002.0.LTS",
+  "javaArchive": "OpenJDK21U-jre_x64_windows_hotspot_21.0.13.1_2.zip",
+  "javaURL": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.13.1%2B2/OpenJDK21U-jre_x64_windows_hotspot_21.0.13.1_2.zip",
+  "javaSha256": "e15ee1e54a5a3b38027a09cedfa87bc3348d7dd3ce50866dd3d9671d7fffc6c1"
+}

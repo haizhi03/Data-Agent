@@ -1,0 +1,83 @@
+name: Windows desktop preview
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-x64:
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.2'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.404'
+      - name: Install frontend build dependencies
+        run: npm ci --no-audit --no-fund
+        working-directory: Data-Agent-Client
+      - name: Assemble bundled Java, Node, frontend and backend
+        run: python scripts/desktop/build.py --target windows-x64
+      - name: Package native app and per-user installer
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (!(Test-Path $iscc)) { throw "Inno Setup 6 is required on the build runner" }
+          python scripts/desktop/package_windows.py target/desktop-pi-windows-x64 --output "target/windows-release/Data Agent" --installer "$iscc"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Check complete ZIP and PE payload
+        run: python scripts/validation/windows_bundle_check.py "target/windows-release/Data Agent" --output target/windows-static-check.json
+      - name: Install development preview as current user
+        shell: pwsh
+        run: |
+          $destination = Join-Path $env:RUNNER_TEMP 'Data Agent installed'
+          $setup = (Resolve-Path 'target/windows-release/DataAgent-windows-x64-setup.exe').Path
+          $install = Start-Process $setup -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', "/DIR=`"$destination`"") -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw "Installer exited with $($install.ExitCode)" }
+          if (!(Test-Path "$destination\DataAgent.exe")) { throw 'Installed executable missing' }
+      - name: Ensure official Evergreen WebView2 Runtime is present
+        shell: pwsh
+        run: |
+          $bootstrap = Join-Path $env:RUNNER_TEMP 'MicrosoftEdgeWebview2Setup.exe'
+          Invoke-WebRequest 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile $bootstrap
+          $signature = Get-AuthenticodeSignature $bootstrap
+          if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch '(^|,\s*)O=Microsoft Corporation(,|$)') {
+            throw 'WebView2 bootstrapper must have a valid Microsoft publisher signature'
+          }
+          $runtime = Start-Process $bootstrap -ArgumentList @('/silent', '/install') -Wait -PassThru
+          if ($runtime.ExitCode -notin @(0, 3010)) { throw "WebView2 installer exited with $($runtime.ExitCode)" }
+      - name: Exercise native startup and Windows process ownership
+        shell: pwsh
+        run: python scripts/validation/native_windows_smoke.py "$env:RUNNER_TEMP/Data Agent installed" --output target/windows-native-smoke.json
+      - name: Uninstall development preview
+        if: always()
+        shell: pwsh
+        run: |
+          $uninstall = Join-Path $env:RUNNER_TEMP 'Data Agent installed/unins000.exe'
+          if (Test-Path $uninstall) {
+            $removed = Start-Process $uninstall -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART') -Wait -PassThru
+            if ($removed.ExitCode -ne 0) { throw "Uninstaller exited with $($removed.ExitCode)" }
+          }
+      - name: Upload development preview and evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: DataAgent-windows-x64-preview
+          path: |
+            target/windows-release/*.zip
+            target/windows-release/*setup.exe
+            target/windows-release/*.manifest.json
+            target/windows-*.json
+          if-no-files-found: warn

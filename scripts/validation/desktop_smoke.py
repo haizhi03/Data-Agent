@@ -75,15 +75,22 @@ def main():
         with tempfile.TemporaryDirectory(prefix='data-agent desktop smoke ') as temporary:
             temp = Path(temporary)
 
-            def start(data, root=bundle):
+            def start(data, root=bundle, gated=False):
                 # Build tools and globally installed Java/Node are deliberately unreachable.
                 env = {**os.environ, 'PATH': '', 'DATA_AGENT_DATA_DIRECTORY': str(data)}
                 for key in list(env):
                     if key.startswith(('JAVA_TOOL_OPTIONS', 'JDK_JAVA_OPTIONS', '_JAVA_OPTIONS', 'SPRING_', 'APP_', 'NODE_OPTIONS')):
                         env.pop(key)
-                process = subprocess.Popen([str(root / 'start.command')], cwd=temp, env=env,
+                command = ([str(root / 'runtime/node/bin/node'), str(root / 'host.mjs'), '--parent-pipe', '--start-gated']
+                           if gated else [str(root / 'start.command')])
+                process = subprocess.Popen(command, cwd=temp, env=env,
                                            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
                 processes.append(process)
+                if gated:
+                    time.sleep(.3)
+                    assert process.poll() is None and not data.exists(), 'Host started before job ownership was released'
+                    process.stdin.write('start\n')
+                    process.stdin.flush()
                 messages = queue.Queue()
                 def read_lines():
                     for line in process.stdout:
@@ -131,6 +138,8 @@ def main():
             assert request(base, '/%2e%2e/server.jar')[0] == 404
             assert request(base, '/server.jar')[0] == 404
             assert request(base, '/runtime-lock.json')[0] == 404
+            for route in ['/%2e%2e%5cserver.jar', '/assets%5c..%5c..%5cserver.jar', '/index.html%3Astream', '/%00']:
+                assert request(base, route)[0] == 404, route
             status, body, _ = request(base, '/api/local/conversations/1', headers={
                 'X-Local-Runtime-Id': '00000000-0000-4000-8000-000000000000'})
             assert status == 409 and 'LOCAL_RUNTIME_MISMATCH' in body
@@ -150,7 +159,7 @@ def main():
                 result = json.loads(body)['data']
                 assert status == 200 and result['success'] and result['rows'][0][0] == 1
                 checks.append({'case': 'packaged-jre-mysql-driver-read-only-query', 'status': 'PASS'})
-            second, other = start(temp / 'second data')
+            second, other = start(temp / 'second data', gated=True)
             assert other['url'] != base and other['backendPid'] != ready['backendPid']
             assert request(other['url'], '/api/runtime/capabilities')[0] == 200
             checks.append({'case': 'two-instances-use-independent-ports-and-data', 'status': 'PASS'})
@@ -163,6 +172,14 @@ def main():
             second.wait(timeout=5)
             gone(other['backendPid'])
             checks.append({'case': 'killed-host-eof-cleans-backend', 'status': 'PASS'})
+            gated_data = temp / 'unreleased data'
+            gated = subprocess.Popen([str(bundle / 'runtime/node/bin/node'), str(bundle / 'host.mjs'), '--parent-pipe', '--start-gated'],
+                env={**os.environ, 'PATH': '', 'DATA_AGENT_DATA_DIRECTORY': str(gated_data)},
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            processes.append(gated)
+            stdout, stderr = gated.communicate(timeout=10)
+            assert gated.returncode == 0 and not stdout and not gated_data.exists(), stderr
+            checks.append({'case': 'parent-eof-before-job-release-spawns-no-backend', 'status': 'PASS'})
             # A missing packaged jar must fail visibly, release processes, and never announce ready.
             broken = temp / 'broken bundle'
             broken.mkdir()

@@ -11,7 +11,7 @@ import { once } from 'node:events';
 
 const bundle = path.dirname(fileURLToPath(import.meta.url));
 const data = path.resolve(process.env.DATA_AGENT_DATA_DIRECTORY || path.join(homedir(), '.data-agent', 'local'));
-const java = path.join(bundle, 'runtime/java/bin/java');
+const java = path.join(bundle, 'runtime/java/bin', process.platform === 'win32' ? 'java.exe' : 'java');
 const workerScript = path.join(bundle, 'worker/src/worker.js');
 const prefix = 'DATA_AGENT_HOST_READY ';
 let backend, probe, bootstrap, log, stopping = false;
@@ -58,7 +58,10 @@ async function handle(req, res) {
     return;
   }
   const web = path.join(bundle, 'web');
-  let file = path.resolve(web, '.' + decodeURIComponent(url.pathname));
+  const pathname = decodeURIComponent(url.pathname);
+  // Reject Windows separators, drive/ADS syntax and NUL on every platform.
+  if (/[\\:\0]/.test(pathname)) { res.writeHead(404); res.end(); return; }
+  let file = path.resolve(web, '.' + pathname);
   if (!file.startsWith(web + path.sep) && file !== web) { res.writeHead(404); res.end(); return; }
   try { if (!(await stat(file)).isFile()) file = path.join(web, 'index.html'); }
   catch { if (path.extname(file)) { res.writeHead(404); res.end(); return; } file = path.join(web, 'index.html'); }
@@ -96,6 +99,17 @@ if (process.argv.includes('--parent-pipe')) {
   process.stdin.on('error', () => { void stop(0); });
   process.stdin.resume();
 }
+// Windows assigns the host to its kill-on-close Job Object before releasing startup.
+// If the native parent dies in that interval, pipe EOF prevents any backend spawn.
+const startGate = process.argv.includes('--start-gated') ? new Promise(resolve => {
+  if (!process.argv.includes('--parent-pipe')) { void stop(1); return; }
+  let command = '';
+  process.stdin.on('data', chunk => {
+    command += chunk.toString('utf8');
+    if (command === 'start\n') resolve();
+    else if (!'start\n'.startsWith(command)) void stop(1);
+  });
+}) : Promise.resolve();
 
 async function probeWorker() {
   const worker = spawn(process.execPath, [workerScript], { cwd: data, stdio: ['pipe', 'pipe', 'pipe'] });
@@ -113,6 +127,8 @@ async function probeWorker() {
 }
 
 async function start() {
+  await startGate;
+  if (stopping) return;
   await mkdir(path.join(data, 'logs'), { recursive: true, mode: 0o700 });
   log = createWriteStream(path.join(data, 'logs/desktop-host.log'), { flags: 'a', mode: 0o600 });
   log.on('error', () => { process.stderr.write('HOST_LOG_UNAVAILABLE\n'); void stop(1); });
