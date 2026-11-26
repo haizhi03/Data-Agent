@@ -10,6 +10,7 @@ import edu.zsc.ai.plugin.capability.TableStructureManager;
 import edu.zsc.ai.plugin.manager.DefaultPluginManager;
 import edu.zsc.ai.plugin.model.structure.StructurePreview;
 import edu.zsc.ai.plugin.model.structure.TableStructure;
+import edu.zsc.ai.plugin.model.structure.TableStructureEquality;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
@@ -22,6 +23,8 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 public class TableStructureServiceImpl implements TableStructureService {
+
+    static final String STALE_STRUCTURE_MESSAGE = "表结构已变化，请刷新后再执行";
 
     private final ConnectionService connectionService;
     private final SqlCompletionService completionService;
@@ -55,6 +58,10 @@ public class TableStructureServiceImpl implements TableStructureService {
         }
         try (ActiveConnectionRegistry.BorrowedConnection borrowed = active.borrowConnection()) {
             Connection connection = borrowed.connection();
+            TableStructure live = reload(manager, connection, db, tableName, null);
+            if (!TableStructureEquality.same(baseline, live)) {
+                return new ApplyTableStructureResponse(null, List.of(), List.of(), -1, STALE_STRUCTURE_MESSAGE);
+            }
             StructurePreview preview = manager.preview(db.catalog(), db.schema(), baseline, draft);
             List<String> statements = preview.statements();
             int failedIndex = -1;

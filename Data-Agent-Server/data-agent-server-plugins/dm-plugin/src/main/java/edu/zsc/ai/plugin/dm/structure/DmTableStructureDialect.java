@@ -201,8 +201,10 @@ public final class DmTableStructureDialect {
             }
         }
         for (Index index : next.indexes()) {
-            if (index.columns().isEmpty()) {
-                if (StringUtils.isNotBlank(index.name()) || StringUtils.isNotBlank(index.originalName())) {
+            if (index.columns() == null || index.columns().isEmpty()) {
+                Index loaded = StringUtils.isBlank(index.originalName()) ? null : findIndex(base, index.originalName());
+                boolean alreadyEmpty = loaded != null && (loaded.columns() == null || loaded.columns().isEmpty());
+                if (!alreadyEmpty && (StringUtils.isNotBlank(index.name()) || StringUtils.isNotBlank(index.originalName()))) {
                     warnings.add("Index has no columns: " + StringUtils.defaultIfBlank(index.name(), index.originalName()));
                 }
                 continue;
@@ -461,6 +463,17 @@ public final class DmTableStructureDialect {
         }
         if (names.isEmpty() && !base.columns().isEmpty()) {
             warnings.add("Table must keep at least one column");
+            blocked = true;
+        }
+        for (Index index : next.indexes()) {
+            if (StringUtils.isBlank(index.originalName()) || !index.columns().isEmpty()) {
+                continue;
+            }
+            Index loaded = findIndex(base, index.originalName());
+            if (loaded == null || loaded.columns() == null || loaded.columns().isEmpty()) {
+                continue;
+            }
+            warnings.add("Index has no columns: " + StringUtils.defaultIfBlank(index.name(), index.originalName()));
             blocked = true;
         }
         return blocked;

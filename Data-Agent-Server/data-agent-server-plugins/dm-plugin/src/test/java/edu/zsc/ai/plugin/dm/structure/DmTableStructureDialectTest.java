@@ -199,6 +199,53 @@ class DmTableStructureDialectTest {
     }
 
     @Test
+    void clearingExistingIndexColumnsBlocksDrop() {
+        Index index = new Index("UK_CODE", "UK_CODE", true, "NORMAL", List.of("NAME"), List.of());
+        Index cleared = new Index("UK_CODE", "UK_CODE", true, "NORMAL", List.of(), List.of());
+        TableStructure baseline = withIndexes(sample(), List.of(index));
+        Column commented = column("NAME", "NAME", "VARCHAR(100)", true, "客户名");
+        TableStructure draft = new TableStructure(baseline.name(), baseline.comment(), null, null, null,
+                List.of(column("ID"), commented), baseline.primaryKey(), List.of(cleared),
+                baseline.foreignKeys(), baseline.checks());
+
+        StructurePreview preview = DmTableStructureDialect.preview(null, "HR", baseline, draft);
+
+        assertTrue(preview.statements().isEmpty());
+        assertTrue(preview.changes().isEmpty());
+        assertTrue(preview.warnings().stream().anyMatch(warning -> warning.contains("Index has no columns: UK_CODE")));
+    }
+
+    @Test
+    void loadedIndexWithoutColumnsDoesNotBlockOtherChanges() {
+        Index index = new Index("INDEX33555775", "INDEX33555775", false, "NORMAL", List.of(), List.of());
+        Column commented = column("NAME", "NAME", "VARCHAR(100)", true, "客户名");
+        TableStructure baseline = withIndexes(sample(), List.of(index));
+        TableStructure draft = new TableStructure(baseline.name(), baseline.comment(), null, null, null,
+                List.of(column("ID"), commented), baseline.primaryKey(), List.of(index),
+                baseline.foreignKeys(), baseline.checks());
+
+        StructurePreview preview = DmTableStructureDialect.preview(null, "HR", baseline, draft);
+
+        assertEquals("COMMENT ON COLUMN \"HR\".\"DEMO\".\"NAME\" IS '客户名'", preview.statements().get(0));
+        assertTrue(preview.warnings().isEmpty());
+    }
+
+    @Test
+    void blankNewIndexDoesNotBlockOtherChanges() {
+        Index blank = new Index("", null, false, "NORMAL", List.of(), List.of());
+        Column commented = column("NAME", "NAME", "VARCHAR(100)", true, "客户名");
+        TableStructure baseline = sample();
+        TableStructure draft = new TableStructure(baseline.name(), baseline.comment(), null, null, null,
+                List.of(column("ID"), commented), baseline.primaryKey(), List.of(blank),
+                baseline.foreignKeys(), baseline.checks());
+
+        StructurePreview preview = DmTableStructureDialect.preview(null, "HR", baseline, draft);
+
+        assertEquals("COMMENT ON COLUMN \"HR\".\"DEMO\".\"NAME\" IS '客户名'", preview.statements().get(0));
+        assertTrue(preview.warnings().isEmpty());
+    }
+
+    @Test
     void prefixLengthDoesNotCreateIndex() {
         Index index = new Index("IDX_NAME", null, false, "NORMAL", List.of("NAME"), List.of(10));
         TableStructure baseline = sample();
@@ -259,6 +306,11 @@ class DmTableStructureDialectTest {
                 "FK_DEMO", "FK_DEMO", List.of("PARENT_ID"), "HR", "PARENT", List.of("ID"), null, null);
         return new TableStructure(structure.name(), structure.comment(), null, null, null, structure.columns(),
                 structure.primaryKey(), structure.indexes(), List.of(foreignKey), structure.checks());
+    }
+
+    private static TableStructure withIndexes(TableStructure structure, List<Index> indexes) {
+        return new TableStructure(structure.name(), structure.comment(), null, null, null, structure.columns(),
+                structure.primaryKey(), indexes, structure.foreignKeys(), structure.checks());
     }
 
     private static TableStructure copy(TableStructure structure, List<Column> columns) {

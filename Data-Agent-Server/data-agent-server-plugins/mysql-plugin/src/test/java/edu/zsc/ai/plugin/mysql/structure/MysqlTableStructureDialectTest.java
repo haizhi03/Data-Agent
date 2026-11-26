@@ -254,6 +254,50 @@ class MysqlTableStructureDialectTest {
     }
 
     @Test
+    void clearingExistingIndexColumnsBlocksDrop() {
+        Index index = new Index("uk_name", "uk_name", true, "BTREE", List.of("name"), List.of());
+        Index cleared = new Index("uk_name", "uk_name", true, "BTREE", List.of(), List.of());
+        TableStructure baseline = withIndexes(sample(), List.of(index));
+        Column commented = column("name", "name", "varchar(100)", 100, true, "客户名");
+        TableStructure draft = new TableStructure(baseline.name(), baseline.comment(), baseline.engine(),
+                baseline.charset(), baseline.collation(), List.of(column("id"), commented), baseline.primaryKey(),
+                List.of(cleared), baseline.foreignKeys(), baseline.checks());
+
+        StructurePreview preview = MysqlTableStructureDialect.preview("crm", null, baseline, draft);
+
+        assertTrue(preview.statements().isEmpty());
+        assertTrue(preview.changes().isEmpty());
+        assertTrue(preview.warnings().stream().anyMatch(warning -> warning.contains("Index has no columns: uk_name")));
+    }
+
+    @Test
+    void removingIndexDropsIt() {
+        Index index = new Index("uk_name", "uk_name", true, "BTREE", List.of("name"), List.of());
+        TableStructure baseline = withIndexes(sample(), List.of(index));
+        TableStructure draft = withIndexes(baseline, List.of());
+
+        StructurePreview preview = MysqlTableStructureDialect.preview("crm", null, baseline, draft);
+
+        assertTrue(preview.statements().get(0).contains("DROP INDEX `uk_name`"));
+        assertEquals("DROP", preview.changes().get(0).action());
+    }
+
+    @Test
+    void blankNewIndexDoesNotBlockOtherChanges() {
+        Index blank = new Index("", null, false, "BTREE", List.of(), List.of());
+        Column commented = column("name", "name", "varchar(100)", 100, true, "客户名");
+        TableStructure baseline = sample();
+        TableStructure draft = new TableStructure(baseline.name(), baseline.comment(), baseline.engine(),
+                baseline.charset(), baseline.collation(), List.of(column("id"), commented), baseline.primaryKey(),
+                List.of(blank), baseline.foreignKeys(), baseline.checks());
+
+        StructurePreview preview = MysqlTableStructureDialect.preview("crm", null, baseline, draft);
+
+        assertTrue(preview.statements().get(0).contains("COMMENT '客户名'"));
+        assertTrue(preview.warnings().isEmpty());
+    }
+
+    @Test
     void keepsCollationWhenCharsetMatchesTable() {
         assertEquals("utf8mb4_bin", MysqlTableStructureLoader.retainedCollation("utf8mb4", "utf8mb4", "utf8mb4_bin"));
     }
@@ -288,6 +332,12 @@ class MysqlTableStructureDialectTest {
         return new TableStructure(structure.name(), structure.comment(), structure.engine(), structure.charset(),
                 structure.collation(), structure.columns(), structure.primaryKey(), structure.indexes(),
                 List.of(foreignKey), structure.checks());
+    }
+
+    private static TableStructure withIndexes(TableStructure structure, List<Index> indexes) {
+        return new TableStructure(structure.name(), structure.comment(), structure.engine(), structure.charset(),
+                structure.collation(), structure.columns(), structure.primaryKey(), indexes,
+                structure.foreignKeys(), structure.checks());
     }
 
     private static TableStructure copy(TableStructure structure, List<Column> columns) {
