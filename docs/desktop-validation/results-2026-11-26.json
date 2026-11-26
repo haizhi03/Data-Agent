@@ -107,7 +107,237 @@
     "native window lifecycle",
     "read-only installation directory",
     "upgrade and rollback",
+    "DM8 driver and real database validation",
+    "packaged Explorer active task shutdown"
+  ],
+  "remainingAtInitialValidation": [
+    "clean macOS installation",
+    "Windows runtime and installer",
+    "native window lifecycle",
+    "read-only installation directory",
+    "upgrade and rollback",
     "packaged active query/model shutdown",
     "DM8 driver and real database validation"
-  ]
+  ],
+  "followUp": {
+    "verifiedAt": "2026-11-26T14:53:14.701892+00:00",
+    "implementationCommit": "d7f005c1eee242a5137a20b09d5a749d3a4d83a2",
+    "baselineCommits": [
+      "9444f2e",
+      "aaa3de6",
+      "6e6dc21"
+    ],
+    "fixCommits": [
+      "c3b914d",
+      "d7f005c"
+    ],
+    "fixes": [
+      "cancel sessions and connection queries before Tomcat request draining",
+      "register execute action inside Monaco to override default insert-line shortcut"
+    ],
+    "beforeFix": {
+      "status": "FAILED",
+      "checks": [
+        {
+          "case": "query-SIGTERM",
+          "status": "FAILED"
+        }
+      ],
+      "observedFailure": "Java survived host exit for more than 5 seconds with a live read query"
+    },
+    "activeTaskValidation": {
+      "verifiedAt": "2026-11-26T14:34:31.073336+00:00",
+      "status": "PASS",
+      "modelTransport": "test-only fetch redirect to local SSE fixture; real packaged Pi worker",
+      "realModelVendorCalls": 0,
+      "bundleManifestSha256": "56a24493deb911d56ad64279911f05e1feb6c9eac87c2ca5c965ab37de2658bb",
+      "checks": [
+        {
+          "case": "query-SIGTERM",
+          "status": "PASS",
+          "requestActiveBeforeShutdown": true,
+          "cleanupMs": 209,
+          "workers": 0
+        },
+        {
+          "case": "query-SIGKILL",
+          "status": "PASS",
+          "requestActiveBeforeShutdown": true,
+          "cleanupMs": 219,
+          "workers": 0
+        },
+        {
+          "case": "model-SIGTERM",
+          "status": "PASS",
+          "requestActiveBeforeShutdown": true,
+          "cleanupMs": 160,
+          "workers": 1
+        },
+        {
+          "case": "model-SIGKILL",
+          "status": "PASS",
+          "requestActiveBeforeShutdown": true,
+          "cleanupMs": 160,
+          "workers": 1
+        }
+      ],
+      "fixtureModelRequests": 2,
+      "originalConfigurationUnchanged": true,
+      "bundleUnchanged": true
+    },
+    "baselineSmoke": {
+      "verifiedAt": "2026-11-26T14:51:04.138903+00:00",
+      "platform": "macOS arm64",
+      "bundleManifestSha256": "92cd676e0d377f8b867611b5299cc8358f1882010f883b91f9e81b172afc5c5e",
+      "checks": [
+        {
+          "case": "packaged-ui-java-worker-start-without-path",
+          "status": "PASS"
+        },
+        {
+          "case": "origin-host-and-static-path-isolation",
+          "status": "PASS"
+        },
+        {
+          "case": "private-bootstrap-and-authenticated-backend",
+          "status": "PASS"
+        },
+        {
+          "case": "packaged-jre-mysql-driver-read-only-query",
+          "status": "PASS"
+        },
+        {
+          "case": "two-instances-use-independent-ports-and-data",
+          "status": "PASS"
+        },
+        {
+          "case": "graceful-exit-cleans-backend-without-affecting-other-instance",
+          "status": "PASS"
+        },
+        {
+          "case": "killed-host-eof-cleans-backend",
+          "status": "PASS"
+        },
+        {
+          "case": "missing-jar-fails-without-false-ready",
+          "status": "PASS"
+        }
+      ],
+      "modelCalls": 0,
+      "status": "PASS",
+      "bundleUnchanged": true,
+      "originalConfigurationUnchanged": true
+    },
+    "uiValidation": {
+      "uiMethod": "native Chrome via computer-use accessibility observations",
+      "bundleManifestSha256": "56a24493deb911d56ad64279911f05e1feb6c9eac87c2ca5c965ab37de2658bb",
+      "status": "PASS",
+      "steps": [
+        {
+          "case": "saved-model-test-and-edit",
+          "status": "PASS",
+          "observed": "Connection succeeded, 1337 ms; saved qwen-package-e2e; existing key not displayed"
+        },
+        {
+          "case": "connection-edit-and-restart",
+          "status": "PASS",
+          "observed": "Connection updated; package-e2e-mysql retained after host restart"
+        },
+        {
+          "case": "editor-selection-context",
+          "status": "PASS",
+          "observed": "Selected SELECT 29 AS second_value; assistant answered 29"
+        },
+        {
+          "case": "read-query-result",
+          "status": "PASS",
+          "observed": "Result grid: second_value=29, 1 row"
+        },
+        {
+          "case": "explicit-result-reference",
+          "status": "PASS",
+          "observed": "Selected result, assistant answered 29; attachment cleared after send"
+        },
+        {
+          "case": "explicit-error-reference",
+          "status": "PASS",
+          "observed": "Unknown column pi_desktop_missing_column; assistant explained SQLState 42S22 without reexecution"
+        },
+        {
+          "case": "same-conversation-follow-up",
+          "status": "PASS",
+          "observed": "No new execution attached; assistant answered failed based on previous snapshot"
+        }
+      ],
+      "liveChatTurns": [
+        {
+          "conversationId": "137803026434714",
+          "runId": "0f1470b5-5423-4d92-9975-5240469b6fc6",
+          "status": "SUCCEEDED",
+          "toolCalls": 0
+        },
+        {
+          "conversationId": "137803026434714",
+          "runId": "34ac8cbf-3bd2-4880-aa2c-9ab07b56ab4d",
+          "status": "SUCCEEDED",
+          "toolCalls": 0
+        },
+        {
+          "conversationId": "137803026434714",
+          "runId": "1840cdd7-f5ac-4c8d-9644-a9a7c5be4a0d",
+          "status": "SUCCEEDED",
+          "toolCalls": 0
+        },
+        {
+          "conversationId": "137803026434714",
+          "runId": "af2d32ee-b853-4dc8-847f-bf851845b42d",
+          "status": "SUCCEEDED",
+          "toolCalls": 0
+        }
+      ],
+      "shortcut": {
+        "status": "PASS",
+        "method": "native Chrome Command+Return in Monaco",
+        "sql": "SELECT 73 AS n",
+        "observedRows": [
+          [
+            73
+          ]
+        ],
+        "commandPaletteBinding": "Execute SQL, Command+Enter"
+      },
+      "verifiedAt": "2026-11-26T14:51:01.398742+00:00",
+      "shortcutBundleManifestSha256": "c860d8ba768f75dfba49fc31190c13e1bbb5b9baea860e6d5d791e7e979dc1a4",
+      "originalConfigurationUnchanged": true
+    },
+    "activeTaskArtifactIdentity": {
+      "server.jar": "c0fc74b316ed8f59a7bd447e4aff965a8861430d051c6b3b89b95fed251c8ff7",
+      "host.mjs": "2756bccb6e59727bfb25f61ae83fcc0558b2d9a1609614b5a33b83d07702b50b",
+      "worker/package-lock.json": "7920d8b13d4999cd0ff792bc2d6b2be24ddc9b65c19dfce5bc30ca80a01e34ec",
+      "runtime/node/bin/node": "18e387c90ab8a8400183e8bdd396376e1e875b91b4c874b894dcade7b35bf572"
+    },
+    "finalBundleManifestSha256": "92cd676e0d377f8b867611b5299cc8358f1882010f883b91f9e81b172afc5c5e",
+    "regression": {
+      "frontendPassed": 299,
+      "backendTotal": 276,
+      "backendPassed": 259,
+      "backendSkipped": 17,
+      "failures": 0,
+      "errors": 0,
+      "frontendBuild": "PASS",
+      "backendPackage": "PASS"
+    },
+    "sourceSha256": {
+      "Data-Agent-Client/src/components/editor/MonacoEditor.tsx": "121ea32c9b88a69d4a366f1c0ac0ca1bc334a0f75c3a668807c9ce5fc812420a",
+      "Data-Agent-Client/src/pages/Home.tsx": "4b2ac13ca292ec87802f0f8ed180d622edbf2179fd01f0b7c8dbc4061b68946a",
+      "Data-Agent-Server/data-agent-server-app/src/main/java/edu/zsc/ai/local/LocalHostLifecycle.java": "bbdb4d4b29a7607b6242221955c87fbf50d9919e6db7dcd0705690b7801fa742",
+      "Data-Agent-Server/data-agent-server-app/src/main/java/edu/zsc/ai/local/LocalRuntimeConfiguration.java": "6f93c4630de6878c014a97d592e833676d79a1efbecaf30119b44e3bdc3e75fa",
+      "scripts/validation/desktop_active_smoke.py": "4cae482b43b7e5d1ceec3bece1006ce491a6114c30073f4ad94c47fae57f7a1f"
+    },
+    "scopeNotes": [
+      "Active model transport uses a test-only local SSE redirect; completed UI chat turns use the real configured Qwen model.",
+      "UI flow and active-task checks retain their own artifact fingerprints; the final keyboard fix changes frontend assets only.",
+      "Development-machine validation; clean-machine installation and Windows remain pending."
+    ]
+  }
 }

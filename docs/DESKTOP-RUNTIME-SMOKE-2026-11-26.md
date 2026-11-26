@@ -53,4 +53,25 @@ python3 scripts/validation/desktop_smoke.py target/desktop-pi-macos-arm64 \
 
 前端 299 项通过，后端本地与上下文/记忆回归 259 项通过、17 项实库默认跳过；TypeScript、生产构建和后端打包通过。
 
-本步证据只覆盖这台 macOS 开发机。干净 macOS / Windows 安装、原生窗口关闭、签名与分发、升级回退、只读安装目录、打包环境中的运行中查询/模型退出，以及 DM8 驱动和真实数据库仍需分别验收。运行目录包和清空 PATH 不等同于完成上述验收。
+本步证据只覆盖这台 macOS 开发机。干净 macOS / Windows 安装、原生窗口关闭、签名与分发、升级回退、只读安装目录、打包环境中的 Explorer 活动任务退出，以及 DM8 驱动和真实数据库仍需分别验收。运行目录包和清空 PATH 不等同于完成上述验收。
+
+
+## 同日后续：页面流程与活动任务退出
+
+已通过真实 Chrome 页面操作完成：编辑并测试已有模型配置（密钥留空保留，不回显）、保存连接设置并重启确认、打开 sys_demo 控制台、选择第二条 SQL 取得回答 29、执行查询查看结果 29、手动附带该结果取得回答 29、附带缺失字段错误取得 SQLSTATE 42S22 的解释，以及不重新附带结果的连续追问。四轮聊天都使用同一 Pi 会话，终态 SUCCEEDED，工具调用均为 0。页面确认每次发送后结果选择清空。浏览器自动化宿主曾不可用，随后改用本机 Chrome 的可见窗口完成，未将失败的工具操作计作通过。
+
+页面验收另发现 Cmd+Enter 被 Monaco 的默认插入行命令截走。工作台现通过编辑器自己的 action 注册执行快捷键，并通过 ref 使用最新执行回调；在新版运行包中仅按 Command+Return 执行 `SELECT 73 AS n`，结果表格返回 73。原有前端 299 项回归及生产构建再次通过。
+
+活动任务验证入口：
+
+```sh
+python3 scripts/validation/desktop_active_smoke.py target/desktop-pi-macos-arm64 \
+  --mysql-local-directory "$HOME/.data-agent/local" \
+  --output target/desktop-active-smoke.json
+```
+
+查询用纯 SELECT 的合成聚合产生可取消的工作负载，8 秒超时作兜底；观察实例用唯一标记在 MySQL PROCESSLIST 中确认查询实际运行。模型用随包真实 Pi Worker 与本地可控 SSE 模型服务，标准 Node preload 只重定向测试域名，不修改运行包、不使用真实厂商密钥。必须先观测到客户端 TEXT，再结束宿主，并检查 Worker 消失和模型连接断开；不能把刚发出模型请求算作已验证输出中的取消。
+
+验证复现了原退出顺序的问题：Java 先进入 Tomcat 请求排空，运行中查询延迟取消，宿主退出 5 秒后仍存活。修复为在 EOF 后先关闭本实例会话、取消连接上的 SQL，再关闭应用上下文。使用原有取消和连接关闭逻辑，没有新增任务恢复或重放机制。
+
+修复后，查询和 Pi 模型流分别在 SIGTERM / SIGKILL 四种场景下通过，客户端请求在退出前都确实处于运行中；本机本轮清理约 160～219 毫秒。模型中断未产生 SUCCEEDED，模型服务没有收到重试。原有 8 项目录包冒烟回归也已通过。详细结果追加在原 JSON 的 `followUp`，保留修复前失败证据和各次包指纹。测试未改变原配置，测试实例已停止，临时凭证副本已清理。
