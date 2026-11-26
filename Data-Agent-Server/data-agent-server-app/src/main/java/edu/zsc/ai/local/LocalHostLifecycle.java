@@ -10,10 +10,15 @@ import org.springframework.context.ApplicationListener;
 final class LocalHostLifecycle implements ApplicationListener<ApplicationReadyEvent> {
     private final LocalRuntimeIdentity identity;
     private final ObjectMapper json;
+    private final LocalConversationRegistry sessions;
+    private final LocalConnectionService connections;
 
-    LocalHostLifecycle(LocalRuntimeIdentity identity, ObjectMapper json) {
+    LocalHostLifecycle(LocalRuntimeIdentity identity, ObjectMapper json,
+            LocalConversationRegistry sessions, LocalConnectionService connections) {
         this.identity = identity;
         this.json = json;
+        this.sessions = sessions;
+        this.connections = connections;
     }
 
     @Override public void onApplicationEvent(ApplicationReadyEvent event) {
@@ -33,7 +38,15 @@ final class LocalHostLifecycle implements ApplicationListener<ApplicationReadyEv
         var watcher = new Thread(() -> {
             try { while (System.in.read() != -1) { /* Parent keeps the pipe open. */ } }
             catch (java.io.IOException ignored) { /* Broken pipe has the same ownership semantics. */ }
-            finally { context.close(); }
+            finally {
+                // Tomcat drains requests before destroying beans. Cancel work first so a
+                // live JDBC read or model stream cannot hold that drain open until timeout.
+                try { sessions.shutdown(); }
+                finally {
+                    try { connections.close(); }
+                    finally { context.close(); }
+                }
+            }
         }, "desktop-host-pipe");
         watcher.setDaemon(true);
         watcher.start();

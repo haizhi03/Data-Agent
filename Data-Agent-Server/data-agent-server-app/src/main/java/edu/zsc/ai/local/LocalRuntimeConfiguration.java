@@ -46,8 +46,9 @@ public class LocalRuntimeConfiguration {
     @Bean LocalRuntimeIdentity localRuntimeIdentity() { return new LocalRuntimeIdentity(); }
     @Bean
     @ConditionalOnProperty(name = "app.local.host-stdio", havingValue = "true")
-    LocalHostLifecycle localHostLifecycle(LocalRuntimeIdentity identity, ObjectMapper mapper) {
-        return new LocalHostLifecycle(identity, mapper);
+    LocalHostLifecycle localHostLifecycle(LocalRuntimeIdentity identity, ObjectMapper mapper,
+            LocalConversationRegistry sessions, LocalConnectionService connections) {
+        return new LocalHostLifecycle(identity, mapper, sessions, connections);
     }
     @Bean LocalRuntimeController localRuntimeController(LocalRuntimeIdentity identity, LocalConnectionService connections,
             LocalAssistantService assistant, org.springframework.beans.factory.ObjectProvider<LocalPiChatService> pi) {
