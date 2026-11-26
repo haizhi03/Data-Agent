@@ -34,16 +34,24 @@ def until(check, seconds, message):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('bundle', type=Path)
+    parser.add_argument('--native-app', type=Path, help='Drive the native app and its parent-pipe lifecycle instead of start.command')
     parser.add_argument('--mysql-local-directory', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
     bundle = args.bundle.resolve()
+    native_app = args.native_app.resolve() if args.native_app else None
+    if native_app and bundle != native_app / 'Contents/Resources/bundle':
+        parser.error('For native validation, bundle must be the app Contents/Resources/bundle')
     original = fingerprints(args.mysql_local_directory)
     artifact = fingerprints(bundle)
     manifest_sha = hashlib.sha256((bundle / 'bundle-manifest.json').read_bytes()).hexdigest()
     report = {'verifiedAt': datetime.datetime.now(datetime.timezone.utc).isoformat(), 'status': 'FAILED',
+              'launchMode': 'native-app' if native_app else 'directory-host',
               'modelTransport': 'test-only fetch redirect to local SSE fixture; real packaged Pi worker',
               'realModelVendorCalls': 0, 'bundleManifestSha256': manifest_sha, 'checks': []}
+    if native_app:
+        report['nativeExecutableSha256'] = hashlib.sha256((native_app / 'Contents/MacOS/DataAgent').read_bytes()).hexdigest()
+        report['nativeBuildSha256'] = hashlib.sha256((native_app / 'Contents/Resources/native-build.json').read_bytes()).hexdigest()
     processes = []
     backend_pids = []
     active = threading.Event()
@@ -116,7 +124,8 @@ method: req.method, headers, body: await req.arrayBuffer(), signal: req.signal,
                 # A standard Node preload redirects only the fixture hostname; package files remain unchanged.
                 env['NODE_OPTIONS'] = '--import=' + hook.as_uri()
                 env['DESKTOP_FIXTURE_URL'] = 'http://127.0.0.1:' + str(model.server_port)
-            proc = subprocess.Popen([str(bundle / 'start.command')], cwd=temp, env=env, stdin=subprocess.PIPE,
+            entry = native_app / 'Contents/MacOS/DataAgent' if native_app else bundle / 'start.command'
+            proc = subprocess.Popen([str(entry)], cwd=temp, env=env, stdin=subprocess.PIPE,
                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             processes.append(proc)
             lines = queue.Queue()
@@ -128,6 +137,7 @@ method: req.method, headers, body: await req.arrayBuffer(), signal: req.signal,
             line = lines.get(timeout=60)
             assert line, 'Packaged startup failed'
             ready = json.loads(line)
+            assert ready['type'] == ('native-ready' if native_app else 'ready')
             backend_pids.append(ready['backendPid'])
             return proc, ready
 
@@ -206,12 +216,15 @@ method: req.method, headers, body: await req.arrayBuffer(), signal: req.signal,
                     until(lambda: not running(marker), 5, 'MySQL query survived packaged shutdown')
                 else:
                     assert disconnected.wait(timeout=5), 'Model transport was not disconnected'
-                proc.wait(timeout=5)
+                exit_code = proc.wait(timeout=5)
+                assert exit_code == (0 if how == signal.SIGTERM else -signal.SIGKILL), 'Unexpected application exit status'
+                if native_app:
+                    until(lambda: not alive(ready['hostPid']), 5, 'Node host survived native app exit')
                 try:
                     task.result(timeout=5)
                 except (OSError, ValueError, TimeoutError):
                     pass  # Closing a live request is expected; successful DONE is forbidden above.
-                record.update(status='PASS', cleanupMs=round((time.monotonic() - started) * 1000), workers=len(workers))
+                record.update(status='PASS', cleanupMs=round((time.monotonic() - started) * 1000), workers=len(workers), exitCode=exit_code)
         report.update(status='PASS', fixtureModelRequests=len(model_calls), originalConfigurationUnchanged=original == fingerprints(args.mysql_local_directory),
                       bundleUnchanged=artifact == fingerprints(bundle))
         assert report['originalConfigurationUnchanged'] and report['bundleUnchanged'] and len(model_calls) == 2

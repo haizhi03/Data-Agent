@@ -14,7 +14,7 @@ const data = path.resolve(process.env.DATA_AGENT_DATA_DIRECTORY || path.join(hom
 const java = path.join(bundle, 'runtime/java/bin/java');
 const workerScript = path.join(bundle, 'worker/src/worker.js');
 const prefix = 'DATA_AGENT_HOST_READY ';
-let backend, bootstrap, log, stopping = false;
+let backend, probe, bootstrap, log, stopping = false;
 const sockets = new Set();
 const server = http.createServer((req, res) => { void handle(req, res).catch(() => {
   if (res.headersSent) res.destroy(); else { res.writeHead(500); res.end('HOST_REQUEST_FAILED'); }
@@ -79,6 +79,7 @@ async function stop(code) {
   server.close();
   for (const socket of sockets) socket.destroy();
   for (const request of apiRequests) request.destroy();
+  if (probe?.pid && probe.exitCode === null && probe.signalCode === null) probe.kill('SIGTERM');
   if (backend?.pid && backend.exitCode === null && backend.signalCode === null) {
     const exited = once(backend, 'exit');
     backend.stdin.end();
@@ -90,9 +91,15 @@ async function stop(code) {
   process.exitCode = code;
 }
 for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => { void stop(0); });
+if (process.argv.includes('--parent-pipe')) {
+  process.stdin.on('end', () => { void stop(0); });
+  process.stdin.on('error', () => { void stop(0); });
+  process.stdin.resume();
+}
 
 async function probeWorker() {
   const worker = spawn(process.execPath, [workerScript], { cwd: data, stdio: ['pipe', 'pipe', 'pipe'] });
+  probe = worker;
   let hello;
   const lines = readline.createInterface({ input: worker.stdout });
   lines.on('line', line => { try { hello ??= JSON.parse(line); } catch { /* Rejected below. */ } worker.stdin.end(); });
@@ -102,7 +109,7 @@ async function probeWorker() {
     const [code] = await once(worker, 'exit');
     if (code !== 0 || hello?.type !== 'hello' || hello.protocol !== 1
         || hello.piAgentCore !== '1.5.0' || hello.piAi !== '1.5.0') throw new Error('WORKER_HANDSHAKE_FAILED');
-  } finally { clearTimeout(timer); lines.close(); }
+  } finally { clearTimeout(timer); lines.close(); probe = undefined; }
 }
 
 async function start() {
@@ -140,4 +147,4 @@ async function start() {
   backend.once('error', () => { clearTimeout(timeout); process.stderr.write('BACKEND_START_FAILED\n'); void stop(1); });
   backend.once('exit', () => { clearTimeout(timeout); lines.close(); if (!stopping) { process.stderr.write('BACKEND_EXITED\n'); void stop(1); } });
 }
-start().catch(() => { process.stderr.write('HOST_START_FAILED\n'); void stop(1); });
+start().catch(() => { if (!stopping) { process.stderr.write('HOST_START_FAILED\n'); void stop(1); } });
