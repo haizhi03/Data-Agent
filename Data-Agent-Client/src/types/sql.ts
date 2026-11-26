@@ -19,7 +19,7 @@ export interface ExecuteSqlScriptParams extends ExecuteSqlParams {
 }
 
 export type SqlStatementState = 'NOT_EXECUTED' | 'EXECUTED' | 'COMMITTED' | 'ROLLED_BACK'
-  | 'FAILED' | 'TIMED_OUT' | 'CANCELLED' | 'UNKNOWN';
+  | 'FAILED' | 'PARTIALLY_APPLIED' | 'TIMED_OUT' | 'CANCELLED' | 'UNKNOWN';
 export type SqlTransactionOutcome = 'NONE' | 'COMMITTED' | 'ROLLED_BACK' | 'UNKNOWN';
 export type SqlBatchState = 'SUCCESS' | 'FAILED' | 'ROLLED_BACK' | 'PARTIAL' | 'UNKNOWN';
 

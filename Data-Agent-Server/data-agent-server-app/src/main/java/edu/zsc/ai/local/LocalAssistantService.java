@@ -73,6 +73,8 @@ final class LocalAssistantService {
         var saved=sessions.target(session.id);
         var target=references.normalizeTarget(input.defaultTarget()==null?defaultTarget(session.id):input.defaultTarget());
         var mentions=references.validateMentions(input.message(),input.userMentions());
+        var workbench=references.normalizeWorkbenchContext(input.workbenchContext());
+        var executionReference=references.normalizeExecutionReference(input.executionReference());
         var db=new edu.zsc.ai.domain.model.context.DbContext(target.getConnectionId(),target.getCatalogName(),target.getSchemaName());
         Long version=db.connectionId()==null?null:db.equals(saved.target())?saved.version():connections.get(db.connectionId()).version();
         sessions.begin(session,run);
@@ -109,9 +111,12 @@ final class LocalAssistantService {
                 run.ensureActive();
                 var builder=AiServices.builder(ReActAgent.class).streamingChatModel(models.streaming(ModelPurpose.MAIN_CHAT))
                         .systemMessage(SYSTEM).chatMemoryProvider(id -> memory).maxSequentialToolsInvocations(16);
-                builder.tools(new LocalReadTools(session,run,connections,metadataTools,queries,json,request,agent,writes,db,version,mentions));
+                var tools=new LocalReadTools(session,run,connections,metadataTools,queries,json,request,agent,writes,db,version,mentions);
+                if(workbench!=null) tools.pinTarget(workbench.target());
+                if(executionReference!=null) tools.pinTarget(executionReference.target());
+                builder.tools(tools);
                 String enriched=edu.zsc.ai.domain.service.agent.ChatTurnContext.encode(input.message(),target,mentions,
-                        explicitReferences.renderReferences(mentions,"zh"));
+                        explicitReferences.renderReferences(mentions,"zh"),workbench,executionReference);
                 var stream=builder.build().chat(Long.toString(session.id),enriched,InvocationParameters.from(Map.of()));
                 stream.onPartialResponse(text -> {
                     if (terminal.get()) return;

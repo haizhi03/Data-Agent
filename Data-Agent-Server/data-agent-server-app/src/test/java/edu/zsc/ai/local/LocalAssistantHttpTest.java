@@ -215,6 +215,44 @@ class LocalAssistantHttpTest {
         assertThat(Files.readString(modelFile)).isEqualTo(before);
     }
 
+    @Test void workbenchContextIsIncludedInTheActualJavaModelMessage() throws Exception {
+        long id=session(true),other=otherConnection();
+        var workbench=Map.of("documentId","query-b","documentName","Query B","documentVersion",2,"sql","SELECT 2;",
+                "selected",false,"truncated",true,"target",Map.of("connectionId",other,"schemaName","ARCHIVE"));
+        var response=call("POST","/api/local/chat/stream",Map.of("conversationId",id,"message","explain workbench SQL",
+                "modelConfigId",modelId,"workbenchContext",workbench),true);
+        assertThat(response.body()).contains("SUCCEEDED");
+        var user=lastRequest.get().messages().stream().filter(UserMessage.class::isInstance).map(UserMessage.class::cast)
+                .filter(message->message.singleText().contains("explain workbench SQL")).findFirst().orElseThrow();
+        var actual=edu.zsc.ai.domain.service.agent.ChatTurnContext.decode(user.singleText()).workbenchContext();
+        assertThat(actual.sql()).isEqualTo("SELECT 2;");
+        assertThat(actual.documentVersion()).isEqualTo(2);
+        assertThat(actual.truncated()).isTrue();
+        assertThat(actual.target().getConnectionId()).isEqualTo(other);
+        assertThat(actual.target().getSchemaName()).isEqualTo("ARCHIVE");
+    }
+
+    @Test void executionReferenceIsIncludedInTheActualJavaModelMessage() throws Exception {
+        long id=session(true),other=otherConnection();
+        var reference=Map.of("executionId","execution-a","statementIndex",0,"sql","SELECT COUNT(*) FROM orders;",
+                "documentId","query-a","documentName","Query A","documentVersion",2,"truncated",true,
+                "target",Map.of("connectionId",other,"schemaName","ARCHIVE"),
+                "result",Map.of("success",true,"statementState","EXECUTED","transactionOutcome","NONE",
+                        "headers",List.of("count"),"rows",List.of(List.of("77")),"returnedRows",1));
+        var response=call("POST","/api/local/chat/stream",Map.of("conversationId",id,"message","explain past result",
+                "modelConfigId",modelId,"executionReference",reference),true);
+        assertThat(response.body()).contains("SUCCEEDED").doesNotContain("TOOL_CALL");
+        var user=lastRequest.get().messages().stream().filter(UserMessage.class::isInstance).map(UserMessage.class::cast)
+                .filter(message->message.singleText().contains("explain past result")).findFirst().orElseThrow();
+        var actual=edu.zsc.ai.domain.service.agent.ChatTurnContext.decode(user.singleText()).executionReference();
+        assertThat(actual.executionId()).isEqualTo("execution-a");
+        assertThat(actual.result().rows()).containsExactly(List.of("77"));
+        assertThat(actual.documentVersion()).isEqualTo(2);
+        assertThat(actual.truncated()).isTrue();
+        assertThat(actual.target().getConnectionId()).isEqualTo(other);
+        assertThat(actual.target().getSchemaName()).isEqualTo("ARCHIVE");
+    }
+
     @Test void completeReferencesReachTheLocalModelAndExplicitToolTargetsWithoutChangingDefaults() throws Exception {
         long id=session(true),other=otherConnection();clearInvocations(TABLES);
         var refs=List.of(Map.of("token","@orders","connectionId",connectionId,"connectionName","spoof","catalogName","fixture_db","objectType","TABLE","objectName","orders"),

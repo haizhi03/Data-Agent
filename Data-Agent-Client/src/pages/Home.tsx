@@ -11,6 +11,8 @@ import { PlanConsole } from "../components/plan/PlanConsole";
 import { SubAgentConsole } from "../components/subagent/SubAgentConsole";
 import { useWorkspaceStore } from "../store/workspaceStore";
 import { useSqlRunStore } from "../store/sqlRunStore";
+import { useTabStore } from "../store/tabStore";
+import type { SqlExecutionSource } from "../lib/sqlExecutionReference";
 import type { TableTabMetadata, PlanTabMetadata, SubAgentConsoleTabMetadata, ErDiagramTabMetadata } from "../types/tab";
 import type { SqlBatchMode, SqlSyntaxError } from "../types/sql";
 import { connectionService } from "../services/connection.service";
@@ -52,6 +54,7 @@ export default function Home() {
         mysql: boolean;
         cursorOffset?: number;
         tabId?: string;
+        source?: SqlExecutionSource;
     } | null>(null);
 
     const activeTab = tabs.find(t => t.id === activeTabId);
@@ -106,7 +109,7 @@ export default function Home() {
         if (formatted !== original) updateTabContent(activeTab.id, formatted);
     }, [activeTab, connectionType, sqlContext?.connectionId, updateTabContent]);
 
-    const executeSqlText = useCallback(async (sql: string, cursorOffset?: number) => {
+    const executeSqlText = useCallback(async (sql: string, cursorOffset?: number, source?: SqlExecutionSource) => {
         if (!sql || !sqlContext?.connectionId || isRunning || preparingRunRef.current) return;
         if (cursorOffset !== undefined) {
             preparingRunRef.current = true;
@@ -140,8 +143,10 @@ export default function Home() {
             mode: scriptMode,
             timeoutMs: timeoutSeconds * 1000,
             maxRows,
+            source: source ?? (activeTab ? { documentId: activeTab.id, documentName: activeTab.name.slice(0, 256),
+                documentVersion: activeTab.contentVersion ?? 0 } : undefined),
         });
-    }, [connectionType, sqlContext, scriptMode, timeoutSeconds, maxRows, runSql, isRunning, activeTabId, activeTab?.content, t, toast]);
+    }, [connectionType, sqlContext, scriptMode, timeoutSeconds, maxRows, runSql, isRunning, activeTabId, activeTab?.content, activeTab?.contentVersion, activeTab?.name, t, toast]);
 
     const runSqlFromEditor = useCallback((getInput: () => { sql: string; cursorOffset?: number }) => {
         if (pendingParameters || isRunning || preparingRunRef.current || activeTab?.type !== 'file') return;
@@ -151,7 +156,8 @@ export default function Home() {
         const mysql = connectionType?.dbType.toUpperCase() !== 'DM';
         const variables = extractSqlVariables(sql, mysql);
         if (variables.length > 0) {
-            setPendingParameters({ sql, variables, mysql, cursorOffset, tabId: activeTabId ?? undefined });
+            setPendingParameters({ sql, variables, mysql, cursorOffset, tabId: activeTabId ?? undefined,
+                source: { documentId: activeTab.id, documentName: activeTab.name.slice(0, 256), documentVersion: activeTab.contentVersion ?? 0 } });
             return;
         }
         void executeSqlText(sql, cursorOffset);
@@ -257,6 +263,7 @@ export default function Home() {
                                             schemaName: sqlContext?.schemaName,
                                         }}
                                         onChange={(val) => updateTabContent(activeTab.id, val || '')}
+                                        onSelectionChange={(content, start, end) => useTabStore.getState().updateTabSelection(activeTab.id, content, start, end)}
                                     />
                                 ) : activeTab?.type === 'table' && activeTab.metadata ? (
                                     <TableDataTab key={activeTab.id} tabId={activeTab.id} metadata={activeTab.metadata as TableTabMetadata} />
@@ -282,7 +289,7 @@ export default function Home() {
                     setPendingParameters(null);
                     if (pending && useWorkspaceStore.getState().activeTabId === pending.tabId) {
                         const input = substituteSqlVariablesAtOffset(pending.sql, values, pending.mysql, pending.cursorOffset);
-                        void executeSqlText(input.sql, input.cursorOffset);
+                        void executeSqlText(input.sql, input.cursorOffset, pending.source);
                     }
                 }}
             />

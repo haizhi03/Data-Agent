@@ -18,7 +18,7 @@ const deferred = <T,>() => {
 describe('shared SQL execution ownership', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    useSqlRunStore.setState({ isRunning: false, cancelStatus: null, scriptResults: [], executeResult: null });
+    useSqlRunStore.setState({ isRunning: false, cancelStatus: null, scriptResults: [], executeResult: null, executionReferences: [] });
   });
 
   it('cancels the original connection and schema without consulting the active tab', async () => {
@@ -45,6 +45,58 @@ describe('shared SQL execution ownership', () => {
     expect(sqlExecutionService.executeScript).toHaveBeenCalledTimes(1);
     execution.resolve([success]);
     await run;
+  });
+
+  it('keeps completed statement references bound to the submitted source and scope', async () => {
+    const execution = deferred<ExecuteSqlResponse[]>();
+    vi.mocked(sqlExecutionService.executeScript).mockReturnValueOnce(execution.promise);
+    const source = { documentId: 'query-a', documentName: 'Query A', documentVersion: 3 };
+    const run = useSqlRunStore.getState().runSql({ connectionId: 2, schemaName: 'OWNER', sql: 'SELECT 1; SELECT missing;', source });
+    source.documentVersion = 4;
+    const result: ExecuteSqlResponse = { ...success, executedSql: 'SELECT 1', statementState: 'EXECUTED', transactionOutcome: 'NONE',
+      resultSet: { columns: [{ name: '' }, { name: 'amount' }], rows: [[null, 7]], truncated: true } };
+    execution.resolve([result, { ...success, success: false, executedSql: 'SELECT missing', statementState: 'FAILED', transactionOutcome: 'NONE',
+      errorMessage: 'column missing', messages: [{ level: 'ERROR', sqlState: '42S22', message: 'column missing' }] }]);
+    await run;
+    const references = useSqlRunStore.getState().executionReferences;
+    expect(references).toHaveLength(2);
+    expect(references[0]).toMatchObject({ statementIndex: 0, sql: 'SELECT 1', documentId: 'query-a', documentVersion: 3,
+      target: { connectionId: 2, schemaName: 'OWNER' }, truncated: true,
+      result: { headers: ['Column 1', 'amount'], rows: [[null, '7']], returnedRows: 1 } });
+    expect(references[1]).toMatchObject({ statementIndex: 1, sql: 'SELECT missing',
+      result: { statementState: 'FAILED', errorMessage: 'column missing', sqlState: '42S22' } });
+    result.resultSet!.rows![0][1] = 99;
+    expect(references[0].result.rows[0][1]).toBe('7');
+  });
+
+  it('bounds samples and clears old references when a new execution starts', async () => {
+    const result: ExecuteSqlResponse = { ...success, executedSql: 'x'.repeat(8100), errorMessage: 'e'.repeat(2100),
+      headers: Array.from({ length: 10 }, (_, i) => 'column' + i),
+      rows: Array.from({ length: 10 }, () => Array.from({ length: 10 }, () => 'x'.repeat(200))) };
+    vi.mocked(sqlExecutionService.executeScript).mockResolvedValueOnce([result]);
+    await useSqlRunStore.getState().runSql({ connectionId: 1, sql: 'SELECT * FROM sample' });
+    const reference = useSqlRunStore.getState().executionReferences[0];
+    expect(reference.truncated).toBe(true);
+    expect(reference.sql).toHaveLength(8000);
+    expect(reference.result.errorMessage).toHaveLength(2000);
+    expect(reference.result.rows).toHaveLength(5);
+    expect(reference.result.headers).toHaveLength(8);
+    expect(reference.result.rows[0]).toHaveLength(8);
+    expect(reference.result.rows[0][0]).toHaveLength(128);
+    const next = deferred<ExecuteSqlResponse[]>();
+    vi.mocked(sqlExecutionService.executeScript).mockReturnValueOnce(next.promise);
+    const pending = useSqlRunStore.getState().runSql({ connectionId: 2, sql: 'SELECT 2' });
+    expect(useSqlRunStore.getState().executionReferences).toEqual([]);
+    next.resolve([success]);
+    await pending;
+  });
+
+  it('preserves uncertainty when the transport fails', async () => {
+    vi.mocked(sqlExecutionService.executeScript).mockRejectedValueOnce(new Error('connection lost'));
+    await useSqlRunStore.getState().runSql({ connectionId: 2, sql: 'UPDATE sample SET n=1' });
+    expect(useSqlRunStore.getState().executionReferences[0]).toMatchObject({
+      target: { connectionId: 2 }, result: { success: false, statementState: 'UNKNOWN', transactionOutcome: 'UNKNOWN' },
+    });
   });
 
   it('ignores late cancel responses for a completed execution', async () => {

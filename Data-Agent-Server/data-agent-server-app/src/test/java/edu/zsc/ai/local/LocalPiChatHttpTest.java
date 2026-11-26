@@ -588,6 +588,67 @@ class LocalPiChatHttpTest {
         }
     }
 
+    @Test void workbenchSnapshotsReachTheWorkerWithTheirOwnValidatedTarget() throws Exception {
+        var created=call("POST","/api/connections/create",Map.of("name","Workbench DM","dbType","dm","host","example.invalid","port",5236,
+                "username","fixture","driverJarPath",root.resolve("fixture-driver.jar").toString()),true);
+        long other=JSON.readTree(created.body()).path("data").path("id").asLong();
+        long id=session(true);
+        var workbench=Map.of("documentId","query-b","documentName","Query B","documentVersion",3,"sql","SELECT 2;",
+                "selected",true,"truncated",false,"target",Map.of("connectionId",other,"catalogName","discarded","schemaName","ARCHIVE"));
+        String body=call("POST","/api/local/pi/chat/stream",Map.of("conversationId",id,"modelConfigId",modelId,
+                "message","echo-workbench","workbenchContext",workbench),true).body();
+        var text=blocks(body).stream().filter(block->block.path("type").asText().equals("TEXT"))
+                .map(block->block.path("data").asText()).collect(java.util.stream.Collectors.joining());
+        var actual=JSON.readTree(text);
+        assertThat(actual.path("sql").asText()).isEqualTo("SELECT 2;");
+        assertThat(actual.path("documentVersion").asInt()).isEqualTo(3);
+        assertThat(actual.path("target").path("connectionId").asLong()).isEqualTo(other);
+        assertThat(actual.path("target").path("schemaName").asText()).isEqualTo("ARCHIVE");
+        assertThat(actual.path("target").path("catalogName").isNull()).isTrue();
+        assertThat(call("GET","/api/local/conversations/"+id,null,true).body()).contains("fixture_db").doesNotContain("ARCHIVE");
+        assertThat(piTurn(id,"echo-workbench",null)).contains("null","SUCCEEDED");
+        var oversized=new LinkedHashMap<String,Object>(workbench); oversized.put("sql","x".repeat(16001));
+        assertThat(call("POST","/api/local/pi/chat/stream",Map.of("conversationId",id,"modelConfigId",modelId,
+                "message","echo-workbench","workbenchContext",oversized),false).statusCode()).isEqualTo(400);
+    }
+
+    @Test void executionSnapshotsPreserveOriginalTargetAndRejectOversizedSamples() throws Exception {
+        var created=call("POST","/api/connections/create",Map.of("name","Execution DM","dbType","dm","host","example.invalid","port",5236,
+                "username","fixture","driverJarPath",root.resolve("fixture-driver.jar").toString()),true);
+        long other=JSON.readTree(created.body()).path("data").path("id").asLong(),id=session(true);
+        var result=new LinkedHashMap<String,Object>(Map.of("success",false,"statementState","FAILED","transactionOutcome","ROLLED_BACK",
+                "batchState","ROLLED_BACK","errorMessage","missing column","sqlState","42S22","headers",List.of(),"rows",List.of(),"returnedRows",0));
+        var reference=new LinkedHashMap<String,Object>(Map.of("executionId","execution-a","statementIndex",1,"sql","SELECT missing;",
+                "documentId","query-a","documentName","Query A","documentVersion",2,"truncated",false,
+                "target",Map.of("connectionId",other,"catalogName","discarded","schemaName","ARCHIVE"),"result",result));
+        var request=new LinkedHashMap<String,Object>(Map.of("conversationId",id,"modelConfigId",modelId,
+                "message","echo-execution","executionReference",reference));
+        // Invalid payloads are rejected before a run starts, including nested cell bounds.
+        for (var rows:List.of(List.of(List.of("x".repeat(129))),java.util.Collections.nCopies(6,List.of("x")),
+                List.of(java.util.Collections.nCopies(9,"x")) )) {
+            result.put("rows",rows);
+            assertThat(call("POST","/api/local/pi/chat/stream",request,false).statusCode()).isEqualTo(400);
+        }
+        result.put("rows",List.of());
+        String body=call("POST","/api/local/pi/chat/stream",request,true).body();
+        var text=blocks(body).stream().filter(block->block.path("type").asText().equals("TEXT"))
+                .map(block->block.path("data").asText()).collect(java.util.stream.Collectors.joining());
+        var actual=JSON.readTree(text);
+        assertThat(actual.path("executionId").asText()).isEqualTo("execution-a");
+        assertThat(actual.path("statementIndex").asInt()).isEqualTo(1);
+        assertThat(actual.path("sql").asText()).isEqualTo("SELECT missing;");
+        assertThat(actual.path("documentVersion").asInt()).isEqualTo(2);
+        assertThat(actual.path("result").path("sqlState").asText()).isEqualTo("42S22");
+        assertThat(actual.path("result").path("transactionOutcome").asText()).isEqualTo("ROLLED_BACK");
+        assertThat(actual.path("target").path("connectionId").asLong()).isEqualTo(other);
+        assertThat(actual.path("target").path("schemaName").asText()).isEqualTo("ARCHIVE");
+        assertThat(actual.path("target").path("catalogName").isNull()).isTrue();
+        assertThat(body).contains("SUCCEEDED").doesNotContain("TOOL_CALL");
+        assertThat(piTurn(id,"echo-execution",null)).contains("null","SUCCEEDED");
+        reference.put("target",Map.of("schemaName","ARCHIVE"));
+        assertThat(call("POST","/api/local/pi/chat/stream",request,false).statusCode()).isEqualTo(400);
+    }
+
     @Test void mentionIdentityReachesDescribeTableWithFullTarget() throws Exception {
         long id=session(true); clearInvocations(COLUMNS);
         var mention=Map.<String,Object>of("token","@orders","connectionId",connectionId,"connectionName","spoof",

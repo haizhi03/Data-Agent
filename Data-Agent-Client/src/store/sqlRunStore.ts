@@ -3,6 +3,8 @@ import type { ExecuteSqlResponse, SqlBatchMode } from '../types/sql';
 import { sqlExecutionService } from '../services/sqlExecution.service';
 import { sqlAnalysisService } from '../services/sqlAnalysis.service';
 import { EXPLORER_SQL_OBJECT_CHANGED } from '../constants/explorer';
+import { snapshotSqlExecution, type SqlExecutionSource } from '../lib/sqlExecutionReference';
+import type { ChatExecutionReference } from '../types/chat';
 
 /**
  * Shared SQL execution state, decoupled from the query-console tab that happens
@@ -28,6 +30,7 @@ export interface RunSqlParams {
   mode?: SqlBatchMode;
   timeoutMs?: number;
   maxRows?: number;
+  source?: SqlExecutionSource;
 }
 
 interface SqlRunState {
@@ -36,6 +39,7 @@ interface SqlRunState {
   isRunning: boolean;
   isResultsVisible: boolean;
   cancelStatus: string | null;
+  executionReferences: ChatExecutionReference[];
   runSql: (params: RunSqlParams) => Promise<void>;
   stopSql: () => Promise<void>;
   setResultsVisible: (visible: boolean) => void;
@@ -47,6 +51,7 @@ export const useSqlRunStore = create<SqlRunState>((set) => ({
   isRunning: false,
   isResultsVisible: false,
   cancelStatus: null,
+  executionReferences: [],
 
   runSql: async (params) => {
     const { connectionId, databaseName, schemaName, dbType, sql, mode, timeoutMs, maxRows } = params;
@@ -54,11 +59,14 @@ export const useSqlRunStore = create<SqlRunState>((set) => ({
 
     const executionId = crypto.randomUUID();
     currentExecution = { executionId, connectionId, databaseName, schemaName };
+    const source = params.source ? { ...params.source } : undefined;
+    const target = { connectionId, catalogName: databaseName || undefined, schemaName: schemaName || undefined };
     set({
       isRunning: true,
       cancelStatus: null,
       executeResult: null,
       scriptResults: [],
+      executionReferences: [],
       isResultsVisible: true,
     });
 
@@ -77,7 +85,10 @@ export const useSqlRunStore = create<SqlRunState>((set) => ({
       // Ignore outcomes if this execution is no longer active.
       if (currentExecution?.executionId !== executionId) return;
 
-      set({ scriptResults: results });
+      set({
+        scriptResults: results,
+        executionReferences: results.map((result, index) => snapshotSqlExecution(executionId, index, sql, target, source, result)),
+      });
 
       const result = results[0];
       if (!result) throw new Error('The script contained no executable statements');
@@ -124,17 +135,18 @@ export const useSqlRunStore = create<SqlRunState>((set) => ({
       }
     } catch (err: unknown) {
       if (currentExecution?.executionId !== executionId) return;
-      set({
-        executeResult: {
-          success: false,
-          errorMessage: String(err),
-          executionTimeMs: 0,
-          originalSql: sql,
-          executedSql: sql,
-          query: false,
-          affectedRows: 0,
-        },
-      });
+      const result: ExecuteSqlResponse = {
+        success: false,
+        errorMessage: String(err),
+        executionTimeMs: 0,
+        originalSql: sql,
+        executedSql: sql,
+        query: false,
+        affectedRows: 0,
+        statementState: 'UNKNOWN',
+        transactionOutcome: 'UNKNOWN',
+      };
+      set({ executeResult: result, executionReferences: [snapshotSqlExecution(executionId, 0, sql, target, source, result)] });
     } finally {
       // Only the latest run may clear the shared running state.
       if (currentExecution?.executionId === executionId) {

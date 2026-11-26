@@ -47,6 +47,10 @@ final class LocalReadTools {
         if(target.connectionId()!=null && version!=null) versions.put(target.connectionId(),version);
         for(var mention:mentions) versions.computeIfAbsent(mention.getConnectionId(),id -> connections.get(id).version());
     }
+    void pinTarget(edu.zsc.ai.api.model.request.ChatDefaultTarget target) {
+        if(target.getConnectionId()!=null) versions.computeIfAbsent(target.getConnectionId(),id -> connections.get(id).version());
+    }
+
     @Tool("List available data sources (connectionId, name, dbType) without a default connection. Discover these before asking the user for a connection ID; this does not open any database.")
     public String list_connections() {
         return toolAction(request, () -> metadata.listConnections(versions));

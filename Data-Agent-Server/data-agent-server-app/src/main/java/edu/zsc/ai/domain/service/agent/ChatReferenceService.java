@@ -37,6 +37,21 @@ public class ChatReferenceService {
         return new ChatDefaultTarget(connection.getId(), catalog, schema);
     }
 
+    public edu.zsc.ai.api.model.request.ChatWorkbenchContext normalizeWorkbenchContext(
+            edu.zsc.ai.api.model.request.ChatWorkbenchContext source) {
+        if (source == null) return null;
+        return new edu.zsc.ai.api.model.request.ChatWorkbenchContext(source.documentId(), source.documentName(),
+                source.documentVersion(), source.sql(), source.selected(), source.truncated(), normalizeTarget(source.target()));
+    }
+
+    public ChatExecutionReference normalizeExecutionReference(ChatExecutionReference source) {
+        if (source == null) return null;
+        var target = normalizeTarget(source.target());
+        if (target.getConnectionId() == null) throw invalid();
+        return new ChatExecutionReference(source.executionId(), source.statementIndex(), source.sql(), target,
+                source.documentId(), source.documentName(), source.documentVersion(), source.truncated(), source.result());
+    }
+
     public List<ChatUserMention> validateMentions(String message, List<ChatUserMention> mentions) {
         if (mentions == null) return List.of();
         if (mentions.size() > 32) throw invalid();

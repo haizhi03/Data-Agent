@@ -47,6 +47,12 @@ function onStart(msg) {
   const encoded = msg.message ?? '';
   const text = encoded.startsWith('[Data-Agent turn context v1]\n')
     ? JSON.parse(encoded.slice(encoded.indexOf('\n') + 1)).message : encoded;
+  if (text === 'echo-workbench' || text === 'echo-execution') {
+    const context = JSON.parse(encoded.slice(encoded.indexOf('\n') + 1));
+    send({ type: 'text_delta', runId, delta: JSON.stringify((text === 'echo-workbench' ? context.workbenchContext : context.executionReference) ?? null) });
+    finish(runId, 'SUCCEEDED');
+    return;
+  }
   const turn = (turns.get(sessionId) ?? 0) + 1;
   turns.set(sessionId, turn);
 

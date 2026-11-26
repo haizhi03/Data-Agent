@@ -1,4 +1,5 @@
 import type { ThinkingMode } from './modelManagement';
+import type { SqlStatementState, SqlTransactionOutcome, SqlBatchState } from './sql';
 
 export interface ChatContext {
   connectionId?: number;
@@ -16,6 +17,39 @@ export interface ChatUserMention {
   objectName?: string;
 }
 
+export interface ChatWorkbenchContext {
+  documentId: string;
+  documentName: string;
+  documentVersion: number;
+  sql: string;
+  selected: boolean;
+  truncated: boolean;
+  target: ChatContext;
+}
+
+export interface ChatExecutionReference {
+  executionId: string;
+  statementIndex: number;
+  sql: string;
+  target: ChatContext;
+  documentId?: string;
+  documentName?: string;
+  documentVersion?: number;
+  truncated: boolean;
+  result: {
+    success: boolean;
+    statementState: SqlStatementState;
+    transactionOutcome: SqlTransactionOutcome;
+    batchState?: SqlBatchState;
+    errorMessage?: string;
+    sqlState?: string;
+    headers: string[];
+    rows: (string | null)[][];
+    returnedRows: number;
+    affectedRows: number | null;
+  };
+}
+
 export interface ChatRequest {
   message: string;
   model?: string;
@@ -29,6 +63,8 @@ export interface ChatRequest {
   schemaName?: string;
   userMentions?: ChatUserMention[];
   defaultTarget?: ChatContext;
+  workbenchContext?: ChatWorkbenchContext;
+  executionReference?: ChatExecutionReference;
 }
 
 export interface SubmitMessageOptions {

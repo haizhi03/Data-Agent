@@ -202,10 +202,19 @@ class LocalPiMySqlLiveTest {
         return turn(id,message,name,"pi");
     }
     static List<JsonNode> turn(long id,String message,String name,String engine) throws Exception {
+        return turn(id,message,name,engine,null);
+    }
+    static List<JsonNode> turn(long id,String message,String name,String engine,Map<String,Object> workbench) throws Exception {
+        return turn(id,message,name,engine,workbench,null);
+    }
+    static List<JsonNode> turn(long id,String message,String name,String engine,Map<String,Object> workbench,
+            Map<String,Object> executionReference) throws Exception {
         long started=System.nanoTime();
         String endpoint=engine.equals("pi")?"/api/local/pi/chat/stream":"/api/local/chat/stream";
         var body=new LinkedHashMap<String,Object>();
         body.put("conversationId",id); body.put("message",message); body.put("modelConfigId",modelId);
+        if(workbench!=null) body.put("workbenchContext",workbench);
+        if(executionReference!=null) body.put("executionReference",executionReference);
         var response=HTTP.send(request("POST",endpoint,body),HttpResponse.BodyHandlers.ofString());
         assertThat(response.statusCode()).as("Pi HTTP status").isEqualTo(200);
         var blocks=new ArrayList<JsonNode>();
@@ -400,6 +409,52 @@ class LocalPiMySqlLiveTest {
         assertThat(answer(events)).contains("活跃").containsPattern("定义|口径|确认|请问|哪种");
         assertThat(answer(events)).containsPattern("年月|日期|时间范围|起止");
         evidence.getLast().put("validated",true);
+    }
+
+    @EnabledIfEnvironmentVariable(named="DATA_AGENT_PI_MYSQL_LIVE",matches="true")
+    @Test @Order(13) void currentWorkbenchSnapshotSupersedesThePreviousSql() throws Exception {
+        long id=create();
+        for(int number:List.of(17,29)) {
+            var workbench=Map.<String,Object>of("documentId","live-query","documentName","Query","documentVersion",number==17?0:1,
+                    "sql","SELECT "+number+";","selected",true,"truncated",false,"target",target());
+            var events=turn(id,"当前附带 SQL 选区中的整数常量是什么？只回答该数字，不调用工具，也不要参考上一轮的 SQL。",
+                    "workbench-constant-"+number,"pi",workbench);
+            assertThat(events.stream().filter(event->event.path("type").asText().equals("TOOL_CALL"))).isEmpty();
+            assertThat(answer(events)).containsPattern("(?<!\\d)"+number+"(?!\\d)");
+            evidence.getLast().put("documentVersion",workbench.get("documentVersion"));
+            evidence.getLast().put("validated",true);
+        }
+    }
+
+    @EnabledIfEnvironmentVariable(named="DATA_AGENT_PI_MYSQL_LIVE",matches="true")
+    @Test @Order(14) void selectedWorkbenchResultAndErrorAreExplainedWithoutReexecution() throws Exception {
+        long id=create();
+        for(boolean missing:List.of(false,true)) {
+            String sql=missing?"SELECT COUNT(*) FROM sys_demo.pi_reference_missing_"+UUID.randomUUID().toString().replace("-",""):"SELECT COUNT(*) AS total FROM sys_demo.sys_user";
+            String executionId=UUID.randomUUID().toString();
+            var actual=call("POST","/api/db/sql/execute",Map.of("connectionId",connectionId,"catalog","sys_demo",
+                    "sql",sql,"executionId",executionId,"maxRows",5,"timeoutMs",15000));
+            assertThat(actual.path("success").asBoolean()).isEqualTo(!missing);
+            var result=new LinkedHashMap<String,Object>();
+            result.put("success",!missing);
+            result.put("statementState",actual.path("statementState").asText());
+            result.put("transactionOutcome",actual.path("transactionOutcome").asText());
+            result.put("headers",missing?List.of():List.of("total"));
+            result.put("rows",missing?List.of():List.of(List.of(rows(actual).get(0).get(0).asText())));
+            result.put("returnedRows",missing?0:1);
+            if(missing) result.put("errorMessage",actual.path("errorMessage").asText());
+            var reference=Map.<String,Object>of("executionId",executionId,"statementIndex",0,"sql",sql,"target",target(),
+                    "documentId","previous-query","documentName","Previous Query","documentVersion",0,"truncated",false,"result",result);
+            String question=missing?"只解释附带的既有执行错误：表是否存在？不要调用工具，也不要重试或修改 SQL。"
+                    :"只读取附带的既有执行结果，用户总数是多少？不要调用工具或重新执行 SQL。";
+            var events=turn(id,question,missing?"execution-reference-error":"execution-reference-result","pi",null,reference);
+            assertThat(events.stream().filter(event->event.path("type").asText().equals("TOOL_CALL"))).isEmpty();
+            if(missing) assertThat(answer(events)).containsPattern("不存在|未找到|找不到|doesn't exist|does not exist");
+            else assertThat(answer(events)).containsPattern("(?<!\\d)"+totalUsers+"(?!\\d)");
+            evidence.getLast().put("executionState",actual.path("statementState"));
+            evidence.getLast().put("transactionOutcome",actual.path("transactionOutcome"));
+            evidence.getLast().put("validated",true);
+        }
     }
 
     @EnabledIfEnvironmentVariable(named="DATA_AGENT_PI_MYSQL_LIVE",matches="true")

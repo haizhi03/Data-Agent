@@ -40,7 +40,7 @@ export function extractResultSet(result: ExecuteSqlResponse | null | undefined):
 } {
   const primary = result?.resultSet
     ?? result?.results?.find((r) => r.type === 'QUERY')?.resultSet;
-  const headers = primary?.columns?.map((c) => c.label || c.name || '').filter(Boolean)
+  const headers = primary?.columns?.map((c, index) => c.label || c.name || `Column ${index + 1}`)
     ?? result?.headers ?? [];
   const rows = primary?.rows ?? result?.rows ?? [];
   return { headers, rows };

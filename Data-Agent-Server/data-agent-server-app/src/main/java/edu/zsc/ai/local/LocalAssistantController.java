@@ -28,8 +28,15 @@ final class LocalAssistantController {
             @com.fasterxml.jackson.annotation.JsonAlias("schema") @Size(max=200) String schemaName) { }
     record Turn(@NotNull Long conversationId, @NotBlank @Size(max=16000) String message, @Size(max=256) String modelConfigId,
             edu.zsc.ai.api.model.request.ChatDefaultTarget defaultTarget,
-            java.util.List<edu.zsc.ai.api.model.request.ChatUserMention> userMentions) {
-        Turn(Long id, String message, String model) { this(id,message,model,null,null); }
+            java.util.List<edu.zsc.ai.api.model.request.ChatUserMention> userMentions,
+            @Valid edu.zsc.ai.api.model.request.ChatWorkbenchContext workbenchContext,
+            @Valid edu.zsc.ai.api.model.request.ChatExecutionReference executionReference) {
+        Turn(Long id, String message, String model) { this(id,message,model,null,null,null,null); }
+        Turn(Long id, String message, String model, edu.zsc.ai.api.model.request.ChatDefaultTarget target,
+                java.util.List<edu.zsc.ai.api.model.request.ChatUserMention> mentions) { this(id,message,model,target,mentions,null,null); }
+        Turn(Long id, String message, String model, edu.zsc.ai.api.model.request.ChatDefaultTarget target,
+                java.util.List<edu.zsc.ai.api.model.request.ChatUserMention> mentions,
+                edu.zsc.ai.api.model.request.ChatWorkbenchContext workbench) { this(id,message,model,target,mentions,workbench,null); }
     }
     record SessionView(long conversationId, String runtimeInstanceId) { }
     @PostMapping("/api/local/conversations") ApiResponse<?> create(@Valid @RequestBody Create request, HttpServletRequest http) {

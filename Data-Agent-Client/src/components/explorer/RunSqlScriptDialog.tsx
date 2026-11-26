@@ -72,6 +72,7 @@ export function RunSqlScriptDialog({ open, onOpenChange, target }: RunSqlScriptD
       dbType: target.dbType,
       sql: fileContent,
       mode,
+      source: { documentName: fileName.slice(0, 256) },
     });
 
     onOpenChange(false);

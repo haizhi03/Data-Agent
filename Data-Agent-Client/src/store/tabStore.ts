@@ -20,6 +20,8 @@ export interface Tab {
   type: 'file' | 'table' | 'plan' | 'subagent-console' | 'er';
   icon?: string;
   content?: string;
+  contentVersion?: number;
+  selection?: { start: number; end: number };
   active: boolean;
   metadata?: WorkspaceTabMetadata;
 }
@@ -37,6 +39,7 @@ interface TabState {
   closeAllTabs: () => void;
   switchTab: (id: string) => void;
   updateTabContent: (id: string, content: string) => void;
+  updateTabSelection: (id: string, content: string, start: number, end: number) => void;
   updateTabMetadata: (id: string, metadata: WorkspaceTabMetadataUpdate) => void;
   updatePlanPayload: (id: string, payload: PlanTabMetadata['planPayload']) => void;
   updateSubAgentConsole: (id: string, metadata: SubAgentConsoleTabMetadata) => void;
@@ -128,8 +131,19 @@ export const useTabStore = create<TabState>((set) => ({
 
   updateTabContent: (id, content) =>
     set((state) => ({
-      tabs: state.tabs.map((t) => (t.id === id ? { ...t, content } : t)),
+      tabs: state.tabs.map((t) => (t.id === id && t.content !== content
+        ? { ...t, content, contentVersion: (t.contentVersion ?? 0) + 1, selection: undefined } : t)),
     })),
+
+  updateTabSelection: (id, content, start, end) =>
+    set((state) => {
+      const tab = state.tabs.find(item => item.id === id);
+      if (state.activeTabId !== id || !tab || (tab.content ?? '') !== content
+          || !Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end < start || end > content.length) return state;
+      const selection = start < end ? { start, end } : undefined;
+      if (tab.selection?.start === selection?.start && tab.selection?.end === selection?.end) return state;
+      return { tabs: state.tabs.map(item => item.id === id ? { ...item, selection } : item) };
+    }),
 
   updateTabMetadata: (id, metadata) =>
     set((state) => ({

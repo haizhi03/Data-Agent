@@ -27,7 +27,7 @@ export const localAssistantService = {
   proposals: (id: number) => jsonRequest<LocalWriteView[]>(`/local/conversations/${id}/write-proposals`, 'GET'),
   decide: (id: number, proposalId: string, decision: 'APPROVE' | 'REJECT') =>
     jsonRequest<LocalWriteView>('/permissions/write-executions/approve', 'POST', { conversationId: id, proposalId, decision }),
-  async *chat(conversationId: number, message: string, modelConfigId: string, signal: AbortSignal, snapshot?: Pick<ChatRequest, 'defaultTarget' | 'userMentions'>, engine?: 'java' | 'pi'): AsyncGenerator<ChatResponseBlock> {
+  async *chat(conversationId: number, message: string, modelConfigId: string, signal: AbortSignal, snapshot?: Pick<ChatRequest, 'defaultTarget' | 'userMentions' | 'workbenchContext' | 'executionReference'>, engine?: 'java' | 'pi'): AsyncGenerator<ChatResponseBlock> {
     // The experimental Pi engine has its own endpoint; a started run never silently falls back to the other engine.
     const path = engine === 'pi' ? '/local/pi/chat/stream' : '/local/chat/stream';
     // The host uses a 150-second inactivity timeout. Active multi-step runs may

@@ -100,6 +100,8 @@ final class LocalPiChatService implements AutoCloseable {
         var saved = sessions.target(session.id);
         var target = references.normalizeTarget(input.defaultTarget() == null ? storedTarget(session.id) : input.defaultTarget());
         var mentions = references.validateMentions(input.message(), input.userMentions());
+        var workbench = references.normalizeWorkbenchContext(input.workbenchContext());
+        var executionReference = references.normalizeExecutionReference(input.executionReference());
         var db = new DbContext(target.getConnectionId(), target.getCatalogName(), target.getSchemaName());
         Long version = db.connectionId() == null ? null : db.equals(saved.target()) ? saved.version() : connections.get(db.connectionId()).version();
         var config = run.model(ModelPurpose.MAIN_CHAT);
@@ -114,7 +116,11 @@ final class LocalPiChatService implements AutoCloseable {
         if (db.connectionId() != null && version != null) versions.put(db.connectionId(), version);
         try {
             for (var mention : mentions) versions.computeIfAbsent(mention.getConnectionId(), id -> connections.get(id).version());
-            String enriched = ChatTurnContext.encode(input.message(), target, mentions, explicitReferences.renderReferences(mentions, "zh"));
+            if (workbench != null && workbench.target().getConnectionId() != null)
+                versions.computeIfAbsent(workbench.target().getConnectionId(), id -> connections.get(id).version());
+            if (executionReference != null)
+                versions.computeIfAbsent(executionReference.target().getConnectionId(), id -> connections.get(id).version());
+            String enriched = ChatTurnContext.encode(input.message(), target, mentions, explicitReferences.renderReferences(mentions, "zh"), workbench, executionReference);
             // The factory re-reads the secret from the vault so a durable reattach can re-send the
             // same start payload (same idempotencyKey) with fresh credentials. Secrets travel only
             // over the worker stdin pipe and are never logged.

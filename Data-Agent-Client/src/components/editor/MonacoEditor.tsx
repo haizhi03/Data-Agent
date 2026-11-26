@@ -40,6 +40,7 @@ interface SqlCompletionContext {
 interface MonacoEditorProps {
   value: string;
   onChange?: (value: string | undefined) => void;
+  onSelectionChange?: (content: string, start: number, end: number) => void;
   language?: string;
   readOnly?: boolean;
   height?: string | number;
@@ -91,6 +92,7 @@ export const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(
   ({
     value,
     onChange,
+    onSelectionChange,
     language = 'sql',
     readOnly = false,
     height = '100%',
@@ -103,6 +105,9 @@ export const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(
     const translateRef = useRef(t);
     translateRef.current = t;
     const editorRef = useRef<any>(null);
+    const selectionCallback = useRef(onSelectionChange);
+    selectionCallback.current = onSelectionChange;
+    const selectionListeners = useRef<monacoRuntime.IDisposable[]>([]);
     const monacoRef = useRef<any>(null);
     const completionContextRef = useRef<SqlCompletionContext | undefined>(completionContext);
     completionContextRef.current = completionContext;
@@ -219,6 +224,7 @@ export const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(
 
     useEffect(() => {
       return () => {
+        selectionListeners.current.forEach(listener => listener.dispose());
         completionDisposableRef.current?.dispose();
         completionDisposableRef.current = null;
       };
@@ -379,6 +385,15 @@ export const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(
         onMount={(editor, monaco) => {
           editorRef.current = editor;
           monacoRef.current = monaco;
+          const reportSelection = () => {
+            const model = editor.getModel();
+            const selection = editor.getSelection();
+            if (!model || !selection) return;
+            selectionCallback.current?.(model.getValue(), model.getOffsetAt(selection.getStartPosition()), model.getOffsetAt(selection.getEndPosition()));
+          };
+          selectionListeners.current.forEach(listener => listener.dispose());
+          selectionListeners.current = [editor.onDidChangeCursorSelection(reportSelection), editor.onDidChangeModelContent(reportSelection)];
+          reportSelection();
           editorRef.current.updateOptions({ wordBasedSuggestions: 'off' });
           registerLanguageProviders(monaco);
           monaco.editor.setModelMarkers(editor.getModel(), 'dm-sql-parser', diagnostics.map(error => ({

@@ -1438,6 +1438,14 @@
     "calls": "Model calls",
     "tools": "Tool calls",
     "usage_partial": "Complete usage unavailable",
+    "execution_reference": "Reference execution",
+    "execution_reference_none": "No execution reference",
+    "statement": "Statement",
+    "execution_result": "Result",
+    "execution_error": "Error",
+    "sql_context": "Attaching current SQL",
+    "selection_context": "Attaching SQL selection",
+    "context_truncated": "Content truncated",
     "ephemeral_pi": "Chats stay in memory and clear when you close the panel."
   }
 }

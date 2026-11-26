@@ -9,6 +9,8 @@ import { localAssistantService as api } from '../../services/localAssistant.serv
 import { connectionService } from '../../services/connection.service';
 import { useMention } from '../../hooks/useMention';
 import { renderHook } from '@testing-library/react';
+import { useSqlRunStore } from '../../store/sqlRunStore';
+import { sqlExecutionService } from '../../services/sqlExecution.service';
 import { useRuntimeStore } from '../../store/runtimeStore';
 import { useTabStore, type Tab } from '../../store/tabStore';
 import type { ModelOption } from '../../types/ai';
@@ -28,6 +30,7 @@ const fixture=vi.hoisted(() => ({
 }));
 vi.mock('react-i18next',()=>({useTranslation:()=>({t:fixture.t})}));
 vi.mock('../../store/workspaceStore',()=>({useWorkspaceStore:(selector?:any)=>selector?selector(fixture.workspace):fixture.workspace}));
+vi.mock('../../services/sqlExecution.service',()=>({sqlExecutionService:{executeScript:vi.fn(),cancelExecution:vi.fn()}}));
 vi.mock('../../services/connection.service',()=>({connectionService:{getConnections:vi.fn()}}));
 vi.mock('../../services/modelManagement.service',()=>({createModelManagementService:()=>modelApi}));
 vi.mock('../../services/localAssistant.service',()=>({localAssistantService:{create:vi.fn(),chat:vi.fn(),compact:vi.fn(async()=>({compacted:false})),close:vi.fn(async()=>{}),proposals:vi.fn(async()=>[]),updateDefaultTarget:vi.fn(async(_id,target)=>({...target}))}}));
@@ -63,6 +66,7 @@ let client:QueryClient;
 function wrapper({children}:{children:React.ReactNode}){return <QueryClientProvider client={client}>{children}</QueryClientProvider>;}
 beforeEach(()=>{
   vi.clearAllMocks();
+  useSqlRunStore.setState({executionReferences:[]});
   useTabStore.setState({tabs:[],activeTabId:null});
   fixture.modelApiStyle='OPENAI_CHAT_COMPLETIONS'; fixture.missingModelConnection=false;
   fixture.workspace.assistantEngine='auto';
@@ -134,6 +138,101 @@ describe('durable text recovery',()=>{
     expect(messages[3].blocks).toEqual([
       {done:false,type:'TOOL_CALL',data:'tool evidence'}, {done:false,type:'TEXT',data:'recovered answer'},
     ]);
+  });
+});
+
+describe('execution references',()=>{
+  async function execute() {
+    vi.mocked(sqlExecutionService.executeScript).mockResolvedValueOnce([{success:true,query:true,executionTimeMs:1,affectedRows:0,
+      executedSql:'SELECT 77',headers:['n'],rows:[[77]],statementState:'EXECUTED',transactionOutcome:'NONE'}]);
+    await act(async()=>{ await useSqlRunStore.getState().runSql({connectionId:1,databaseName:'sales',sql:'SELECT 77',
+      source:{documentId:salesTab.id,documentName:'Query A',documentVersion:0}}); });
+    return useSqlRunStore.getState().executionReferences[0];
+  }
+  const choose=(key:string)=>fireEvent.change(screen.getByLabelText('local_assistant.execution_reference'),{target:{value:key}});
+  it.each([false,true])('requires an explicit reference and retains its original SQL target with Pi=%s',async ready=>{
+    piReady(ready);
+    const reference=await execute();
+    activate({...salesTab,content:'SELECT 77'});
+    render(<LocalAssistant onClose={()=>{}}/>,{wrapper});
+    const key=`${reference.executionId}:0`;
+    choose(key);
+    activate({...archiveTab,type:'file',content:'SELECT 88'});
+    expect((screen.getByLabelText('local_assistant.execution_reference') as HTMLSelectElement).value).toBe('');
+    await send('new document');
+    await waitFor(()=>expect(api.chat).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(api.chat).mock.calls[0][4]?.executionReference).toBeUndefined();
+    await waitFor(()=>expect(screen.getByTestId('loading').textContent).toBe('false'));
+    choose(key);
+    await send('explain the selected historical result');
+    await waitFor(()=>expect(api.chat).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(api.chat).mock.calls[1][4]).toMatchObject({
+      workbenchContext:{sql:'SELECT 88',target:{connectionId:2,schemaName:'ARCHIVE'}},
+      executionReference:{sql:'SELECT 77',target:{connectionId:1,catalogName:'sales'},result:{rows:[['77']]}},
+    });
+    await send('follow-up without a new attachment');
+    await waitFor(()=>expect(api.chat).toHaveBeenCalledTimes(3));
+    expect(vi.mocked(api.chat).mock.calls[2][4]?.executionReference).toBeUndefined();
+  });
+  it('copies selected result cells before awaiting session creation',async()=>{
+    const reference=await execute();
+    let complete!:(value:{conversationId:number;runtimeInstanceId:string})=>void;
+    vi.mocked(api.create).mockImplementationOnce(()=>new Promise(resolve=>{complete=resolve;}));
+    activate({...salesTab,content:'SELECT 77'});
+    render(<LocalAssistant onClose={()=>{}}/>,{wrapper});
+    choose(`${reference.executionId}:0`);
+    await send('explain');
+    await waitFor(()=>expect(api.create).toHaveBeenCalledTimes(1));
+    reference.result.rows[0][0]='changed later';
+    await act(async()=>complete({conversationId:7,runtimeInstanceId:'test'}));
+    await waitFor(()=>expect(api.chat).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(api.chat).mock.calls[0][4]?.executionReference?.result.rows).toEqual([['77']]);
+  });
+});
+
+describe('SQL workbench snapshots',()=>{
+  it.each([false,true])('snapshots selections and follows the current document with Pi=%s',async ready=>{
+    piReady(ready);
+    const sql='SELECT 1; SELECT 2;';
+    activate({...salesTab,content:sql});
+    act(()=>useTabStore.getState().updateTabSelection(salesTab.id,sql,10,19));
+    render(<LocalAssistant onClose={()=>{}}/>,{wrapper});
+    expect(document.querySelector('[data-workbench-context]')?.textContent).toContain('selection_context');
+    await send('解释这段 SQL');
+    await waitFor(()=>expect(api.chat).toHaveBeenCalledTimes(1));
+    const first=vi.mocked(api.chat).mock.calls[0][4]!;
+    expect(first.workbenchContext).toMatchObject({documentId:salesTab.id,documentVersion:0,sql:'SELECT 2;',selected:true,
+      target:{connectionId:1,catalogName:'sales'}});
+    activate({...archiveTab,type:'file',content:'SELECT 3;'});
+    await send('再看当前 SQL');
+    await waitFor(()=>expect(api.chat).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(api.chat).mock.calls[1][4]).toMatchObject({defaultTarget:{connectionId:1,catalogName:'sales'},
+      workbenchContext:{documentId:archiveTab.id,sql:'SELECT 3;',selected:false,target:{connectionId:2,schemaName:'ARCHIVE'}}});
+    act(()=>useTabStore.getState().updateTabContent(archiveTab.id,'SELECT 4;'));
+    // A late selection event from the old editor content cannot restore a stale selection.
+    act(()=>useTabStore.getState().updateTabSelection(archiveTab.id,'SELECT 3;',0,6));
+    await send('修改后的 SQL');
+    await waitFor(()=>expect(api.chat).toHaveBeenCalledTimes(3));
+    expect(vi.mocked(api.chat).mock.calls[2][4]?.workbenchContext).toMatchObject({sql:'SELECT 4;',documentVersion:1,selected:false});
+    expect(first.workbenchContext?.sql).toBe('SELECT 2;');
+    activate(archiveTab);
+    expect(document.querySelector('[data-workbench-context]')).toBeNull();
+    await send('表的问题');
+    await waitFor(()=>expect(api.chat).toHaveBeenCalledTimes(4));
+    expect(vi.mocked(api.chat).mock.calls[3][4]?.workbenchContext).toBeUndefined();
+    act(()=>useTabStore.getState().closeAllTabs());
+    await send('没有打开的 SQL 文档');
+    await waitFor(()=>expect(api.chat).toHaveBeenCalledTimes(5));
+    expect(vi.mocked(api.chat).mock.calls[4][4]?.workbenchContext).toBeUndefined();
+  });
+  it('marks bounded SQL excerpts as truncated',async()=>{
+    activate({...salesTab,content:'SELECT 1; -- '+ 'x'.repeat(16000)});
+    render(<LocalAssistant onClose={()=>{}}/>,{wrapper});
+    expect(document.querySelector('[data-workbench-context]')?.textContent).toContain('context_truncated');
+    await send('检查当前 SQL');
+    await waitFor(()=>expect(api.chat).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(api.chat).mock.calls[0][4]?.workbenchContext?.sql).toHaveLength(16000);
+    expect(vi.mocked(api.chat).mock.calls[0][4]?.workbenchContext?.truncated).toBe(true);
   });
 });
 
@@ -385,10 +484,10 @@ describe('desktop local automatic targets and references',()=>{
     await waitFor(()=>expect(api.chat).toHaveBeenCalledTimes(1));
     expect(api.create).toHaveBeenCalledWith({connectionId:3,catalogName:'reporting',schemaName:'public'});
   });
-  it('freezes the submitted scope while session creation is pending',async()=>{
+  it('freezes the submitted scope and SQL while session creation is pending',async()=>{
     let finishCreate!:(value:{conversationId:number;runtimeInstanceId:string})=>void;
     vi.mocked(api.create).mockImplementationOnce(()=>new Promise(resolve=>{finishCreate=resolve;}));
-    activate(salesTab);
+    activate({...salesTab,content:'SELECT 7;'});
     render(<LocalAssistant onClose={()=>{}}/>,{wrapper});
     await send('first');
     await waitFor(()=>expect(api.create).toHaveBeenCalledTimes(1));
@@ -396,6 +495,7 @@ describe('desktop local automatic targets and references',()=>{
     expect(screen.getByText('development / sales')).toBeTruthy();
     await act(async()=>finishCreate({conversationId:7,runtimeInstanceId:'test'}));
     await waitFor(()=>expect(api.chat).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(api.chat).mock.calls[0][4]?.workbenchContext?.sql).toBe('SELECT 7;');
     await send('follow-up');
     await waitFor(()=>expect(api.chat).toHaveBeenCalledTimes(2));
     expect(vi.mocked(api.chat).mock.calls.map(call=>call[4]?.defaultTarget)).toEqual([

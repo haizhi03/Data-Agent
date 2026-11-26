@@ -610,5 +610,201 @@
     },
     "dmAcceptance": "NOT_RUN; no configured DM connection",
     "implementationScope": "Core model error metadata and existing live-test entry extended to DM"
+  },
+  "workbenchContextValidation": {
+    "verifiedAt": "2026-11-26T08:54:53.547784+00:00",
+    "scope": "stage C first increment: SQL, selection and per-document content version",
+    "frontend": {
+      "files": 53,
+      "passed": 291
+    },
+    "backend": {
+      "passed": 261,
+      "skipped": 16
+    },
+    "typescript": "PASS",
+    "productionBuild": "PASS",
+    "live": {
+      "verifiedAt": "2026-11-26T08:51:00.990402Z",
+      "model": "qwen3.8-max",
+      "connectionId": 1,
+      "target": {
+        "connectionId": 1,
+        "catalogName": "sys_demo"
+      },
+      "catalog": "sys_demo",
+      "baseline": {
+        "disabledUsers": 1,
+        "idPairs": 588,
+        "users": 12
+      },
+      "cases": [
+        {
+          "validated": true,
+          "scenario": "workbench-constant-17",
+          "status": "SUCCEEDED",
+          "elapsedMs": 2590,
+          "statistics": {
+            "modelCalls": 1,
+            "toolCalls": 0,
+            "inputTokens": 2822,
+            "outputTokens": 38,
+            "usageComplete": true
+          },
+          "engine": "pi",
+          "modelConfigId": "fm-P-1-bfc7dc11-3b78-4f4d-9280-73ebbf4a060c",
+          "model": "qwen3.8-max",
+          "toolTrace": [],
+          "observedToolCalls": 0,
+          "querySql": [],
+          "answer": "17",
+          "queryResults": [],
+          "documentVersion": 0
+        },
+        {
+          "validated": true,
+          "scenario": "workbench-constant-29",
+          "status": "SUCCEEDED",
+          "elapsedMs": 1498,
+          "statistics": {
+            "modelCalls": 1,
+            "toolCalls": 0,
+            "inputTokens": 982,
+            "outputTokens": 28,
+            "usageComplete": true
+          },
+          "engine": "pi",
+          "modelConfigId": "fm-P-1-bfc7dc11-3b78-4f4d-9280-73ebbf4a060c",
+          "model": "qwen3.8-max",
+          "toolTrace": [],
+          "observedToolCalls": 0,
+          "querySql": [],
+          "answer": "29",
+          "queryResults": [],
+          "documentVersion": 1
+        }
+      ],
+      "localConfigurationUnchanged": true
+    },
+    "sourceSha256": {
+      "Data-Agent-Client/src/store/tabStore.ts": "ec75b228c97267548e71b9fd2120716ee5276674181dbdd4e387a65bacad8bfe",
+      "Data-Agent-Client/src/components/editor/MonacoEditor.tsx": "2b6e671783226e2a7392b4e9d460c2fa8c1eaf2dc16e4d0ec05198d158a63326",
+      "Data-Agent-Client/src/components/ai/LocalAssistant.tsx": "0624e3bd79e7902c658260f3b33ff6d01fd8d27d35c8b58d0c63c3e49382564b",
+      "Data-Agent-Server/data-agent-server-app/src/main/java/edu/zsc/ai/api/model/request/ChatWorkbenchContext.java": "a791719b6154d19756b0a77c7c73a965d9df6373e1e5956133ebaeebb85563f7",
+      "Data-Agent-Server/data-agent-server-app/src/main/java/edu/zsc/ai/domain/service/agent/ChatTurnContext.java": "50e68997111e4efd26c96376a26629169f48f9fe0f8226e959718e349af1ca72"
+    },
+    "remaining": [
+      "execution errors",
+      "query result references"
+    ]
+  },
+  "executionReferenceValidation": {
+    "verifiedAt": "2026-11-26T10:04:50.451530+00:00",
+    "scope": "stage C incremental completion; explicit latest-workbench statement result/error reference; local Java and Pi",
+    "attachmentPolicy": "none by default; select one statement; clear on document/version/target/new execution/send/new conversation; original source retained",
+    "limits": {
+      "sqlChars": 8000,
+      "errorChars": 2000,
+      "sampleRows": 5,
+      "sampleColumns": 8,
+      "headerChars": 64,
+      "cellChars": 128
+    },
+    "offline": {
+      "frontend": {
+        "files": 53,
+        "passed": 297
+      },
+      "backend": {
+        "total": 276,
+        "passed": 259,
+        "skipped": 17,
+        "failures": 0,
+        "errors": 0,
+        "scope": "Local*Test,ChatContextChainTest,MemoryUtilTest"
+      },
+      "typescript": "passed as part of production build",
+      "productionBuild": "passed"
+    },
+    "live": {
+      "verifiedAt": "2026-11-26T10:03:36.087790Z",
+      "model": "qwen3.8-max",
+      "connectionId": 1,
+      "target": {
+        "connectionId": 1,
+        "catalogName": "sys_demo"
+      },
+      "catalog": "sys_demo",
+      "baseline": {
+        "disabledUsers": 1,
+        "idPairs": 588,
+        "users": 12
+      },
+      "cases": [
+        {
+          "validated": true,
+          "scenario": "execution-reference-result",
+          "status": "SUCCEEDED",
+          "elapsedMs": 8736,
+          "statistics": {
+            "modelCalls": 1,
+            "toolCalls": 0,
+            "inputTokens": 3019,
+            "outputTokens": 243,
+            "usageComplete": true
+          },
+          "engine": "pi",
+          "modelConfigId": "fm-P-1-bfc7dc11-3b78-4f4d-9280-73ebbf4a060c",
+          "model": "qwen3.8-max",
+          "toolTrace": [],
+          "observedToolCalls": 0,
+          "querySql": [],
+          "answer": "根据工作台中已有的执行快照（executionId 130f1c48…，语句 1），用户总数为 **12**。\n\n- SQL：`SELECT COUNT(*) AS total FROM sys_demo.sys_user`\n- 执行状态：success=true，statementState=EXECUTED，无错误信息\n- 结果：单行单列 `total = 12`\n\n说明：这是聚合计数结果，返回的 12 即为该表全量行数，不是被截断的样本（truncated=false）。以上仅依据你选择的既有执行快照，本轮未重新查询数据库，因此它反映的是那次执行时点的数据。",
+          "queryResults": [],
+          "executionState": "EXECUTED",
+          "transactionOutcome": "NONE"
+        },
+        {
+          "validated": true,
+          "scenario": "execution-reference-error",
+          "status": "SUCCEEDED",
+          "elapsedMs": 14177,
+          "statistics": {
+            "modelCalls": 1,
+            "toolCalls": 0,
+            "inputTokens": 1649,
+            "outputTokens": 446,
+            "usageComplete": true
+          },
+          "engine": "pi",
+          "modelConfigId": "fm-P-1-bfc7dc11-3b78-4f4d-9280-73ebbf4a060c",
+          "model": "qwen3.8-max",
+          "toolTrace": [],
+          "observedToolCalls": 0,
+          "querySql": [],
+          "answer": "结论：按这份既有执行快照，该表在执行时点**不存在**（至少在连接 1 / 数据库 `sys_demo` 下不可见），查询未成功。\n\n依据：\n- 执行状态：success=false，statementState=FAILED，transactionOutcome=NONE，无批次。\n- 错误信息（MySQL 驱动抛出）：`SQLSyntaxErrorException: Table 'sys_demo.pi_reference_missing_7f05fec0a7be4e77b43c6245e0a0c701' doesn't exist`。\n- 结果集为空：headers 为空、rows 为空、returnedRows=0，因此没有任何计数结果可用，不能推断为 0 行。\n- sqlState 字段为 null，无法据此引用标准 SQLSTATE 代码；结论只基于驱动的错误文本。\n\n限制说明：\n- 这仅说明该次执行时驱动无法解析这个表名，可能原因包括表确实未创建、名称或大小写不匹配、表在其他 catalog/schema、或当前账号无权限（MySQL 对无权限对象也可能报不存在）。本轮未做任何元数据核对，无法区分以上情况。\n- 该表名带有类似随机后缀的形式，看起来像一次性/测试用引用对象；这只是名称层面的观察，不是已验证事实。\n- 已按要求未调用工具、未重试、未改写 SQL。如需确",
+          "queryResults": [],
+          "executionState": "FAILED",
+          "transactionOutcome": "NONE"
+        }
+      ],
+      "localConfigurationUnchanged": true
+    },
+    "sourceSha256": {
+      "Data-Agent-Client/src/lib/sqlExecutionReference.ts": "6c82634d7f69cf6028f11ff25b0221ee89fe6681206e0211724c54dc77d44996",
+      "Data-Agent-Client/src/store/sqlRunStore.ts": "677fea4eb72eb0177cdbf9b3e23eb447640d23174ae4e0b0eb02bef9d51e46d7",
+      "Data-Agent-Client/src/components/ai/LocalAssistant.tsx": "6bf98f549d260a831d280a79c7f0cdfc0a9ae1f2240c2aa956007080b5d56e34",
+      "Data-Agent-Client/src/lib/chatTarget.ts": "29eae759af4e8a3b946675680ce55d71c2558b917b37d6877158b788d7204ebf",
+      "Data-Agent-Client/src/types/chat.ts": "06bae6957b199e0c30db808be6ec1583239156099ca31c5d1e1b34b26b6f1d09",
+      "Data-Agent-Server/data-agent-server-app/src/main/java/edu/zsc/ai/api/model/request/ChatExecutionReference.java": "2fc09c982d9ccb5c6e93afd6244a0e7a2bf083a5864296913d79d63476f25f22",
+      "Data-Agent-Server/data-agent-server-app/src/main/java/edu/zsc/ai/domain/service/agent/ChatTurnContext.java": "2b5250fa030e89f727f21c3c4f61a636ec92b148f130b082a13217785478f136",
+      "Data-Agent-Server/data-agent-server-app/src/main/java/edu/zsc/ai/local/LocalPiChatService.java": "f998f6209f370dac6e3700e388003e482b6b97ba84516f612aee6f4592c3ab81",
+      "Data-Agent-Server/data-agent-server-app/src/main/java/edu/zsc/ai/local/LocalAssistantService.java": "3d7552724223bb3ce046dd5f84390a3adc48031a7d8faeeb07102ac7e6a6ff3d"
+    },
+    "remainingAcceptance": [
+      "DM8 real database validation from stage A",
+      "complete controlled engine comparison from stage A",
+      "desktop installation and packaging acceptance from stage D"
+    ]
   }
 }

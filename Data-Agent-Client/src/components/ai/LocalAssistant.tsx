@@ -5,11 +5,12 @@ import { AIAssistantHeader } from './AIAssistantHeader';
 import { AIAssistantContent } from './AIAssistantContent';
 import { AIAssistantProvider, type AIAssistantContextValue } from './AIAssistantContext';
 import { ChatInput } from './ChatInput';
-import { mentionsInText, snapshotChatRequest, targetLabel } from '../../lib/chatTarget';
+import { mentionsInText, snapshotChatRequest, snapshotWorkbenchContext, targetLabel } from '../../lib/chatTarget';
 import { MessageRole, type ChatContext, type ChatUserMention, type ChatResponseBlock } from '../../types/chat';
 import { localAssistantService as api, type LocalWriteView } from '../../services/localAssistant.service';
 import { useRuntimeStore } from '../../store/runtimeStore';
 import { useTabStore } from '../../store/tabStore';
+import { useSqlRunStore } from '../../store/sqlRunStore';
 import { useWorkspaceStore } from '../../store/workspaceStore';
 import type { TableTabMetadata } from '../../types/tab';
 import { createModelManagementService } from '../../services/modelManagement.service';
@@ -46,6 +47,14 @@ export function LocalAssistant({ onClose }: { onClose: () => void }) {
   } : {};
   const [sessionTarget, setSessionTarget] = useState<{ target: ChatContext; connectionName?: string } | null>(null);
   const chatContext = sessionTarget?.target ?? activeTarget;
+  const workbenchContext = snapshotWorkbenchContext(activeTab, activeTarget);
+  const workbenchScopeLabel = targetLabel(activeTarget, metadata?.connectionName);
+  const executionReferences = useSqlRunStore(s => s.executionReferences);
+  const executionScope = JSON.stringify([activeTab?.id, activeTab?.contentVersion ?? 0, activeTarget]);
+  const [executionSelection, setExecutionSelection] = useState<{ key: string; scope: string }>();
+  const executionReference = executionSelection?.scope === executionScope
+    ? executionReferences.find(reference => `${reference.executionId}:${reference.statementIndex}` === executionSelection.key) : undefined;
+  useEffect(() => { setExecutionSelection(undefined); }, [executionScope, executionReferences]);
   const connectionName = sessionTarget ? sessionTarget.connectionName : metadata?.connectionName;
   const scopeLabel = targetLabel(chatContext, connectionName);
   const [userMentions, setUserMentions] = useState<ChatUserMention[]>([]);
@@ -107,6 +116,7 @@ export function LocalAssistant({ onClose }: { onClose: () => void }) {
     }
   };
   const reset = async () => {
+    setExecutionSelection(undefined);
     setSessionTarget(null);
     generation.current++; writeRequest.current++; abort.current?.abort();
     const previous = session.current; session.current = null;
@@ -118,7 +128,10 @@ export function LocalAssistant({ onClose }: { onClose: () => void }) {
     const text = (override ?? input).trim();
     if (engine === 'pi' && text === '/compact') { setError('PI_COMPACTION_NOT_SUPPORTED'); return; }
     if (modelError) return;
-    const snapshot = snapshotChatRequest({ userMentions: mentionsInText(text,userMentions) }, chatContext, text);
+    const snapshot = snapshotChatRequest({ userMentions: mentionsInText(text,userMentions),
+      ...(workbenchContext ? { workbenchContext } : {}),
+      ...(executionReference ? { executionReference } : {}) }, chatContext, text);
+    setExecutionSelection(undefined);
     setUserMentions([]); setInput(''); setRunning(true); setBackendRunning(false); setError(''); setStatus('RUNNING');
     const version = generation.current;
     const current = () => mounted.current && version === generation.current;
@@ -215,6 +228,25 @@ export function LocalAssistant({ onClose }: { onClose: () => void }) {
       {scopeLabel && <div className="shrink-0 px-3 pt-1" data-chat-scope>
         <span className="inline-block max-w-full truncate rounded theme-bg-panel px-2 py-0.5 text-[10px] theme-text-secondary" title={scopeLabel} aria-label={tr('connection')}>{scopeLabel}</span>
       </div>}
+      {workbenchContext && <div data-workbench-context className="shrink-0 truncate px-3 pt-1 text-[10px] theme-text-secondary"
+        title={`${workbenchContext.documentName} · ${targetLabel(workbenchContext.target, metadata?.connectionName)}`}>
+        {tr(workbenchContext.selected ? 'selection_context' : 'sql_context')} · {workbenchContext.documentName} · v{workbenchContext.documentVersion}
+        {workbenchScopeLabel && ` · ${workbenchScopeLabel}`}
+        {workbenchContext.truncated && ` · ${tr('context_truncated')}`}
+      </div>}
+      {executionReferences.length > 0 && <label className="shrink-0 px-3 pt-1 text-[10px] theme-text-secondary">
+        {tr('execution_reference')}
+        <select aria-label={tr('execution_reference')} disabled={running} className="mt-1 block w-full truncate rounded border theme-border theme-bg-panel px-2 py-1"
+          value={executionReference ? `${executionReference.executionId}:${executionReference.statementIndex}` : ''}
+          onChange={event => setExecutionSelection(event.target.value ? { key: event.target.value, scope: executionScope } : undefined)}>
+          <option value="">{tr('execution_reference_none')}</option>
+          {executionReferences.map(reference => <option key={`${reference.executionId}:${reference.statementIndex}`} value={`${reference.executionId}:${reference.statementIndex}`}>
+            {reference.documentName || tr('execution_reference')} · {tr('statement')} {reference.statementIndex + 1} · {targetLabel(reference.target)} · {reference.result.success ? tr('execution_result') : tr('execution_error')}
+          </option>)}
+        </select>
+        {executionReference && <span data-execution-reference>{executionReference.executionId} · {executionReference.result.statementState}
+          {executionReference.truncated && ` · ${tr('context_truncated')}`}</span>}
+      </label>}
       <ChatInput />
     </div>
   </AIAssistantProvider>;

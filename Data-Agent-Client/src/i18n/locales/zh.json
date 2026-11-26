@@ -1439,6 +1439,14 @@
     "calls": "模型调用",
     "tools": "工具调用",
     "usage_partial": "厂商未提供完整用量",
+    "execution_reference": "引用执行结果",
+    "execution_reference_none": "不附带执行结果",
+    "statement": "语句",
+    "execution_result": "执行结果",
+    "execution_error": "执行错误",
+    "sql_context": "将附带当前 SQL",
+    "selection_context": "将附带 SQL 选区",
+    "context_truncated": "内容已截断",
     "ephemeral_pi": "对话仅在内存中，关闭面板后清空。"
   }
 }
