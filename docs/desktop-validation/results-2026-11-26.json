@@ -1,0 +1,113 @@
+{
+  "verifiedAt": "2026-11-26T10:21:17.960947+00:00",
+  "scope": "stage D / NEXT-03 minimal directory bundle; development machine only",
+  "os": {
+    "platform": "Darwin",
+    "version": "26.5",
+    "architecture": "arm64"
+  },
+  "bundle": {
+    "path": "target/desktop-pi-macos-arm64",
+    "bytes": 455009394,
+    "runtimeLock": {
+      "javaMajor": 21,
+      "nodeVersion": "22.23.2",
+      "nodeArchive": "node-v22.23.2-darwin-arm64.tar.gz",
+      "nodeSha256": "61130f394c1630d211dd50aecc4353d379480f36d3ac913cd85dbba1aed585c6",
+      "nodeURL": "https://nodejs.org/dist/v22.23.2/node-v22.23.2-darwin-arm64.tar.gz",
+      "platform": "macOS arm64",
+      "piVersion": "1.5.0",
+      "javaVersion": "21.0.13+100000002.0.LTS",
+      "javaArchive": "OpenJDK21U-jre_aarch64_mac_hotspot_21.0.13.1_2.tar.gz",
+      "javaURL": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.13.1%2B2/OpenJDK21U-jre_aarch64_mac_hotspot_21.0.13.1_2.tar.gz",
+      "javaSha256": "848feb1906c7de79de4f8391636042193fbd46eff86e26299506c4656f62c260"
+    },
+    "runtimeJava": "openjdk version \"21.0.13.1\" 2026-11-17 LTS\nOpenJDK Runtime Environment Temurin-21.0.13.1+2 (build 21.0.13.1+2-LTS)\nOpenJDK 64-Bit Server VM Temurin-21.0.13.1+2 (build 21.0.13.1+2-LTS, mixed mode, sharing)",
+    "drivers": {
+      "mysql-connector-j-8.3.0.jar": "94e7fa815370cdcefed915db7f53f88445fac110f8c3818392b992ec9ee6d295"
+    },
+    "externalNativeDependencies": [],
+    "artifacts": {
+      "server.jar": "85cd74eba3eab87416a7c6cf7e7da4924ae97e0434ee9b0faf7dbcaf4d0dc95d",
+      "host.mjs": "2756bccb6e59727bfb25f61ae83fcc0558b2d9a1609614b5a33b83d07702b50b",
+      "web/index.html": "63a19bb3e2549b9e7019d8d5b13864b644bd646c1892e65962faa9243a07b2a1",
+      "worker/package-lock.json": "7920d8b13d4999cd0ff792bc2d6b2be24ddc9b65c19dfce5bc30ca80a01e34ec",
+      "runtime/node/bin/node": "18e387c90ab8a8400183e8bdd396376e1e875b91b4c874b894dcade7b35bf572"
+    },
+    "userConfigurationIncluded": false
+  },
+  "smoke": {
+    "verifiedAt": "2026-11-26T10:20:08.580822+00:00",
+    "platform": "macOS arm64",
+    "bundleManifestSha256": "cc0beaa41ebc03e7654d9c7a9e74b8f23c8371ed230546a8228e49015cb8c856",
+    "checks": [
+      {
+        "case": "packaged-ui-java-worker-start-without-path",
+        "status": "PASS"
+      },
+      {
+        "case": "origin-host-and-static-path-isolation",
+        "status": "PASS"
+      },
+      {
+        "case": "private-bootstrap-and-authenticated-backend",
+        "status": "PASS"
+      },
+      {
+        "case": "packaged-jre-mysql-driver-read-only-query",
+        "status": "PASS"
+      },
+      {
+        "case": "two-instances-use-independent-ports-and-data",
+        "status": "PASS"
+      },
+      {
+        "case": "graceful-exit-cleans-backend-without-affecting-other-instance",
+        "status": "PASS"
+      },
+      {
+        "case": "killed-host-eof-cleans-backend",
+        "status": "PASS"
+      },
+      {
+        "case": "missing-jar-fails-without-false-ready",
+        "status": "PASS"
+      }
+    ],
+    "modelCalls": 0,
+    "status": "PASS",
+    "bundleUnchanged": true,
+    "originalConfigurationUnchanged": true
+  },
+  "regression": {
+    "frontendPassed": 299,
+    "backendTotal": 276,
+    "backendPassed": 259,
+    "backendSkipped": 17,
+    "backendFailures": 0,
+    "backendErrors": 0,
+    "typescript": "PASS",
+    "frontendProductionBuild": "PASS",
+    "backendPackage": "PASS"
+  },
+  "sourceSha256": {
+    "scripts/desktop/build.py": "af962dc3322be9444d58017ea60503a82c497ebf3344f4ae8352f108857248c6",
+    "scripts/desktop/host.mjs": "2756bccb6e59727bfb25f61ae83fcc0558b2d9a1609614b5a33b83d07702b50b",
+    "scripts/desktop/runtime-lock.json": "bba6e6d202a23cd3632ba2f28a5f0b7bb88432e6f799c50313326148822c18e0",
+    "scripts/validation/desktop_smoke.py": "e77b218cbc350c69519d5583b378a8b61219c1096ef33ee0fc348ea94c05443f",
+    "Data-Agent-Client/src/lib/localRuntime.ts": "57a5e7e0c2fcbd71e69daf3f9fb6016171a5a6d64e4d72695813fdafc44bbc63",
+    "Data-Agent-Client/src/lib/localRuntime.test.ts": "70d53b45e655358cb60b06e2259c9a55a62354b6763c786efe782fb1066b9155",
+    "Data-Agent-Server/data-agent-server-app/src/main/java/edu/zsc/ai/local/LocalHostLifecycle.java": "ebb05d09ed1972d482be8c4eb8a542cb2c8a19f1f36346917ea2e878c6c7e625",
+    "Data-Agent-Server/data-agent-server-app/src/main/java/edu/zsc/ai/local/LocalRuntimeConfiguration.java": "6b49efa79de89aa2d50634d67844c6ec0c06c5013fd717eb4f5ca60e6e0062e0"
+  },
+  "releaseStatus": "PENDING_CLEAN_MACHINE_NATIVE_SHELL_AND_PLATFORM_ACCEPTANCE",
+  "remaining": [
+    "clean macOS installation",
+    "Windows runtime and installer",
+    "native window lifecycle",
+    "read-only installation directory",
+    "upgrade and rollback",
+    "packaged active query/model shutdown",
+    "DM8 driver and real database validation"
+  ]
+}

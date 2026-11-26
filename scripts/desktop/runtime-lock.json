@@ -1,0 +1,13 @@
+{
+  "javaMajor": 21,
+  "nodeVersion": "22.23.2",
+  "nodeArchive": "node-v22.23.2-darwin-arm64.tar.gz",
+  "nodeSha256": "61130f394c1630d211dd50aecc4353d379480f36d3ac913cd85dbba1aed585c6",
+  "nodeURL": "https://nodejs.org/dist/v22.23.2/node-v22.23.2-darwin-arm64.tar.gz",
+  "platform": "macOS arm64",
+  "piVersion": "1.5.0",
+  "javaVersion": "21.0.13+100000002.0.LTS",
+  "javaArchive": "OpenJDK21U-jre_aarch64_mac_hotspot_21.0.13.1_2.tar.gz",
+  "javaURL": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.13.1%2B2/OpenJDK21U-jre_aarch64_mac_hotspot_21.0.13.1_2.tar.gz",
+  "javaSha256": "848feb1906c7de79de4f8391636042193fbd46eff86e26299506c4656f62c260"
+}

@@ -39,10 +39,12 @@ export function initializeRuntime(): Promise<void> {
         contractVersion: 1 as const, apiBaseURL: 'http://127.0.0.1:8081/api', runtimeInstanceId: '', transportToken: '',
       };
       const endpoint = new URL(bootstrap.apiBaseURL);
+      // The packaged host proxies same-origin API requests and keeps the Java token in its own process.
+      const hostProxy = host && bootstrap.transportToken === '' && endpoint.origin === window.location?.origin;
       if (bootstrap.contractVersion !== 1 || !/^https?:$/.test(endpoint.protocol)
         || !['127.0.0.1', '[::1]'].includes(endpoint.hostname) || endpoint.username || endpoint.password
         || endpoint.pathname !== '/api' || endpoint.search || endpoint.hash
-        || (host && !/^[A-Za-z0-9_-]{43}$/.test(bootstrap.transportToken))) throw new Error('Invalid local bootstrap');
+        || (host && !hostProxy && !/^[A-Za-z0-9_-]{43}$/.test(bootstrap.transportToken))) throw new Error('Invalid local bootstrap');
       const headers = bootstrap.transportToken ? { Authorization: `Bearer ${bootstrap.transportToken}` } : undefined;
       const response = await fetch(`${bootstrap.apiBaseURL}/runtime/capabilities`, {
         headers, cache: 'no-store', signal: AbortSignal.timeout(10000),

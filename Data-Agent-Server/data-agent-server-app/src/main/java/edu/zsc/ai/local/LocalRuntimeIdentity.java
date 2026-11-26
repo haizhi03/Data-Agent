@@ -23,7 +23,7 @@ public final class LocalRuntimeIdentity {
         return runtimeInstanceId;
     }
 
-    /** Trusted in-process desktop host only. An out-of-process bootstrap channel is deferred to packaging. */
+    /** Trusted host only: in-process callers or the opt-in private parent pipe. */
     public String transportTokenForHost() {
         return transportToken;
     }

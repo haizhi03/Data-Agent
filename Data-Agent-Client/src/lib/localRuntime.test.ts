@@ -44,6 +44,21 @@ describe('trusted local startup', () => {
     expect(localRequestTransport().baseURL).toBe('http://127.0.0.1:8081/api');
     expect(localRequestTransport().authorization).toBeNull();
   });
+  it('accepts the packaged same-origin proxy without a browser credential', async () => {
+    vi.stubGlobal('window', { location: { origin: 'http://127.0.0.1:43123' },
+      dataAgentHost: { getBootstrap: async () => ({ ...bootstrap, apiBaseURL: 'http://127.0.0.1:43123/api', transportToken: '' }) } });
+    await initializeRuntime();
+    expect(useRuntimeStore.getState().status).toBe('READY');
+    expect(localRequestTransport().authorization).toBeNull();
+    expect(localRequestTransport().baseURL).toBe('http://127.0.0.1:43123/api');
+  });
+  it('rejects a tokenless host pointing to a different origin', async () => {
+    vi.stubGlobal('window', { location: { origin: 'http://127.0.0.1:43123' },
+      dataAgentHost: { getBootstrap: async () => ({ ...bootstrap, transportToken: '' }) } });
+    await initializeRuntime();
+    expect(useRuntimeStore.getState().status).toBe('FAILED');
+    expect(fetch).not.toHaveBeenCalled();
+  });
   it('keeps credentials out of public runtime state and uses the authenticated capabilities response', async () => {
     await initializeRuntime();
     expect(useRuntimeStore.getState().status).toBe('READY');

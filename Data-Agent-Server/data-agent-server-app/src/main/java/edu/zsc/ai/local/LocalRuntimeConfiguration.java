@@ -44,6 +44,11 @@ import org.springframework.context.ApplicationEventPublisher;
 @org.springframework.context.annotation.Import({LocalWorkbenchConfiguration.class, LocalAssistantConfiguration.class})
 public class LocalRuntimeConfiguration {
     @Bean LocalRuntimeIdentity localRuntimeIdentity() { return new LocalRuntimeIdentity(); }
+    @Bean
+    @ConditionalOnProperty(name = "app.local.host-stdio", havingValue = "true")
+    LocalHostLifecycle localHostLifecycle(LocalRuntimeIdentity identity, ObjectMapper mapper) {
+        return new LocalHostLifecycle(identity, mapper);
+    }
     @Bean LocalRuntimeController localRuntimeController(LocalRuntimeIdentity identity, LocalConnectionService connections,
             LocalAssistantService assistant, org.springframework.beans.factory.ObjectProvider<LocalPiChatService> pi) {
         return new LocalRuntimeController(identity, connections, assistant, pi);
