@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Background,
@@ -13,7 +12,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { I18N_KEYS } from '../../constants/i18nKeys';
-import { tableService, type ErDiagram, type ErRelation, type ErTable } from '../../services/table.service';
+import { tableService, type ErDiagram, type ErTable } from '../../services/table.service';
 import { useWorkspaceStore } from '../../store/workspaceStore';
 import { TableDblClickConsoleTargetEnum } from '../../constants/workspacePreferences';
 import type { ConsoleTabMetadata, ErDiagramTabMetadata } from '../../types/tab';
@@ -34,66 +33,47 @@ import { renderErDiagramJson, toErDiagramDocument } from './erDiagramDocument';
 import { renderErDiagramMermaid } from './erDiagramMermaid';
 import { renderErDiagramPdf } from './erDiagramPdf';
 import { vectorTablesFromNodes } from './erDiagramVectorSvg';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '../ui/DropdownMenu';
+import { ErDiagramFocusActions, ErDiagramRelationStatus } from './ErDiagramFocusBar';
+import { ErDiagramToolbar, type ErDiagramToolbarExport } from './ErDiagramToolbar';
 import { ErRelationEdgeView } from './ErDiagramEdge';
 import { ErTableNode, type ErTableNodeType } from './ErDiagramNode';
 import { ErDiagramMiniMap } from './ErDiagramMiniMap';
 import { ErDiagramTableDialog } from './ErDiagramTableDialog';
 import { ErDiagramZoomBar } from './ErDiagramZoomBar';
-import { buildDiagramEdges, ER_ROSE, ER_VIOLET, type ErRelationEdge } from './erDiagramEdges';
+import { buildDiagramEdges, type ErRelationEdge } from './erDiagramEdges';
 import { ErDiagramInteractionContext, ErDiagramRectsContext } from './erDiagramInteraction';
 import {
   CARD_WIDTH,
   ER_MAX_ZOOM,
-  ER_MIN_ZOOM,
-  minZoomForCanvas,
-  panExtentForDiagram,
   cardHeight,
   clearStoredLayout,
   shiftCardsForResize,
   hasStoredLayout,
-  layoutBounds,
   layoutDiagram,
   layoutStorageKey,
   mergeStoredPositions,
   readStoredLayout,
   toNodeId,
-  viewportForDiagram,
   writeStoredLayout,
   type LayoutPoint,
 } from './erDiagramLayout';
 import {
-  cardinalityLabel,
   collapseJunctions,
   columnKey,
   filterTablesByIds,
   junctionTableId,
   matchingTableIds,
   relationFromId,
-  relationMapping,
   relationToId,
   relationTouches,
   sideColumns,
   tableId,
-  viaTableName,
   type ColumnFocus,
-  type EndMark,
 } from './erDiagramRelations';
 import type { DiagramRect } from './erDiagramRoute';
-import {
-  ER_FOCUS_SPREAD_AT,
-  focusHops,
-  focusInvolvedTableIds,
-  relationFocusKey,
-  splitFocusRelations,
-  toFocusPayload,
-  visibleFocusHops,
-} from './erDiagramFocus';
+import { toFocusPayload } from './erDiagramFocus';
+import { useErDiagramFocus, useErDiagramSelection } from './useErDiagramSelection';
+import { useErDiagramViewport } from './useErDiagramViewport';
 import { useErQueryFocusStore } from '../../store/erQueryFocusStore';
 import {
   DEFAULT_ER_TABLE_CHOICE,
@@ -107,24 +87,6 @@ import {
 const EMPTY_TABLE_NAMES: string[] = [];
 const nodeTypes = { erTable: ErTableNode };
 const edgeTypes = { er: ErRelationEdgeView };
-
-function LegendSample({ mark, label, color, dashed }: { mark?: EndMark; label: string; color?: string; dashed?: boolean }) {
-  const stroke = color ?? 'currentColor';
-  return (
-    <span className="inline-flex items-center gap-1">
-      <svg width="26" height="12" aria-hidden="true">
-        {mark === 'many' ? (
-          <path d="M1 6 L8 1 M1 6 H25 M1 6 L8 11" fill="none" stroke={stroke} strokeWidth="1.4" strokeDasharray={dashed ? '3 2' : undefined} />
-        ) : mark === 'one' ? (
-          <path d="M2 1 V11 M6 6 H25" fill="none" stroke={stroke} strokeWidth="1.4" />
-        ) : (
-          <path d="M1 6 H25" fill="none" stroke={stroke} strokeWidth="1.4" strokeDasharray="3 2" />
-        )}
-      </svg>
-      <span>{label}</span>
-    </span>
-  );
-}
 
 interface ErDiagramTabProps {
   metadata: ErDiagramTabMetadata;
@@ -190,19 +152,13 @@ function ErDiagramCanvas({ metadata }: ErDiagramTabProps) {
   const updateTabMetadata = useWorkspaceStore((state) => state.updateTabMetadata);
   const switchTab = useWorkspaceStore((state) => state.switchTab);
   const tableDblClickConsoleTarget = useWorkspaceStore((state) => state.tableDblClickConsoleTarget);
-  const { getNodes, setViewport } = useReactFlow();
+  const { getNodes } = useReactFlow();
   const [diagram, setDiagram] = useState<ErDiagram | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [hover, setHoverState] = useState<ColumnFocus | null>(null);
   const [pinned, setPinned] = useState<ColumnFocus | null>(null);
   const [collapseJunctionTables, setCollapseJunctionTables] = useState(false);
-  const [showAllLines, setShowAllLines] = useState(false);
-  const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
-  const [onlyTableIds, setOnlyTableIds] = useState<string[] | null>(null);
-  const selectedNodeIdsRef = useRef(selectedNodeIds);
-  selectedNodeIdsRef.current = selectedNodeIds;
-  const [pinnedLinks, setPinnedLinks] = useState<{ relations: ErRelation[]; selectedKeys: string[] } | null>(null);
   const [exporting, setExporting] = useState(false);
   const [layouting, setLayouting] = useState(false);
   const [hasCustomLayout, setHasCustomLayout] = useState(false);
@@ -216,18 +172,30 @@ function ErDiagramCanvas({ metadata }: ErDiagramTabProps) {
   const [catalogNamesError, setCatalogNamesError] = useState('');
   const [nodes, setNodes, onNodesChange] = useNodesState<ErTableNodeType>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<ErRelationEdge>([]);
+  const {
+    selectedNodeIds,
+    setSelectedNodeIds,
+    selectedNodeIdsRef,
+    onlyTableIds,
+    setOnlyTableIds,
+    onlyTableKey,
+    pinnedLinks,
+    setPinnedLinks,
+    showAllLines,
+    setShowAllLines,
+    modifySelection,
+    selectAllTables,
+    hidePinnedRelation,
+    clearPinnedLinks,
+    showOnlySelected,
+    showAllTables,
+  } = useErDiagramSelection(nodes, setNodes);
   const draggingRef = useRef(false);
-  const flowRef = useRef<HTMLDivElement>(null);
   const requestId = useRef(0);
   const loadToken = useRef(0);
   const catalogGeneration = useRef(0);
   const catalogRequestStarted = useRef(false);
-  const framedToken = useRef(-1);
-  /** After leaving "only these tables", fit this subset in the restored layout. */
-  const frameFocusRef = useRef<Set<string> | null>(null);
   const layoutCause = useRef({ collapse: collapseJunctionTables, diagram, only: '' });
-  const [layoutVersion, setLayoutVersion] = useState(0);
-  const [frameReady, setFrameReady] = useState(false);
   const storageKey = layoutStorageKey(metadata.connectionId, metadata.catalog, metadata.schema);
 
   useEffect(() => () => { requestId.current += 1; }, []);
@@ -341,7 +309,6 @@ function ErDiagramCanvas({ metadata }: ErDiagramTabProps) {
     () => (diagram ? collapseJunctions(diagram, collapseJunctionTables) : null),
     [collapseJunctionTables, diagram],
   );
-  const onlyTableKey = onlyTableIds?.join('\n') ?? '';
   const shown = useMemo(() => {
     if (!collapsed) return null;
     if (!onlyTableIds || onlyTableIds.length === 0) return collapsed;
@@ -351,6 +318,16 @@ function ErDiagramCanvas({ metadata }: ErDiagramTabProps) {
     () => (collapsed ? matchingTableIds(collapsed, tableNameFilter, exactTableFilter) : null),
     [collapsed, exactTableFilter, tableNameFilter],
   );
+  const showCanvas = !error && !!shown && shown.tables.length > 0;
+  const {
+    flowRef,
+    frameFocusRef,
+    frameReady,
+    minZoom,
+    translateExtent,
+    fitToWindow,
+    requestFrame,
+  } = useErDiagramViewport(nodes, layouting, showCanvas);
 
   useEffect(() => {
     const visible = new Set(shown?.tables.map((table) => tableId(table)) ?? []);
@@ -381,11 +358,11 @@ function ErDiagramCanvas({ metadata }: ErDiagramTabProps) {
       if (persist) {
         writeStoredLayout(storageKey, Object.fromEntries(points.map((point) => [point.id, { x: point.x, y: point.y }])));
       }
-      if (frame) setLayoutVersion((version) => version + 1);
+      if (frame) requestFrame();
     }).finally(() => {
       if (token === requestId.current) setLayouting(false);
     });
-  }, [getNodes, setNodes, storageKey]);
+  }, [getNodes, requestFrame, setNodes, storageKey]);
 
   const toggleExpanded = useCallback((nodeId: string) => {
     if (layouting || exporting) return;
@@ -474,34 +451,15 @@ function ErDiagramCanvas({ metadata }: ErDiagramTabProps) {
     return highlighted;
   }, [activeRelations]);
 
-  const selectedTables = useMemo(
-    () => nodes.filter((node) => selectedNodeIds.includes(node.id)).map((node) => node.data.table),
-    [nodes, selectedNodeIds],
-  );
-  const selectedTableKeys = useMemo(
-    () => new Set(selectedTables.map((table) => tableId(table))),
-    [selectedTables],
-  );
-  const focusSplit = useMemo(
-    () => splitFocusRelations(shown?.relations ?? [], selectedTableKeys),
-    [selectedTableKeys, shown],
-  );
-  const focusRelations = useMemo(
-    () => [...focusSplit.inside, ...focusSplit.outside],
-    [focusSplit],
-  );
-  const pinnedKeys = useMemo(
-    () => new Set(pinnedLinks?.selectedKeys ?? []),
-    [pinnedLinks],
-  );
-  const pinnedSplit = useMemo(
-    () => (pinnedLinks ? splitFocusRelations(pinnedLinks.relations, pinnedKeys) : null),
-    [pinnedKeys, pinnedLinks],
-  );
-  const pinnedKeepIds = useMemo(
-    () => (pinnedSplit ? focusInvolvedTableIds(pinnedKeys, pinnedSplit) : null),
-    [pinnedKeys, pinnedSplit],
-  );
+  const {
+    selectedTables,
+    selectedTableKeys,
+    focusSplit,
+    pinnedKeys,
+    pinnedSplit,
+    pinnedKeepIds,
+    pinCurrentSelection,
+  } = useErDiagramFocus(nodes, selectedNodeIds, pinnedLinks, shown?.relations, setPinnedLinks);
   const dimmedTables = useMemo(() => {
     const dimmed = new Set<string>();
     if (pinnedKeepIds) {
@@ -627,21 +585,6 @@ function ErDiagramCanvas({ metadata }: ErDiagramTabProps) {
     }
   }, [metadata, openTab, switchTab, t, tableDblClickConsoleTarget, tabs, toast, updateTabContent, updateTabMetadata]);
 
-  const modifySelection = useCallback((nodeId: string) => {
-    const selected = new Set(getNodes().filter((node) => node.selected).map((node) => node.id));
-    if (selected.has(nodeId)) selected.delete(nodeId);
-    else selected.add(nodeId);
-    const ids = [...selected];
-    setSelectedNodeIds(ids);
-    setNodes((current) => current.map((node) => ({ ...node, selected: selected.has(node.id) })));
-  }, [getNodes, setNodes]);
-
-  const selectAllTables = useCallback(() => {
-    const ids = getNodes().map((node) => node.id);
-    setSelectedNodeIds(ids);
-    setNodes((current) => current.map((node) => ({ ...node, selected: true })));
-  }, [getNodes, setNodes]);
-
   const openExternalErDiagram = useCallback((table: ErTable) => {
     if (!table.external) return;
     const catalog = table.catalog || '';
@@ -702,58 +645,6 @@ function ErDiagramCanvas({ metadata }: ErDiagramTabProps) {
     setHover,
     togglePin,
   ]);
-
-  const frameNodes = useCallback((current: ErTableNodeType[]) => {
-    const pane = flowRef.current;
-    if (!pane || current.length === 0) return Promise.resolve(false);
-    const focus = frameFocusRef.current;
-    const focused = focus && focus.size > 0 ? current.filter((node) => focus.has(node.id)) : current;
-    const cards = focused.length > 0 ? focused : current;
-    const bounds = layoutBounds(cards.map((node) => ({
-      x: node.position.x,
-      y: node.position.y,
-      width: node.measured?.width || node.width || CARD_WIDTH,
-      height: node.measured?.height || node.height || cardHeight(node.data.table.columns.length, node.data.expanded),
-    })));
-    const viewport = viewportForDiagram(bounds, pane.clientWidth, pane.clientHeight);
-    if (!viewport) return Promise.resolve(false);
-    return setViewport(viewport, { duration: 0 }).then((applied) => applied, () => false);
-  }, [setViewport]);
-
-  const fitToWindow = useCallback(() => {
-    void frameNodes(getNodes() as ErTableNodeType[]);
-  }, [frameNodes, getNodes]);
-
-  useLayoutEffect(() => {
-    if (layouting || nodes.length === 0 || framedToken.current === layoutVersion) return;
-    setFrameReady(false);
-    let stopped = false;
-    let attempts = 0;
-    let frame = 0;
-    const apply = () => {
-      if (stopped || framedToken.current === layoutVersion) return;
-      void frameNodes(nodes).then((fitted) => {
-        if (stopped || framedToken.current === layoutVersion) return;
-        if (fitted) {
-          framedToken.current = layoutVersion;
-          frameFocusRef.current = null;
-          setFrameReady(true);
-          return;
-        }
-        attempts += 1;
-        if (attempts < 8) frame = requestAnimationFrame(apply);
-      });
-    };
-    apply();
-    const pane = flowRef.current;
-    const observer = pane ? new ResizeObserver(() => apply()) : null;
-    if (pane && observer) observer.observe(pane);
-    return () => {
-      stopped = true;
-      cancelAnimationFrame(frame);
-      observer?.disconnect();
-    };
-  }, [frameNodes, layoutVersion, layouting, nodes]);
 
   const resetLayout = () => {
     if (!shown || shown.tables.length === 0) return;
@@ -853,230 +744,61 @@ function ErDiagramCanvas({ metadata }: ErDiagramTabProps) {
     }
   };
 
-  const statusSplit = pinnedSplit ?? { inside: [], outside: [] };
-  const statusKeys = pinnedLinks ? pinnedKeys : selectedTableKeys;
-  const focusHopsShown = visibleFocusHops(focusHops(statusSplit.outside, statusKeys));
-  const focusStatus = !pinnedLinks ? '' : [
-    statusSplit.inside.length === 0 && statusSplit.outside.length === 0
-      ? t(I18N_KEYS.EXPLORER.ER_FOCUS_NONE)
-      : '',
-    statusSplit.inside.length > 0
-      ? t(I18N_KEYS.EXPLORER.ER_FOCUS_INSIDE, { count: statusSplit.inside.length })
-      : '',
-    ...focusHopsShown.shown.map((hop) => t(I18N_KEYS.EXPLORER.ER_FOCUS_HOP, { outside: hop.outside, link: hop.link })),
-    focusHopsShown.extra > 0
-      ? t(I18N_KEYS.EXPLORER.ER_FOCUS_HOP_MORE, { count: focusHopsShown.extra })
-      : '',
-  ].filter(Boolean).join('。');
-  const relationSummary = activeRelations.map((relation) => {
-    const via = viaTableName(relation);
-    const text = `${relationMapping(relation)} ${cardinalityLabel(relation)}`;
-    return via ? `${text} ${t(I18N_KEYS.EXPLORER.ER_DIAGRAM_VIA, { table: via })}` : text;
-  }).join(' · ');
-  const statusText = nameMatchIds?.size === 0
-    ? t(I18N_KEYS.EXPLORER.ER_DIAGRAM_FILTER_EMPTY)
-    : (focusStatus || relationSummary || t(I18N_KEYS.EXPLORER.ER_DIAGRAM_HINT));
+  const exportDiagram = (format: ErDiagramToolbarExport) => {
+    if (format === 'png' || format === 'svg' || format === 'pdf') {
+      void exportImage(format);
+      return;
+    }
+    if (format === 'json') exportJson();
+    else if (format === 'csv') exportCsv();
+    else exportMermaid();
+  };
   const localTableCount = diagram ? diagram.tables.filter((table) => !table.external).length : 0;
   const limitNotice = erDiagramLimitNotice(tableChoice, diagram?.truncated === true);
   const showTablePicker = showErDiagramTablePicker(diagram?.tableCount);
-  const showCanvas = !error && !!shown && shown.tables.length > 0;
-  const [paneSize, setPaneSize] = useState({ width: 0, height: 0 });
-  useLayoutEffect(() => {
-    const pane = flowRef.current;
-    if (!pane) return;
-    const publish = () => {
-      const width = pane.clientWidth;
-      const height = pane.clientHeight;
-      setPaneSize((current) => (current.width === width && current.height === height ? current : { width, height }));
-    };
-    publish();
-    const observer = new ResizeObserver(publish);
-    observer.observe(pane);
-    return () => observer.disconnect();
-  }, [showCanvas]);
-  const canvasBounds = useMemo(() => {
-    if (nodes.length === 0) return null;
-    return layoutBounds(nodes.map((node) => ({
-      x: node.position.x,
-      y: node.position.y,
-      width: node.measured?.width || node.width || CARD_WIDTH,
-      height: node.measured?.height || node.height || cardHeight(node.data.table.columns.length, node.data.expanded),
-    })));
-  }, [nodes]);
-  const translateExtent = useMemo(() => (
-    canvasBounds ? panExtentForDiagram(canvasBounds, paneSize.width, paneSize.height) ?? undefined : undefined
-  ), [canvasBounds, paneSize.height, paneSize.width]);
-  const minZoom = translateExtent
-    ? minZoomForCanvas(translateExtent, paneSize.width, paneSize.height)
-    : ER_MIN_ZOOM;
 
   return (
     <ErDiagramInteractionContext.Provider value={interaction}>
       <ErDiagramRectsContext.Provider value={rects}>
         <div className="flex h-full min-h-0 flex-col">
-          <div className="shrink-0 border-b theme-border text-xs theme-text-secondary">
-            <div className="flex min-h-10 flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">
-              <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-                <span className="font-medium theme-text-primary">{t(I18N_KEYS.EXPLORER.ER_DIAGRAM)}</span>
-                <span>{metadata.databaseName || metadata.schemaName || metadata.connectionName}</span>
-                {shown && (
-                  <span>
-                    {t(I18N_KEYS.EXPLORER.ER_DIAGRAM_SUMMARY, {
-                      tables: shown.tables.length,
-                      relations: shown.relations.length,
-                    })}
-                  </span>
-                )}
-                {limitNotice === 'truncated' && (
-                  <span>{t(I18N_KEYS.EXPLORER.ER_DIAGRAM_TRUNCATED, { count: localTableCount })}</span>
-                )}
-                {limitNotice === 'selected' && (
-                  <span>{t(I18N_KEYS.EXPLORER.ER_DIAGRAM_SELECT_TABLES_STATUS, { count: localTableCount })}</span>
-                )}
-                {diagram?.externalTruncated && (
-                  <span>{t(I18N_KEYS.EXPLORER.ER_DIAGRAM_EXTERNAL_TRUNCATED, {
-                    count: diagram.tables.filter((table) => table.external).length,
-                  })}</span>
-                )}
-              </div>
-              <div className="ml-auto flex flex-wrap items-center gap-x-2 gap-y-1">
-                {diagram && diagram.tables.length > 0 && (
-                  <div className="flex h-6 items-center rounded border theme-border">
-                    <input
-                      type="search"
-                      value={tableNameFilter}
-                      onChange={(event) => setTableNameFilter(event.target.value)}
-                      placeholder={t(I18N_KEYS.EXPLORER.ER_DIAGRAM_FILTER)}
-                      aria-label={t(I18N_KEYS.EXPLORER.ER_DIAGRAM_FILTER)}
-                      className="h-full w-44 bg-transparent px-2 text-[11px] theme-text-primary outline-none"
-                    />
-                    <label
-                      className="inline-flex h-full shrink-0 items-center gap-1 border-l theme-border px-1.5"
-                      title={t(I18N_KEYS.EXPLORER.ER_DIAGRAM_FILTER_EXACT)}
-                    >
-                      <input
-                        type="checkbox"
-                        className="accent-violet-600"
-                        checked={exactTableFilter}
-                        aria-label={t(I18N_KEYS.EXPLORER.ER_DIAGRAM_FILTER_EXACT)}
-                        onChange={(event) => setExactTableFilter(event.target.checked)}
-                      />
-                      {t(I18N_KEYS.EXPLORER.ER_DIAGRAM_FILTER_EXACT_SHORT)}
-                    </label>
-                  </div>
-                )}
-                {showTablePicker && (
-                  <button
-                    type="button"
-                    className="rounded border theme-border px-2 py-0.5 theme-text-primary disabled:opacity-40"
-                    disabled={loading}
-                    onClick={openTablePicker}
-                  >
-                    {t(I18N_KEYS.EXPLORER.ER_DIAGRAM_SELECT_TABLES)}
-                  </button>
-                )}
-                {junctionTables.size > 0 && (
-                  <label className="inline-flex items-center gap-1">
-                    <input
-                      type="checkbox"
-                      className="accent-violet-600"
-                      checked={collapseJunctionTables}
-                      onChange={(event) => setCollapseJunctionTables(event.target.checked)}
-                    />
-                    {t(I18N_KEYS.EXPLORER.ER_DIAGRAM_COLLAPSE_JUNCTIONS)}
-                  </label>
-                )}
-                {showCanvas && (
-                  <button
-                    type="button"
-                    aria-pressed={showAllLines}
-                    className={`rounded border px-2 py-0.5 disabled:opacity-40 ${showAllLines ? 'border-rose-500 text-rose-600' : 'theme-border theme-text-primary'}`}
-                    disabled={!shown || shown.relations.length === 0}
-                    onClick={() => setShowAllLines((current) => !current)}
-                  >
-                    {t(I18N_KEYS.EXPLORER.ER_DIAGRAM_SHOW_ALL_LINES)}
-                  </button>
-                )}
-                {showCanvas && <span className="mx-0.5 h-4 shrink-0 border-l theme-border" aria-hidden="true" />}
-                {showCanvas && (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <button
-                        type="button"
-                        className="inline-flex items-center gap-1 rounded border theme-border px-2 py-0.5 theme-text-primary disabled:opacity-40"
-                        disabled={exporting || layouting || nodes.length === 0}
-                      >
-                        {t(I18N_KEYS.EXPLORER.ER_DIAGRAM_EXPORT)}
-                        <ChevronDown className="h-3 w-3" />
-                      </button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start" className="min-w-[8rem]">
-                      <DropdownMenuItem className="text-xs" onClick={() => { void exportImage('png'); }}>
-                        {t(I18N_KEYS.EXPLORER.ER_DIAGRAM_EXPORT_PNG)}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem className="text-xs" onClick={() => { void exportImage('svg'); }}>
-                        {t(I18N_KEYS.EXPLORER.ER_DIAGRAM_EXPORT_SVG)}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem className="text-xs" onClick={() => { void exportImage('pdf'); }}>
-                        {t(I18N_KEYS.EXPLORER.ER_DIAGRAM_EXPORT_PDF)}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem className="text-xs" onClick={exportJson}>
-                        {t(I18N_KEYS.EXPLORER.ER_DIAGRAM_EXPORT_JSON)}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem className="text-xs" onClick={exportCsv}>
-                        {t(I18N_KEYS.EXPLORER.ER_DIAGRAM_EXPORT_CSV)}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem className="text-xs" onClick={exportMermaid}>
-                        {t(I18N_KEYS.EXPLORER.ER_DIAGRAM_EXPORT_MERMAID)}
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                )}
-                {showCanvas && (
-                  <button
-                    type="button"
-                    className="rounded border theme-border px-2 py-0.5 theme-text-primary disabled:opacity-40"
-                    disabled={!hasCustomLayout || layouting || exporting}
-                    onClick={resetLayout}
-                  >
-                    {t(I18N_KEYS.EXPLORER.ER_DIAGRAM_RESET_LAYOUT)}
-                  </button>
-                )}
-              </div>
-            </div>
-            <div className="flex h-7 min-w-0 items-center overflow-hidden border-t theme-border px-3">
-              {showCanvas && (
-                <span className="mr-3 inline-flex shrink-0 items-center gap-x-3 border-r theme-border pr-3">
-                  <LegendSample mark="one" label={t(I18N_KEYS.EXPLORER.ER_DIAGRAM_LEGEND_ONE)} color={ER_ROSE} />
-                  <LegendSample mark="many" label={t(I18N_KEYS.EXPLORER.ER_DIAGRAM_LEGEND_MANY)} color={ER_ROSE} />
-                  <LegendSample mark="many" label={t(I18N_KEYS.EXPLORER.ER_DIAGRAM_LEGEND_MANY_TO_MANY)} color={ER_VIOLET} />
-                  <LegendSample label={t(I18N_KEYS.EXPLORER.ER_DIAGRAM_LEGEND_CROSS)} dashed />
-                </span>
-              )}
-              {pinnedLinks ? (
-                <span className="min-w-0 flex-1 truncate theme-text-primary" title={statusText}>{focusStatus}</span>
-              ) : activeRelations.length > 0 ? (
-                <span className="min-w-0 flex-1 truncate theme-text-primary" title={statusText}>
-                  {activeRelations.map((relation, index) => {
-                    const via = viaTableName(relation);
-                    return (
-                      <span key={`${relationMapping(relation)}-${index}`}>
-                        {index > 0 ? <span className="px-1.5 theme-text-secondary">·</span> : null}
-                        {relationMapping(relation)}
-                        {' '}
-                        <span className={relation.cardinality === 'MANY_TO_MANY' ? 'text-violet-600' : undefined}>
-                          {cardinalityLabel(relation)}
-                        </span>
-                        {via ? ` ${t(I18N_KEYS.EXPLORER.ER_DIAGRAM_VIA, { table: via })}` : ''}
-                      </span>
-                    );
-                  })}
-                </span>
-              ) : (
-                <span className="min-w-0 flex-1 truncate" title={statusText}>{statusText}</span>
-              )}
-            </div>
-          </div>
+          <ErDiagramToolbar
+            scopeLabel={metadata.databaseName || metadata.schemaName || metadata.connectionName || ''}
+            summary={shown ? { tables: shown.tables.length, relations: shown.relations.length } : null}
+            limitNotice={limitNotice}
+            localTableCount={localTableCount}
+            externalTruncatedCount={diagram?.externalTruncated
+              ? diagram.tables.filter((table) => table.external).length
+              : null}
+            showFilter={!!diagram && diagram.tables.length > 0}
+            tableNameFilter={tableNameFilter}
+            onTableNameFilterChange={setTableNameFilter}
+            exactTableFilter={exactTableFilter}
+            onExactTableFilterChange={setExactTableFilter}
+            showTablePicker={showTablePicker}
+            pickerDisabled={loading}
+            onOpenPicker={openTablePicker}
+            showCollapseJunctions={junctionTables.size > 0}
+            collapseJunctionTables={collapseJunctionTables}
+            onCollapseJunctionTablesChange={setCollapseJunctionTables}
+            showCanvas={showCanvas}
+            showAllLines={showAllLines}
+            showAllLinesDisabled={!shown || shown.relations.length === 0}
+            onToggleShowAllLines={() => setShowAllLines((current) => !current)}
+            exportDisabled={exporting || layouting || nodes.length === 0}
+            onExport={exportDiagram}
+            resetDisabled={!hasCustomLayout || layouting || exporting}
+            onResetLayout={resetLayout}
+            status={(
+              <ErDiagramRelationStatus
+                filterEmpty={nameMatchIds?.size === 0}
+                pinnedLinks={pinnedLinks}
+                pinnedSplit={pinnedSplit}
+                pinnedKeys={pinnedKeys}
+                selectedTableKeys={selectedTableKeys}
+                activeRelations={activeRelations}
+              />
+            )}
+          />
           <div className="relative min-h-0 flex-1">
             {loading && (
               <div className="theme-bg-main absolute inset-0 z-10 flex items-center justify-center text-sm theme-text-secondary">
@@ -1141,11 +863,7 @@ function ErDiagramCanvas({ metadata }: ErDiagramTabProps) {
                   onEdgeClick={(_event, edge) => {
                     const key = edge.data?.focusKey;
                     if (!key) return;
-                    setPinnedLinks((current) => {
-                      if (!current) return current;
-                      const relations = current.relations.filter((relation) => relationFocusKey(relation) !== key);
-                      return relations.length === 0 ? null : { ...current, relations };
-                    });
+                    hidePinnedRelation(key);
                   }}
                   zoomOnDoubleClick={false}
                   className="theme-bg-main"
@@ -1155,92 +873,26 @@ function ErDiagramCanvas({ metadata }: ErDiagramTabProps) {
                   <ErDiagramMiniMap ready={frameReady} disabled={layouting || exporting} />
                   <ErDiagramZoomBar disabled={layouting || exporting} minZoom={minZoom} onFit={fitToWindow} />
                 </ReactFlow>
-                {(selectedTables.length > 0 || pinnedLinks || onlyTableIds) && (
-                  <div className="absolute bottom-4 left-1/2 z-20 flex w-[min(36rem,calc(100%-2rem))] -translate-x-1/2 flex-col gap-2 rounded-lg border theme-border theme-bg-popup px-3 py-2 shadow-lg">
-                    {selectedTables.length > 0 && (
-                      <div className="flex items-center justify-between gap-3 text-xs">
-                        <span className="font-medium theme-text-primary">
-                          {t(I18N_KEYS.EXPLORER.ER_FOCUS_WATCHING, { count: selectedTables.length })}
-                        </span>
-                        {selectedTables.length > ER_FOCUS_SPREAD_AT && (
-                          <span className="theme-text-secondary">{t(I18N_KEYS.EXPLORER.ER_FOCUS_SPREAD)}</span>
-                        )}
-                      </div>
-                    )}
-                    <div className="flex flex-wrap gap-2">
-                      {selectedTables.length > 0 && (
-                        <button
-                          type="button"
-                          className="rounded border theme-border px-2 py-1 text-xs theme-text-primary"
-                          onMouseDown={(event) => event.stopPropagation()}
-                          onClick={() => setPinnedLinks({
-                            relations: focusRelations,
-                            selectedKeys: [...selectedTableKeys],
-                          })}
-                        >
-                          {t(I18N_KEYS.EXPLORER.ER_FOCUS_CONNECT)}
-                        </button>
-                      )}
-                      {pinnedLinks && (
-                        <button
-                          type="button"
-                          className="rounded border theme-border px-2 py-1 text-xs theme-text-primary"
-                          onMouseDown={(event) => event.stopPropagation()}
-                          onClick={() => setPinnedLinks(null)}
-                        >
-                          {t(I18N_KEYS.EXPLORER.ER_FOCUS_CLEAR)}
-                        </button>
-                      )}
-                      {selectedTables.length > 0 && (
-                        <button
-                          type="button"
-                          className="rounded border theme-border px-2 py-1 text-xs theme-text-primary"
-                          onMouseDown={(event) => event.stopPropagation()}
-                          onClick={() => {
-                            const ids = selectedTables.map((table) => tableId(table));
-                            if (ids.length === 0) return;
-                            const current = new Set(onlyTableIds ?? []);
-                            if (current.size === ids.length && ids.every((id) => current.has(id))) return;
-                            setShowAllLines(false);
-                            setOnlyTableIds([...ids].sort());
-                          }}
-                        >
-                          {t(I18N_KEYS.EXPLORER.ER_FOCUS_ONLY)}
-                        </button>
-                      )}
-                      {onlyTableIds && (
-                        <button
-                          type="button"
-                          className="rounded border theme-border px-2 py-1 text-xs theme-text-primary"
-                          onMouseDown={(event) => event.stopPropagation()}
-                          onClick={() => setOnlyTableIds(null)}
-                        >
-                          {t(I18N_KEYS.EXPLORER.ER_FOCUS_SHOW_ALL)}
-                        </button>
-                      )}
-                      {selectedTables.length > 0 && (
-                      <button
-                        type="button"
-                        className="rounded bg-blue-600 px-2 py-1 text-xs text-white"
-                        onMouseDown={(event) => event.stopPropagation()}
-                        onClick={() => {
-                          useErQueryFocusStore.getState().attach(
-                            toFocusPayload(selectedTables, focusSplit, {
-                              connectionId: metadata.connectionId,
-                              connectionName: metadata.connectionName,
-                              catalogName: metadata.catalog,
-                              schemaName: metadata.schema,
-                            }),
-                            t(I18N_KEYS.EXPLORER.ER_FOCUS_DRAFT),
-                          );
-                        }}
-                      >
-                        {t(I18N_KEYS.EXPLORER.ER_FOCUS_QUERY)}
-                      </button>
-                      )}
-                    </div>
-                  </div>
-                )}
+                <ErDiagramFocusActions
+                  selectedTables={selectedTables}
+                  pinnedLinks={pinnedLinks}
+                  onlyTableIds={onlyTableIds}
+                  onPinLinks={pinCurrentSelection}
+                  onClearLinks={clearPinnedLinks}
+                  onShowOnly={showOnlySelected}
+                  onShowAll={showAllTables}
+                  onQuery={() => {
+                    useErQueryFocusStore.getState().attach(
+                      toFocusPayload(selectedTables, focusSplit, {
+                        connectionId: metadata.connectionId,
+                        connectionName: metadata.connectionName,
+                        catalogName: metadata.catalog,
+                        schemaName: metadata.schema,
+                      }),
+                      t(I18N_KEYS.EXPLORER.ER_FOCUS_DRAFT),
+                    );
+                  }}
+                />
                 {layouting && nodes.length === 0 && (
                   <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm theme-text-secondary">
                     {t(I18N_KEYS.EXPLORER.LOADING)}
