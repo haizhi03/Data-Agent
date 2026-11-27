@@ -45,8 +45,10 @@ export function useErDiagramSelection(
   const hidePinnedRelation = useCallback((key: string) => {
     setPinnedLinks((current) => {
       if (!current) return current;
-      const relations = current.relations.filter((relation) => relationFocusKey(relation) !== key);
-      return relations.length === 0 ? null : { ...current, relations };
+      return {
+        ...current,
+        relations: current.relations.filter((relation) => relationFocusKey(relation) !== key),
+      };
     });
   }, []);
 

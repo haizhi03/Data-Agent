@@ -48,6 +48,13 @@ describe('ER diagram edges', () => {
     expect(edges[0].targetHandle).toBe(columnHandleId('target', 'right', 'id'));
   });
 
+  it('draws nothing for an empty pinned set even when every line is shown', () => {
+    const nodes = [node('orders', 0), node('users', 400)];
+    const shown = buildDiagramEdges(nodes, [relation], null, true);
+    expect(shown).toHaveLength(1);
+    expect(buildDiagramEdges(nodes, [relation], null, true, new Set(), new Set(), [])).toEqual([]);
+  });
+
   it('draws nothing until a column is active, and dims the other lines when every line is shown', () => {
     const nodes = [node('orders', 0), node('users', 400)];
     expect(buildDiagramEdges(nodes, [relation], null, false)).toEqual([]);
