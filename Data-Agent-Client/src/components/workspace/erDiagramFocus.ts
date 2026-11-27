@@ -21,11 +21,17 @@ export interface ErFocusTablePayload {
 }
 
 export interface ErFocusRelationPayload {
+  fromCatalog?: string | null;
+  fromSchema?: string | null;
   fromTable: string;
   fromColumns: string[];
+  toCatalog?: string | null;
+  toSchema?: string | null;
   toTable: string;
   toColumns: string[];
   cardinality: string;
+  viaCatalog?: string | null;
+  viaSchema?: string | null;
   viaTable?: string | null;
 }
 
@@ -131,11 +137,17 @@ export function selectedTableId(table: ErTable) {
 
 function toRelationPayload(relation: ErRelation): ErFocusRelationPayload {
   return {
+    fromCatalog: relation.fromCatalog,
+    fromSchema: relation.fromSchema,
     fromTable: relation.fromTable,
     fromColumns: relation.fromColumns?.length ? relation.fromColumns : [relation.fromColumn],
+    toCatalog: relation.toCatalog,
+    toSchema: relation.toSchema,
     toTable: relation.toTable,
     toColumns: relation.toColumns?.length ? relation.toColumns : [relation.toColumn],
     cardinality: relation.cardinality,
+    viaCatalog: relation.viaCatalog,
+    viaSchema: relation.viaSchema,
     viaTable: relation.viaTable,
   };
 }

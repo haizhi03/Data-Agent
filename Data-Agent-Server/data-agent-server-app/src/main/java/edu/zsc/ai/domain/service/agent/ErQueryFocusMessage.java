@@ -4,10 +4,11 @@ import edu.zsc.ai.api.model.request.ErQueryFocus;
 import java.util.List;
 import java.util.Locale;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.context.MessageSource;
 
 /**
- * Puts the circled ER tables in front of the user message the agent sees.
- * The stored user text stays unchanged.
+ * Assembles the circled ER tables as model context in front of the user message.
+ * Labels come from the message bundles. The stored user text stays unchanged.
  */
 public final class ErQueryFocusMessage {
 
@@ -17,49 +18,42 @@ public final class ErQueryFocusMessage {
     private ErQueryFocusMessage() {
     }
 
-    public static String enrich(String message, ErQueryFocus focus, String language) {
+    public static String enrich(String message, ErQueryFocus focus, MessageSource messages, Locale locale) {
         if (focus == null || focus.getTables() == null || focus.getTables().isEmpty()) {
             return message;
         }
-        boolean chinese = language != null && language.toLowerCase(Locale.ROOT).startsWith("zh");
         StringBuilder block = new StringBuilder();
-        block.append(chinese
-                ? "这些表是这次问题的主语。可以沿外键向外补一跳，用来解释圈中的表；补了要写明原因。不要换成名字相似的另一套表。圈选不是白名单。\n"
-                : "These tables are the subject of this question. You may follow one foreign-key hop to explain them, and say why that table was added. Do not switch to a similarly named set of tables. The selection is not a closed whitelist.\n");
-        appendTables(block, focus.getTables(), chinese);
-        appendRelations(block, chinese ? "圈内的外键：" : "Foreign keys inside the selection:", focus.getInsideRelations(), chinese);
-        appendRelations(block, chinese
-                ? "只有一端在圈里的外键（另一端只给了表名和关联列）："
-                : "Foreign keys with one end outside the selection (only that table name and the join columns):",
-                focus.getOutsideRelations(), chinese);
+        block.append(text(messages, locale, "er.focus.subject")).append('\n');
+        block.append(text(messages, locale, "er.focus.connection",
+                StringUtils.defaultString(focus.getConnectionName()),
+                focus.getConnectionId() == null ? "" : focus.getConnectionId().toString())).append('\n');
+        appendTables(block, focus.getTables(), messages, locale);
+        appendRelations(block, text(messages, locale, "er.focus.inside"), focus.getInsideRelations(), messages, locale);
+        appendRelations(block, text(messages, locale, "er.focus.outside"), focus.getOutsideRelations(), messages, locale);
         String question = StringUtils.defaultString(message).trim();
         if (question.isEmpty()) {
             return block.toString().trim();
         }
-        return block + (chinese ? "\n用户问题：\n" : "\nUser question:\n") + question;
+        return block + "\n" + text(messages, locale, "er.focus.question") + "\n" + question;
     }
 
-    private static void appendTables(StringBuilder block, List<ErQueryFocus.Table> tables, boolean chinese) {
-        block.append(chinese ? "圈中的表：\n" : "Circled tables:\n");
+    private static void appendTables(StringBuilder block, List<ErQueryFocus.Table> tables, MessageSource messages, Locale locale) {
+        block.append(text(messages, locale, "er.focus.tables")).append('\n');
         int detailed = 0;
         for (ErQueryFocus.Table table : tables) {
             if (table == null || StringUtils.isBlank(table.getName())) {
                 continue;
             }
+            String qualified = qualify(table.getCatalog(), table.getSchema(), table.getName());
             if (detailed >= TABLE_DETAIL_LIMIT) {
-                block.append("- ").append(table.getName()).append('\n');
+                block.append("- ").append(qualified).append('\n');
                 continue;
             }
             detailed++;
-            block.append("- ").append(table.getName());
-            String scope = StringUtils.firstNonBlank(table.getSchema(), table.getCatalog());
-            if (StringUtils.isNotBlank(scope)) {
-                block.append(" (").append(scope).append(')');
-            }
-            block.append(':');
+            block.append("- ").append(qualified).append(':');
             List<ErQueryFocus.Column> columns = table.getColumns();
             if (columns == null || columns.isEmpty()) {
-                block.append(chinese ? " （没有字段）\n" : " (no columns)\n");
+                block.append(text(messages, locale, "er.focus.no-columns")).append('\n');
                 continue;
             }
             int shown = 0;
@@ -83,10 +77,15 @@ public final class ErQueryFocusMessage {
         }
     }
 
-    private static void appendRelations(StringBuilder block, String title, List<ErQueryFocus.Relation> relations, boolean chinese) {
+    private static void appendRelations(
+            StringBuilder block,
+            String title,
+            List<ErQueryFocus.Relation> relations,
+            MessageSource messages,
+            Locale locale) {
         block.append(title).append('\n');
         if (relations == null || relations.isEmpty()) {
-            block.append(chinese ? "无\n" : "none\n");
+            block.append(text(messages, locale, "er.focus.none")).append('\n');
             return;
         }
         for (ErQueryFocus.Relation relation : relations) {
@@ -94,24 +93,43 @@ public final class ErQueryFocusMessage {
                 continue;
             }
             block.append("- ")
-                    .append(end(relation.getFromTable(), relation.getFromColumns()))
+                    .append(end(relation.getFromCatalog(), relation.getFromSchema(), relation.getFromTable(), relation.getFromColumns()))
                     .append(" -> ")
-                    .append(end(relation.getToTable(), relation.getToColumns()));
+                    .append(end(relation.getToCatalog(), relation.getToSchema(), relation.getToTable(), relation.getToColumns()));
             if (StringUtils.isNotBlank(relation.getCardinality())) {
                 block.append(' ').append(relation.getCardinality());
             }
             if (StringUtils.isNotBlank(relation.getViaTable())) {
-                block.append(chinese ? " 经由 " : " via ").append(relation.getViaTable());
+                block.append(text(messages, locale, "er.focus.via"))
+                        .append(qualify(relation.getViaCatalog(), relation.getViaSchema(), relation.getViaTable()));
             }
             block.append('\n');
         }
     }
 
-    private static String end(String table, List<String> columns) {
-        String name = StringUtils.defaultIfBlank(table, "?");
+    private static String end(String catalog, String schema, String table, List<String> columns) {
+        String name = qualify(catalog, schema, table);
         if (columns == null || columns.isEmpty()) {
             return name;
         }
         return name + "." + String.join(",", columns);
+    }
+
+    static String qualify(String catalog, String schema, String table) {
+        String name = StringUtils.defaultIfBlank(table, "?");
+        if (StringUtils.isNotBlank(catalog) && StringUtils.isNotBlank(schema)) {
+            return catalog + "." + schema + "." + name;
+        }
+        if (StringUtils.isNotBlank(schema)) {
+            return schema + "." + name;
+        }
+        if (StringUtils.isNotBlank(catalog)) {
+            return catalog + "." + name;
+        }
+        return name;
+    }
+
+    private static String text(MessageSource messages, Locale locale, String code, Object... args) {
+        return messages.getMessage(code, args.length == 0 ? null : args, locale);
     }
 }

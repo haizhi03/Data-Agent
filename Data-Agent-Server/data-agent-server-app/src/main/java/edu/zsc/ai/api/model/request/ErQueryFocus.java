@@ -41,11 +41,17 @@ public class ErQueryFocus {
 
     @Data
     public static class Relation {
+        private String fromCatalog;
+        private String fromSchema;
         private String fromTable;
         private List<String> fromColumns;
+        private String toCatalog;
+        private String toSchema;
         private String toTable;
         private List<String> toColumns;
         private String cardinality;
+        private String viaCatalog;
+        private String viaSchema;
         private String viaTable;
     }
 }

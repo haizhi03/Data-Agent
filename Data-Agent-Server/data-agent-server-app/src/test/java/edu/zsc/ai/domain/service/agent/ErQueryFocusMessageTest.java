@@ -5,39 +5,61 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import edu.zsc.ai.api.model.request.ErQueryFocus;
 import java.util.List;
+import java.util.Locale;
 import org.junit.jupiter.api.Test;
+import org.springframework.context.support.ResourceBundleMessageSource;
 
 class ErQueryFocusMessageTest {
 
+    private final ResourceBundleMessageSource messages = messages();
+
     @Test
     void leavesTheMessageAloneWhenNothingIsCircled() {
-        assertEquals("按地区统计", ErQueryFocusMessage.enrich("按地区统计", null, "zh"));
+        assertEquals("按地区统计", ErQueryFocusMessage.enrich("按地区统计", null, messages, Locale.CHINA));
         ErQueryFocus empty = new ErQueryFocus();
-        assertEquals("按地区统计", ErQueryFocusMessage.enrich("按地区统计", empty, "zh"));
+        assertEquals("按地区统计", ErQueryFocusMessage.enrich("按地区统计", empty, messages, Locale.CHINA));
     }
 
     @Test
-    void putsCircledTablesAndBothKindsOfForeignKeysBeforeTheQuestion() {
+    void keepsConnectionCatalogAndSchemaInTheModelContext() {
         ErQueryFocus focus = new ErQueryFocus();
+        focus.setConnectionId(7L);
+        focus.setConnectionName("shop-db");
         ErQueryFocus.Column id = column("id", "int", true);
         ErQueryFocus.Column addressId = column("address_id", "int", false);
         ErQueryFocus.Table orders = new ErQueryFocus.Table();
         orders.setName("orders");
         orders.setCatalog("shop");
+        orders.setSchema("public");
         orders.setColumns(List.of(id, addressId));
         focus.setTables(List.of(orders));
 
         ErQueryFocus.Relation inside = relation("orders", List.of("id"), "order_item", List.of("order_id"));
         ErQueryFocus.Relation outside = relation("orders", List.of("address_id"), "address", List.of("id"));
+        outside.setFromCatalog("shop");
+        outside.setFromSchema("public");
+        outside.setToCatalog("shop");
+        outside.setToSchema("public");
         focus.setInsideRelations(List.of(inside));
         focus.setOutsideRelations(List.of(outside));
 
-        String enriched = ErQueryFocusMessage.enrich("按地区统计订单", focus, "zh-CN");
+        String enriched = ErQueryFocusMessage.enrich("按地区统计订单", focus, messages, Locale.forLanguageTag("zh-CN"));
 
         assertTrue(enriched.contains("圈选不是白名单"));
-        assertTrue(enriched.contains("orders (shop): id PK int, address_id int"));
-        assertTrue(enriched.contains("orders.address_id -> address.id"));
+        assertTrue(enriched.contains("连接：shop-db (id=7)"));
+        assertTrue(enriched.contains("shop.public.orders: id PK int, address_id int"));
+        assertTrue(enriched.contains("shop.public.orders.address_id -> shop.public.address.id"));
         assertTrue(enriched.endsWith("用户问题：\n按地区统计订单"));
+        assertTrue(ErQueryFocusMessage.enrich("count orders", focus, messages, Locale.US).contains("Connection: shop-db (id=7)"));
+    }
+
+    private static ResourceBundleMessageSource messages() {
+        ResourceBundleMessageSource source = new ResourceBundleMessageSource();
+        source.setBasename("i18n/messages");
+        source.setDefaultEncoding("UTF-8");
+        source.setUseCodeAsDefaultMessage(false);
+        source.setFallbackToSystemLocale(false);
+        return source;
     }
 
     private static ErQueryFocus.Column column(String name, String type, boolean primaryKey) {

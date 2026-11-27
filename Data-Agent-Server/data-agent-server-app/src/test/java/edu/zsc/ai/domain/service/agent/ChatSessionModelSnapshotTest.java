@@ -7,7 +7,9 @@ import edu.zsc.ai.config.ai.AiModelCatalog;
 import edu.zsc.ai.config.ai.model.*;
 import edu.zsc.ai.context.*;
 import edu.zsc.ai.domain.service.ai.AiConversationService;
+import edu.zsc.ai.domain.service.db.ConnectionAccessService;
 import edu.zsc.ai.domain.service.db.DbConnectionService;
+import org.springframework.context.MessageSource;
 import org.junit.jupiter.api.Test;
 import java.util.Map;
 import java.util.List;
@@ -24,7 +26,7 @@ class ChatSessionModelSnapshotTest {
         var provider=mock(ReActAgentProvider.class);
         when(provider.getAgent(anyString(),any(),anyString())).thenReturn(new PreparedReActAgent(mock(ReActAgent.class),"prompt",PromptEnum.ZH));
         var databases=mock(DbConnectionService.class);when(databases.getAllConnections()).thenReturn(List.of());
-        var sessions=new ChatSessionFactory(provider,mock(AiConversationService.class),databases,mock(AiModelCatalog.class),runtime);
+        var sessions=new ChatSessionFactory(provider,mock(AiConversationService.class),databases,mock(AiModelCatalog.class),runtime,mock(ConnectionAccessService.class),mock(MessageSource.class));
         RequestContext.set(RequestContextInfo.builder().userId(1L).conversationId(9L).build());
         try {
             var request=new ChatRequest();request.setConversationId(9L);request.setMessage("analyze");request.setModelConfigId("scoped-main");
@@ -52,7 +54,7 @@ class ChatSessionModelSnapshotTest {
         });
         var databases = mock(DbConnectionService.class);
         when(databases.getAllConnections()).thenReturn(List.of());
-        var sessions = new ChatSessionFactory(provider, mock(AiConversationService.class), databases, mock(AiModelCatalog.class), runtime);
+        var sessions = new ChatSessionFactory(provider, mock(AiConversationService.class), databases, mock(AiModelCatalog.class), runtime, mock(ConnectionAccessService.class), mock(MessageSource.class));
         RequestContext.set(RequestContextInfo.builder().userId(1L).conversationId(9L).build());
         try {
             var request = new ChatRequest(); request.setConversationId(9L); request.setMessage("analyze");
