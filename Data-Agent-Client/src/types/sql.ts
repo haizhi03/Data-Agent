@@ -117,6 +117,10 @@ export interface ExecuteSqlResponse {
   executedSql?: string | null;
   databaseName?: string | null;
   schemaName?: string | null;
+  /** Connection that produced this result (client-side only; used to resolve metadata). */
+  connectionId?: number | null;
+  /** Database type of the originating connection (client-side only). */
+  dbType?: string | null;
   query: boolean;  // true = SELECT-like, false = DML (INSERT/UPDATE/DELETE)
   headers?: string[] | null;
   rows?: (unknown[])[];
@@ -157,6 +161,16 @@ export interface ExecuteSqlColumn {
   scale?: number | null;
   nullable?: boolean | null;
   tableName?: string | null;
+  /** Catalog (MySQL database) the column originates from. */
+  catalogName?: string | null;
+  /** Schema (DM owner) the column originates from. */
+  schemaName?: string | null;
+  /** True when the column is part of the source table's primary key. */
+  primaryKey?: boolean | null;
+  /** 1-based position of the column inside the primary key. */
+  primaryKeyOrdinal?: number | null;
+  /** Column comment reported by the database, when available. */
+  comment?: string | null;
 }
 
 export interface ExecuteSqlResultSet {
@@ -164,6 +178,28 @@ export interface ExecuteSqlResultSet {
   rows?: (unknown[])[];
   fetchRows?: number | null;
   truncated?: boolean | null;
+  /** Backend-resolved editability and row-to-table mapping. */
+  writeTarget?: ExecuteSqlWriteTarget | null;
+}
+
+/** Where a result set's rows can be written back to, resolved by the backend. */
+export interface ExecuteSqlWriteTarget {
+  editable: boolean;
+  /** Source object kind, e.g. TABLE or VIEW; null when it could not be resolved. */
+  objectType?: string | null;
+  catalog?: string | null;
+  schema?: string | null;
+  table?: string | null;
+  /** Primary key columns, ordered by their position inside the key. */
+  primaryKeyColumns?: string[] | null;
+  /**
+   * Columns the client must use to locate a row for UPDATE / DELETE: the primary
+   * key when the object has one, every selected column otherwise. The client must
+   * never pick a matching rule on its own.
+   */
+  matchColumns?: string[] | null;
+  /** Read-only reason, e.g. DERIVED_COLUMN / NO_PRIMARY_KEY / VIEW_READ_ONLY. */
+  reason?: string | null;
 }
 
 export type ExecuteSqlMessageLevel = 'INFO' | 'WARN' | 'ERROR';

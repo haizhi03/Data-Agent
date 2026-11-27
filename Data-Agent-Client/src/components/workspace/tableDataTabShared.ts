@@ -59,6 +59,15 @@ export function formatCellValue(value: unknown): string {
   return String(value);
 }
 
+/**
+ * AG Grid reports a change when values differ with `!==`; treat number 5 and
+ * string "5" (same rendered text) as unchanged to avoid staging no-op edits.
+ */
+export function isSameCellValue(next: unknown, current: unknown): boolean {
+  return next === current
+    || (typeof current === 'number' && formatCellValue(next) === formatCellValue(current));
+}
+
 export function getDisplayDbLabel(params: {
   catalog?: string | null;
   databaseName?: string | null;

@@ -217,6 +217,24 @@ public abstract class DefaultMysqlPlugin extends AbstractDatabasePlugin
     }
 
     @Override
+    public String previewInsertRowSql(String catalog, String schema, String tableName,
+                                      List<TableRowValue> values) {
+        return tableManager.previewInsertRowSql(catalog, schema, tableName, values);
+    }
+
+    @Override
+    public String previewUpdateRowSql(String catalog, String schema, String tableName,
+                                      List<TableRowValue> setValues, List<TableRowValue> matchValues) {
+        return tableManager.previewUpdateRowSql(catalog, schema, tableName, setValues, matchValues);
+    }
+
+    @Override
+    public String previewDeleteRowSql(String catalog, String schema, String tableName,
+                                      List<TableRowValue> matchValues) {
+        return tableManager.previewDeleteRowSql(catalog, schema, tableName, matchValues);
+    }
+
+    @Override
     public SqlCommandResult getTableData(Connection connection, String catalog, String schema,
                                          String tableName, int offset, int pageSize) {
         return tableManager.getTableData(connection, catalog, schema, tableName, offset, pageSize);

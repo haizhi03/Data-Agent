@@ -4,6 +4,7 @@ import edu.zsc.ai.plugin.dm.value.DmLobPreviewValues;
 import edu.zsc.ai.plugin.model.command.sql.SqlCommandResult;
 import edu.zsc.ai.plugin.model.command.sql.SqlMessageInfo;
 import edu.zsc.ai.plugin.model.command.sql.SqlMessageLevel;
+import edu.zsc.ai.plugin.model.db.RowWriteNotSupportedException;
 import edu.zsc.ai.plugin.model.db.TableRowValue;
 import edu.zsc.ai.plugin.model.transaction.StatementExecutionState;
 import org.apache.commons.lang3.StringUtils;
@@ -85,7 +86,7 @@ public final class DmRowWriteSupport {
         }
 
         String fullTableName = buildFullTableName(catalog, schema, tableName);
-        MatchClause matchClause = buildMatchClause(matchValues);
+        MatchClause matchClause = buildMatchClause(matchValues, false);
         long matchedRows = countRowsByMatch(connection, fullTableName, matchClause);
 
         if (matchedRows == 0) {
@@ -118,8 +119,8 @@ public final class DmRowWriteSupport {
         }
 
         String fullTableName = buildFullTableName(catalog, schema, tableName);
-        SetClause setClause = buildSetClause(setValues);
-        MatchClause matchClause = buildMatchClause(matchValues);
+        SetClause setClause = buildSetClause(setValues, false);
+        MatchClause matchClause = buildMatchClause(matchValues, false);
         String sql = sqlTemplate.buildUpdateRowSql(fullTableName, setClause.setSql(), matchClause.whereSql());
 
         TableRowValue preview = firstTruncatedLobPreview(setValues);
@@ -145,6 +146,86 @@ public final class DmRowWriteSupport {
         return executePreparedUpdate(connection, sql, params);
     }
 
+    /** Render the INSERT this support would execute, with inline literals. */
+    public String previewInsertRowSql(String catalog, String schema, String tableName,
+                                      List<TableRowValue> values) {
+        if (StringUtils.isBlank(tableName)) {
+            throw new IllegalArgumentException("Table name must not be null or empty");
+        }
+        if (values == null || values.isEmpty()) {
+            throw new IllegalArgumentException("Insert values must not be empty");
+        }
+        requireWritableValues(values);
+
+        String fullTableName = buildFullTableName(catalog, schema, tableName);
+        List<String> quotedColumns = new ArrayList<>();
+        List<String> literals = new ArrayList<>();
+        for (TableRowValue entry : values) {
+            if (entry == null || StringUtils.isBlank(entry.columnName())) {
+                throw new IllegalArgumentException("Insert column name must not be blank");
+            }
+            quotedColumns.add(DmIdentifierQuoter.quote(entry.columnName().trim()));
+            literals.add(toLiteral(normalizePreparedValue(entry.value())));
+        }
+        return sqlTemplate.buildInsertRowSql(fullTableName, quotedColumns, literals);
+    }
+
+    /** Render the UPDATE this support would execute, with inline literals. */
+    public String previewUpdateRowSql(String catalog, String schema, String tableName,
+                                      List<TableRowValue> setValues, List<TableRowValue> matchValues) {
+        if (StringUtils.isBlank(tableName)) {
+            throw new IllegalArgumentException("Table name must not be null or empty");
+        }
+        if (setValues == null || setValues.isEmpty()) {
+            throw new IllegalArgumentException("Update set values must not be empty");
+        }
+        if (matchValues == null || matchValues.isEmpty()) {
+            throw new IllegalArgumentException("Update match values must not be empty");
+        }
+        requireWritableValues(setValues);
+
+        String fullTableName = buildFullTableName(catalog, schema, tableName);
+        SetClause setClause = buildSetClause(setValues, true);
+        MatchClause matchClause = buildMatchClause(matchValues, true);
+        return sqlTemplate.buildUpdateRowSql(fullTableName, setClause.setSql(), matchClause.whereSql());
+    }
+
+    /** Render the DELETE this support would execute, with inline literals. */
+    public String previewDeleteRowSql(String catalog, String schema, String tableName,
+                                      List<TableRowValue> matchValues) {
+        if (StringUtils.isBlank(tableName)) {
+            throw new IllegalArgumentException("Table name must not be null or empty");
+        }
+        if (matchValues == null || matchValues.isEmpty()) {
+            throw new IllegalArgumentException("Delete match values must not be empty");
+        }
+
+        String fullTableName = buildFullTableName(catalog, schema, tableName);
+        MatchClause matchClause = buildMatchClause(matchValues, true);
+        return sqlTemplate.buildDeleteRowSql(fullTableName, matchClause.whereSql());
+    }
+
+    /** Render a value as a DM literal for previews. */
+    private String toLiteral(Object value) {
+        if (value == null) {
+            return "NULL";
+        }
+        if (value instanceof Boolean bool) {
+            return bool ? "1" : "0";
+        }
+        if (value instanceof Number) {
+            return value.toString();
+        }
+        if (value instanceof byte[] bytes) {
+            StringBuilder hex = new StringBuilder("X'");
+            for (byte b : bytes) {
+                hex.append(String.format("%02X", b));
+            }
+            return hex.append("'").toString();
+        }
+        return "'" + value.toString().replace("'", "''") + "'";
+    }
+
     /**
      * Build the fully qualified double-quoted table name.
      * DM qualifies objects by schema; catalog is only a fallback.
@@ -154,7 +235,7 @@ public final class DmRowWriteSupport {
         return DmIdentifierQuoter.buildFullIdentifier(qualifier, tableName);
     }
 
-    private SetClause buildSetClause(List<TableRowValue> values) {
+    private SetClause buildSetClause(List<TableRowValue> values, boolean inlineLiterals) {
         List<String> assignments = new ArrayList<>();
         List<Object> params = new ArrayList<>();
 
@@ -164,14 +245,19 @@ public final class DmRowWriteSupport {
             }
 
             String quotedColumn = DmIdentifierQuoter.quote(entry.columnName().trim());
-            assignments.add(quotedColumn + " = ?");
-            params.add(normalizePreparedValue(entry.value()));
+            Object value = normalizePreparedValue(entry.value());
+            if (inlineLiterals) {
+                assignments.add(quotedColumn + " = " + toLiteral(value));
+            } else {
+                assignments.add(quotedColumn + " = ?");
+                params.add(value);
+            }
         }
 
         return new SetClause(String.join(", ", assignments), params);
     }
 
-    private MatchClause buildMatchClause(List<TableRowValue> values) {
+    private MatchClause buildMatchClause(List<TableRowValue> values, boolean inlineLiterals) {
         List<String> predicates = new ArrayList<>();
         List<Object> params = new ArrayList<>();
 
@@ -184,6 +270,8 @@ public final class DmRowWriteSupport {
             Object value = normalizePreparedValue(entry.value());
             if (value == null) {
                 predicates.add(quotedColumn + " IS NULL");
+            } else if (inlineLiterals) {
+                predicates.add(quotedColumn + " = " + toLiteral(value));
             } else {
                 predicates.add(quotedColumn + " = ?");
                 params.add(value);
@@ -313,6 +401,19 @@ public final class DmRowWriteSupport {
             }
         }
         return null;
+    }
+
+    /**
+     * Previews run the same placeholder check as EXECUTE, so PLAN fails with the
+     * code the write would fail with instead of rendering an unusable statement.
+     */
+    private void requireWritableValues(List<TableRowValue> values) {
+        TableRowValue preview = firstTruncatedLobPreview(values);
+        if (preview != null) {
+            throw new RowWriteNotSupportedException(
+                    DmLobPreviewValues.PREVIEW_NOT_WRITABLE_CODE,
+                    DmLobPreviewValues.rejectionMessage(preview.columnName().trim(), preview.value()));
+        }
     }
 
     private SqlCommandResult buildPreviewRejectedResult(String sql, TableRowValue entry) {

@@ -8,12 +8,17 @@ import java.util.List;
 final class MysqlRowWriteSqlTemplate {
 
     String buildInsertRowSql(String fullTableName, List<String> quotedColumns) {
-        String placeholders = String.join(", ", Collections.nCopies(quotedColumns.size(), "?"));
+        return buildInsertRowSql(fullTableName, quotedColumns,
+                Collections.nCopies(quotedColumns.size(), "?"));
+    }
+
+    /** Same template with caller-rendered values (placeholders or inline literals). */
+    String buildInsertRowSql(String fullTableName, List<String> quotedColumns, List<String> renderedValues) {
         return String.format(
                 MySqlTemplate.SQL_INSERT_TABLE_ROW,
                 fullTableName,
                 String.join(", ", quotedColumns),
-                placeholders
+                String.join(", ", renderedValues)
         );
     }
 

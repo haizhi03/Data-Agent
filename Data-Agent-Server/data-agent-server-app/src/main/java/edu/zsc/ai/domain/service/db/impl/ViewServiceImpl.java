@@ -1,6 +1,7 @@
 package edu.zsc.ai.domain.service.db.impl;
 
 import edu.zsc.ai.domain.model.context.DbContext;
+import edu.zsc.ai.domain.model.dto.response.db.ExecuteSqlWriteTarget;
 import edu.zsc.ai.domain.model.dto.response.db.TableDataResponse;
 import edu.zsc.ai.domain.service.db.ConnectionService;
 import edu.zsc.ai.domain.service.db.ViewService;
@@ -113,6 +114,7 @@ public class ViewServiceImpl implements ViewService {
                 .currentPage(currentPage)
                 .pageSize(pageSize)
                 .totalPages(totalPages)
+                .writeTarget(readOnlyWriteTarget(db, viewName))
                 .build();
     }
 
@@ -141,6 +143,19 @@ public class ViewServiceImpl implements ViewService {
                 .currentPage(currentPage)
                 .pageSize(pageSize)
                 .totalPages(totalPages)
+                .writeTarget(readOnlyWriteTarget(db, viewName))
+                .build();
+    }
+
+    /** A view is never a row-write target, so the client cannot offer editing. */
+    private ExecuteSqlWriteTarget readOnlyWriteTarget(DbContext db, String viewName) {
+        return ExecuteSqlWriteTarget.builder()
+                .editable(false)
+                .objectType("VIEW")
+                .catalog(db.catalog())
+                .schema(db.schema())
+                .table(viewName)
+                .reason("VIEW_READ_ONLY")
                 .build();
     }
 }

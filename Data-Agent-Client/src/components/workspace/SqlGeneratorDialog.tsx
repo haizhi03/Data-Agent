@@ -14,7 +14,6 @@ import {
 import { Button } from '../ui/Button';
 import { I18N_KEYS } from '../../constants/i18nKeys';
 import type { TableTabMetadata } from '../../types/tab';
-import { primaryKeyService } from '../../services/primaryKey.service';
 import { useDbTypeStore } from '../../store/dbTypeStore';
 import { useWorkspaceStore } from '../../store/workspaceStore';
 import { cn } from '../../lib/utils';
@@ -34,6 +33,8 @@ interface SqlGeneratorDialogProps {
   metadata: TableTabMetadata;
   /** Table columns in display order. */
   headers: string[];
+  /** Primary key columns, resolved by the backend together with the page data. */
+  pkColumns: string[];
   /** Selected row values (typed). */
   rows: unknown[][];
 }
@@ -43,6 +44,7 @@ export function SqlGeneratorDialog({
   onOpenChange,
   metadata,
   headers,
+  pkColumns,
   rows,
 }: SqlGeneratorDialogProps) {
   const { t } = useTranslation();
@@ -52,7 +54,6 @@ export function SqlGeneratorDialog({
 
   const [statementType, setStatementType] = useState<SqlStatementType>('INSERT');
   const [options, setOptions] = useState<SqlGenerateOptions>({ ...DEFAULT_SQL_GENERATE_OPTIONS });
-  const [pkColumns, setPkColumns] = useState<string[]>([]);
   const [copied, setCopied] = useState(false);
 
   const syntaxTheme = theme === 'dark' ? oneDark : oneLight;
@@ -61,6 +62,8 @@ export function SqlGeneratorDialog({
   const dbTypeOption = supportedDbTypes.find((item) => item.code === metadata.dbType);
   const profile = resolveProfile(metadata.dbType, dbTypeOption?.identifierQuoteStyle);
 
+  // Reset keyed on the lookup target, not the metadata object identity, so
+  // unrelated metadata updates neither reset the dialog nor skip the reset.
   useEffect(() => {
     if (!open) {
       setCopied(false);
@@ -69,26 +72,7 @@ export function SqlGeneratorDialog({
     setStatementType('INSERT');
     setOptions({ ...DEFAULT_SQL_GENERATE_OPTIONS });
     setCopied(false);
-
-    let cancelled = false;
-    primaryKeyService
-      .listPrimaryKeys(
-        String(metadata.connectionId),
-        metadata.objectName,
-        metadata.catalog || undefined,
-        metadata.schema || undefined,
-      )
-      .then((keys) => {
-        if (cancelled) return;
-        setPkColumns(keys?.[0]?.columnNames ?? []);
-      })
-      .catch(() => {
-        if (!cancelled) setPkColumns([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [open, metadata]);
+  }, [open, metadata.catalog, metadata.connectionId, metadata.objectName, metadata.schema]);
 
   const generated = useMemo(() => {
     if (!open || rows.length === 0) return null;

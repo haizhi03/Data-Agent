@@ -39,6 +39,7 @@ public abstract class AbstractTableDataExporter<S> implements TableDataExporter 
 
     @Override
     public final void export(DbContext db, String tableName, String fileType, List<String> columns,
+                             String whereClause, String orderByColumn, String orderByDirection,
                              OutputStream outputStream, Runnable onBeforeFirstWrite) {
         connectionService.openConnection(db);
 
@@ -49,12 +50,13 @@ public abstract class AbstractTableDataExporter<S> implements TableDataExporter 
         try (ActiveConnectionRegistry.BorrowedConnection borrowed = active.borrowConnection()) {
             Connection connection = borrowed.connection();
             String identifierQuote = ImportPrepareSupport.resolveIdentifierQuote(connection);
-            preCheck(provider, connection, db, tableName, fileType);
+            preCheck(provider, connection, db, tableName, fileType, whereClause);
 
             // Query the first page before writing anything, so connection/query errors
             // surface before the HTTP response is committed.
             SqlCommandResult first = provider.getTableData(connection, db.catalog(), db.schema(),
-                    tableName, 0, TransferConstants.EXPORT_PAGE_SIZE);
+                    tableName, 0, TransferConstants.EXPORT_PAGE_SIZE,
+                    whereClause, orderByColumn, orderByDirection);
 
             List<String> headers = first.getHeaders() == null ? List.of() : first.getHeaders();
             List<Integer> columnIndexes = ExportColumnSelector.resolve(headers, columns);
@@ -80,7 +82,8 @@ public abstract class AbstractTableDataExporter<S> implements TableDataExporter 
                 boolean morePages = firstRows.size() == TransferConstants.EXPORT_PAGE_SIZE;
                 while (morePages) {
                     SqlCommandResult page = provider.getTableData(connection, db.catalog(), db.schema(),
-                            tableName, offset, TransferConstants.EXPORT_PAGE_SIZE);
+                            tableName, offset, TransferConstants.EXPORT_PAGE_SIZE,
+                            whereClause, orderByColumn, orderByDirection);
                     List<List<Object>> rows = page.getRows();
                     if (rows == null || rows.isEmpty()) {
                         break;
@@ -108,9 +111,11 @@ public abstract class AbstractTableDataExporter<S> implements TableDataExporter 
     /**
      * Optional validation before the first page query (e.g. the XLS row limit).
      * Default: no checks.
+     * @param whereClause the filter the export will use, so row-count checks
+     *                    match the rows that are actually exported
      */
     protected void preCheck(TableManager provider, Connection connection, DbContext db,
-                            String tableName, String fileType) {
+                            String tableName, String fileType, String whereClause) {
     }
 
     /**

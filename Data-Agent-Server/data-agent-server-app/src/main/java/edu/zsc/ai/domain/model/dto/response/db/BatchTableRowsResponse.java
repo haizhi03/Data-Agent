@@ -37,6 +37,15 @@ public class BatchTableRowsResponse {
 
     private String errorMessage;
 
+    /** Structured error code, e.g. PLAN_STALE. */
+    private String errorCode;
+
+    /** PLAN mode: the statements that EXECUTE would run, in request order. */
+    private List<String> statements;
+
+    /** PLAN mode: hash of {@link #statements}, echoed back by EXECUTE. */
+    private String planHash;
+
     /** Per-operation results, in request order. */
     private List<ItemResult> results;
 

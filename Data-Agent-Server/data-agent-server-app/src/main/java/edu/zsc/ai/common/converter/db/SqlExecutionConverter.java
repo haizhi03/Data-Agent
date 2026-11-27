@@ -8,14 +8,23 @@ import edu.zsc.ai.domain.model.dto.response.db.ExecuteSqlResponse;
 import edu.zsc.ai.domain.model.dto.response.db.ExecuteSqlResponseType;
 import edu.zsc.ai.domain.model.dto.response.db.ExecuteSqlResultSet;
 import edu.zsc.ai.domain.model.dto.response.db.ExecuteSqlSubResult;
+import edu.zsc.ai.domain.model.dto.response.db.ExecuteSqlWriteTarget;
+import edu.zsc.ai.plugin.model.command.sql.SqlColumnInfo;
 import edu.zsc.ai.plugin.model.command.sql.SqlCommandResult;
 import edu.zsc.ai.plugin.model.command.sql.SqlMessageInfo;
 import edu.zsc.ai.plugin.model.command.sql.SqlMessageLevel;
 import edu.zsc.ai.plugin.model.command.sql.SqlCommandSubResult;
 import edu.zsc.ai.plugin.model.transaction.BatchExecutionState;
 
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 public class SqlExecutionConverter {
@@ -75,73 +84,161 @@ public class SqlExecutionConverter {
         if (!r.isQuery()) {
             return null;
         }
-        List<ExecuteSqlColumn> columns = null;
-        if (r.getColumns() != null) {
-            columns = r.getColumns()
-                    .stream()
-                    .map(col -> ExecuteSqlColumn.builder()
-                            .name(col.getName())
-                            .label(col.getLabel())
-                            .typeName(col.getTypeName())
-                            .jdbcType(col.getJdbcType())
-                            .precision(col.getPrecision())
-                            .scale(col.getScale())
-                            .nullable(col.getNullable())
-                            .tableName(col.getTableName())
-                            .build())
-                    .collect(Collectors.toList());
-        } else if (r.getHeaders() != null) {
-            columns = r.getHeaders()
-                    .stream()
-                    .map(header -> ExecuteSqlColumn.builder()
-                            .name(header)
-                            .label(header)
-                            .build())
-                    .collect(Collectors.toList());
-        }
-        Integer fetchRows = r.getRows() == null ? null : r.getRows().size();
-        return ExecuteSqlResultSet.builder()
-                .columns(columns)
-                .rows(r.getRows())
-                .fetchRows(fetchRows)
-                .truncated(r.getTruncated())
-                .build();
+        return buildResultSet(r.getColumns(), r.getHeaders(), r.getRows(), r.getTruncated(),
+                r.getSourceTablePrimaryKeyColumns());
     }
 
     private static ExecuteSqlResultSet buildResultSet(SqlCommandSubResult r) {
         if (r == null || !r.isQuery()) {
             return null;
         }
+        return buildResultSet(r.getColumns(), r.getHeaders(), r.getRows(), r.getTruncated(),
+                r.getSourceTablePrimaryKeyColumns());
+    }
+
+    private static ExecuteSqlResultSet buildResultSet(
+            List<SqlColumnInfo> columnInfos,
+            List<String> headers,
+            List<List<Object>> rows,
+            Boolean truncated,
+            List<String> sourceTablePrimaryKeys) {
         List<ExecuteSqlColumn> columns = null;
-        if (r.getColumns() != null) {
-            columns = r.getColumns()
-                    .stream()
-                    .map(col -> ExecuteSqlColumn.builder()
-                            .name(col.getName())
-                            .label(col.getLabel())
-                            .typeName(col.getTypeName())
-                            .jdbcType(col.getJdbcType())
-                            .precision(col.getPrecision())
-                            .scale(col.getScale())
-                            .nullable(col.getNullable())
-                            .tableName(col.getTableName())
-                            .build())
+        if (columnInfos != null) {
+            columns = columnInfos.stream()
+                    .map(SqlExecutionConverter::toExecuteSqlColumn)
                     .collect(Collectors.toList());
-        } else if (r.getHeaders() != null) {
-            columns = r.getHeaders()
-                    .stream()
+        } else if (headers != null) {
+            columns = headers.stream()
                     .map(header -> ExecuteSqlColumn.builder()
                             .name(header)
                             .label(header)
                             .build())
                     .collect(Collectors.toList());
         }
-        Integer fetchRows = r.getRows() == null ? null : r.getRows().size();
+        Integer fetchRows = rows == null ? null : rows.size();
         return ExecuteSqlResultSet.builder()
                 .columns(columns)
-                .rows(r.getRows())
+                .rows(rows)
                 .fetchRows(fetchRows)
-                .truncated(r.getTruncated())
+                .truncated(truncated)
+                .writeTarget(buildWriteTarget(columns, rows, sourceTablePrimaryKeys))
+                .build();
+    }
+
+    /**
+     * Resolve whether the result rows can be written back and to which table row.
+     * Purely metadata-driven: no extra database round trip. Ambiguous matches are
+     * still guarded by the batch write's force confirmation.
+     *
+     * @param sourceTablePrimaryKeys the source table's complete key, or null when it
+     *                               could not be resolved
+     */
+    private static ExecuteSqlWriteTarget buildWriteTarget(List<ExecuteSqlColumn> columns, List<List<Object>> rows,
+                                                          List<String> sourceTablePrimaryKeys) {
+        if (columns == null || columns.isEmpty()) {
+            return null;
+        }
+        boolean allFromTable = columns.stream()
+                .allMatch(column -> column.getTableName() != null && !column.getTableName().isBlank());
+        if (!allFromTable) {
+            return ExecuteSqlWriteTarget.builder().editable(false).reason("DERIVED_COLUMN").build();
+        }
+        Set<String> sourceTables = columns.stream()
+                .map(column -> column.getCatalogName() + "\u0000" + column.getSchemaName() + "\u0000" + column.getTableName())
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (sourceTables.size() > 1) {
+            return ExecuteSqlWriteTarget.builder().editable(false).reason("MULTIPLE_TABLES").build();
+        }
+
+        List<Integer> primaryKeyIndexes = new ArrayList<>();
+        for (int i = 0; i < columns.size(); i++) {
+            if (Boolean.TRUE.equals(columns.get(i).getPrimaryKey())) {
+                primaryKeyIndexes.add(i);
+            }
+        }
+        ExecuteSqlColumn first = columns.get(0);
+        ExecuteSqlWriteTarget target = ExecuteSqlWriteTarget.builder()
+                .catalog(first.getCatalogName())
+                .schema(first.getSchemaName())
+                .table(first.getTableName())
+                .build();
+        if (primaryKeyIndexes.isEmpty()) {
+            // "Key metadata unreadable" and "table has no key" both block editing
+            // but tell the user different things.
+            target.setReason(sourceTablePrimaryKeys == null ? "PRIMARY_KEY_UNAVAILABLE" : "NO_PRIMARY_KEY");
+            return target;
+        }
+        // A partially selected composite key would match by a non-unique prefix.
+        if (sourceTablePrimaryKeys != null && !sourceTablePrimaryKeys.isEmpty()) {
+            List<String> missingKeys = missingKeyColumns(columns, primaryKeyIndexes, sourceTablePrimaryKeys);
+            if (!missingKeys.isEmpty()) {
+                target.setReason("MISSING_PRIMARY_KEY");
+                target.setPrimaryKeyColumns(missingKeys);
+                return target;
+            }
+        }
+        primaryKeyIndexes.sort(Comparator.comparing(index -> {
+            Integer ordinal = columns.get(index).getPrimaryKeyOrdinal();
+            return ordinal == null ? Integer.MAX_VALUE : ordinal;
+        }));
+        target.setPrimaryKeyColumns(primaryKeyIndexes.stream()
+                .map(index -> columns.get(index).getName())
+                .collect(Collectors.toList()));
+
+        Set<String> seenKeys = new HashSet<>();
+        for (List<Object> row : rows == null ? List.<List<Object>>of() : rows) {
+            StringBuilder key = new StringBuilder();
+            for (int index : primaryKeyIndexes) {
+                Object value = index < row.size() ? row.get(index) : null;
+                if (value == null) {
+                    target.setReason("NULL_PRIMARY_KEY");
+                    return target;
+                }
+                key.append(value).append('\u0000');
+            }
+            if (!seenKeys.add(key.toString())) {
+                target.setReason("DUPLICATE_PRIMARY_KEY");
+                return target;
+            }
+        }
+        target.setEditable(true);
+        target.setObjectType("TABLE");
+        // A result row can only be matched by the primary key: the selected column
+        // list is not guaranteed to be unique.
+        target.setMatchColumns(target.getPrimaryKeyColumns());
+        return target;
+    }
+
+    /** Key columns of the source table that the result does not carry. */
+    private static List<String> missingKeyColumns(List<ExecuteSqlColumn> columns,
+                                                  List<Integer> primaryKeyIndexes,
+                                                  List<String> sourceTablePrimaryKeys) {
+        Set<String> selected = primaryKeyIndexes.stream()
+                .map(index -> columns.get(index).getName())
+                .filter(Objects::nonNull)
+                .map(name -> name.toUpperCase(Locale.ROOT))
+                .collect(Collectors.toSet());
+        return sourceTablePrimaryKeys.stream()
+                .filter(Objects::nonNull)
+                .filter(name -> !selected.contains(name.toUpperCase(Locale.ROOT)))
+                .toList();
+    }
+
+    private static ExecuteSqlColumn toExecuteSqlColumn(SqlColumnInfo col) {
+        return ExecuteSqlColumn.builder()
+                .name(col.getName())
+                .label(col.getLabel())
+                .typeName(col.getTypeName())
+                .jdbcType(col.getJdbcType())
+                .precision(col.getPrecision())
+                .scale(col.getScale())
+                .nullable(col.getNullable())
+                .tableName(col.getTableName())
+                .catalogName(col.getCatalogName())
+                .schemaName(col.getSchemaName())
+                .primaryKey(col.getPrimaryKey())
+                .primaryKeyOrdinal(col.getPrimaryKeyOrdinal())
+                .comment(col.getComment())
                 .build();
     }
 

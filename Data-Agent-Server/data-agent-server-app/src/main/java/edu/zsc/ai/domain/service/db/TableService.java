@@ -58,9 +58,14 @@ public interface TableService {
      * Execute an ordered list of INSERT/UPDATE/DELETE operations within a single
      * database transaction. The transaction commits only when all operations succeed;
      * otherwise it rolls back and the first failure details are returned.
+     *
+     * @param mode      PLAN renders the statements without executing them; any other
+     *                  value (or null) executes
+     * @param planHash  hash returned by PLAN; when present, EXECUTE refuses to run a
+     *                  plan that no longer matches the submitted operations
      */
     BatchTableRowsResponse batchTableRows(DbContext db, String tableName,
-            List<BatchTableRowOperationRequest> operations, boolean force);
+            List<BatchTableRowOperationRequest> operations, boolean force, String mode, String planHash);
 
     /**
      * Return the exporter registered for the given format (CSV / JSON / SQL /

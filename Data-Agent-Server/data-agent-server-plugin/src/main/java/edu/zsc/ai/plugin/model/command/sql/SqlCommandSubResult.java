@@ -21,4 +21,9 @@ public class SqlCommandSubResult {
     private Boolean truncated;
     private Boolean limitApplied;
     private List<SqlMessageInfo> messages;
+    /**
+     * Complete primary key of the result's single source table, in key order.
+     * Empty when the table has no key; null when it could not be resolved.
+     */
+    private List<String> sourceTablePrimaryKeyColumns;
 }

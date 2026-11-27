@@ -1,7 +1,18 @@
 import http from '../lib/http';
-import type { DownloadExportFileResponse, ExportFileStatus } from '../types/exportFile';
+import type { DownloadExportFileResponse, ExportedFileResult, ExportFileStatus } from '../types/exportFile';
+
+export interface ExportRowsPayload {
+  format: string;
+  headers: string[];
+  rows: unknown[][];
+}
 
 export const exportFileService = {
+  exportRows: async (payload: ExportRowsPayload): Promise<ExportedFileResult> => {
+    const response = await http.post<ExportedFileResult>('/ai/files/export', payload);
+    return response.data;
+  },
+
   getFileStatus: async (fileId: string): Promise<ExportFileStatus> => {
     const response = await http.get<ExportFileStatus>(`/ai/files/${encodeURIComponent(fileId)}/status`);
     return response.data;

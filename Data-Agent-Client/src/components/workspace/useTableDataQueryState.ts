@@ -45,6 +45,9 @@ export function useTableDataQueryState({ tabId, metadata }: UseTableDataQuerySta
   const [currentPage, setCurrentPage] = useState(metadata.currentPage ?? 1);
   const [pageSize, setPageSize] = useState(metadata.pageSize ?? 100);
   const [whereClause, setWhereClause] = useState(metadata.whereClause ?? '');
+  // Filter actually used by the last successful load, so exports match the grid
+  // even when the user has typed a new WHERE clause without running it.
+  const [appliedWhereClause, setAppliedWhereClause] = useState(metadata.whereClause ?? '');
   const [orderByColumn, setOrderByColumn] = useState(initialSort.orderByColumn);
   const [orderByDirection, setOrderByDirection] = useState(initialSort.orderByDirection);
   const [viewMode, setViewMode] = useState<TableDataViewMode>(metadata.viewMode ?? 'grid');
@@ -124,6 +127,7 @@ export function useTableDataQueryState({ tabId, metadata }: UseTableDataQuerySta
             );
 
         setData(result);
+        setAppliedWhereClause(nextWhereClause);
         setCurrentPage(result.currentPage || page);
 
         if (result.pageSize && result.pageSize !== nextPageSize) {
@@ -272,6 +276,7 @@ export function useTableDataQueryState({ tabId, metadata }: UseTableDataQuerySta
     currentPage,
     pageSize,
     whereClause,
+    appliedWhereClause,
     orderByColumn,
     orderByDirection,
     viewMode,

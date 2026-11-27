@@ -16,6 +16,11 @@ export interface ExportDataParams {
   tableName: string;
   catalog?: string;
   schema?: string;
+  /** WHERE condition currently applied on the table data page. */
+  whereClause?: string;
+  /** ORDER BY column currently applied on the table data page. */
+  orderByColumn?: string;
+  orderByDirection?: 'asc' | 'desc';
 }
 
 interface ExportDataDialogProps {
@@ -44,6 +49,20 @@ export function ExportDataDialog({
 
   // Keep the export payload in table column order.
   const selectedInOrder = columnNames.filter((name) => selectedColumns.has(name));
+
+  // Surface the filter that the export will reuse, so it is never a surprise.
+  const activeFilterLines = [
+    exportParams?.whereClause?.trim()
+      ? `${t(I18N_KEYS.EXPLORER.WHERE_LABEL)} ${exportParams.whereClause.trim()}`
+      : '',
+    exportParams?.orderByColumn
+      ? `${t(I18N_KEYS.EXPLORER.ORDER_BY_LABEL)} ${exportParams.orderByColumn} ${
+          exportParams.orderByDirection === 'desc'
+            ? t(I18N_KEYS.EXPLORER.ORDER_DESC)
+            : t(I18N_KEYS.EXPLORER.ORDER_ASC)
+        }`
+      : '',
+  ].filter(Boolean);
 
   useEffect(() => {
     if (!open || !exportParams) {
@@ -103,6 +122,9 @@ export function ExportDataDialog({
         schema: exportParams.schema,
         fileType,
         columns: columnsLoadFailed ? undefined : selectedInOrder,
+        whereClause: exportParams.whereClause,
+        orderByColumn: exportParams.orderByColumn,
+        orderByDirection: exportParams.orderByDirection,
       });
 
       downloadFile(blob, `${exportParams.tableName}.${fileExtension}`);
@@ -150,6 +172,15 @@ export function ExportDataDialog({
               className="h-10 w-full rounded-md border border-gray-300 bg-gray-100 px-3 text-sm text-gray-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400"
             />
           </div>
+          {activeFilterLines.length > 0 && (
+            <div className="flex flex-col gap-1 rounded-md border border-amber-300/70 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-700/60 dark:bg-amber-900/20 dark:text-amber-400">
+              {activeFilterLines.map((line) => (
+                <span key={line} className="break-all font-mono">
+                  {line}
+                </span>
+              ))}
+            </div>
+          )}
           <div className="flex flex-col gap-2">
             <label className="text-sm font-medium theme-text-primary">
               {t(I18N_KEYS.EXPLORER.EXPORT_FILE_TYPE)}

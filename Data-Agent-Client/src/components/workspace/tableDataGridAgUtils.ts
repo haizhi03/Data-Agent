@@ -1,12 +1,9 @@
 import type { ColDef, ValueFormatterParams } from 'ag-grid-community';
 import type { TableDataResponse } from '../../services/tableData.service';
+import { buildRowNumberColumn, getGridFieldKey } from '../../utils/agGrid';
 
-export const TABLE_DATA_GRID_ROW_NUMBER_COL_ID = '__rowNumber';
 export const TABLE_DATA_GRID_TRANSPOSE_FIELD_COL_ID = '__fieldName';
 
-const ROW_NUMBER_BASE_WIDTH = 30;
-const ROW_NUMBER_DIGIT_WIDTH = 8;
-const ROW_NUMBER_PADDING = 12;
 const TRANSPOSE_FIELD_MIN_WIDTH = 150;
 const TRANSPOSE_FIELD_MAX_WIDTH = 260;
 
@@ -19,43 +16,6 @@ export interface TableDataGridAgRow {
   /** When present, this row is a staged INSERT; value is its pending op localId. */
   __pendingInsert?: string;
   [key: string]: unknown;
-}
-
-const getGridFieldKey = (index: number) => `__col_${index}`;
-
-function getRowNumberColumnWidth(totalRowCount: number): number {
-  const rowNumberDigits = Math.max(1, String(Math.max(totalRowCount, 1)).length);
-  return Math.max(
-    40,
-    ROW_NUMBER_BASE_WIDTH + rowNumberDigits * ROW_NUMBER_DIGIT_WIDTH + ROW_NUMBER_PADDING,
-  );
-}
-
-function buildRowNumberColumn(totalRowCount: number): ColDef<TableDataGridAgRow> {
-    const rowNumberWidth = getRowNumberColumnWidth(totalRowCount);
-
-    return {
-        colId: TABLE_DATA_GRID_ROW_NUMBER_COL_ID,
-        field: TABLE_DATA_GRID_ROW_NUMBER_COL_ID,
-        headerName: '',
-        width: rowNumberWidth,
-        minWidth: rowNumberWidth,
-        maxWidth: rowNumberWidth,
-        pinned: 'left',
-        lockPosition: 'left',
-        lockPinned: true,
-        suppressMovable: true,
-        sortable: false,
-        resizable: false,
-        suppressHeaderMenuButton: true,
-        // Staged INSERT rows use negative numbers; show '*' instead.
-        valueFormatter: (params: ValueFormatterParams<TableDataGridAgRow>) => {
-            const value = params.value;
-            return typeof value === 'number' && value < 0 ? '*' : value;
-        },
-        cellClass: 'workspace-ag-grid__row-number-cell',
-        headerClass: 'workspace-ag-grid__row-number-header',
-    };
 }
 
 export function buildTableDataGridRows(
@@ -116,7 +76,17 @@ export function buildTableDataGridColumnDefs(
     ...(findCellClassRules ? { cellClassRules: findCellClassRules } : {}),
   }));
 
-  return [buildRowNumberColumn(totalRowCount), ...dataColumns];
+  return [
+    buildRowNumberColumn<TableDataGridAgRow>({
+      totalRowCount,
+      // Staged INSERT rows use negative numbers; show '*' instead.
+      valueFormatter: (params) => {
+        const value = params.value;
+        return typeof value === 'number' && value < 0 ? '*' : value;
+      },
+    }),
+    ...dataColumns,
+  ];
 }
 
 export function buildTransposeTableDataGridRows(

@@ -6,6 +6,7 @@ import edu.zsc.ai.domain.model.dto.request.db.BatchTableRowOperationRequest;
 import edu.zsc.ai.domain.model.dto.request.db.TableRowValueRequest;
 import edu.zsc.ai.domain.model.dto.response.db.BatchTableRowsResponse;
 import edu.zsc.ai.domain.model.dto.response.db.ExecuteSqlResponse;
+import edu.zsc.ai.domain.model.dto.response.db.ExecuteSqlWriteTarget;
 import edu.zsc.ai.domain.model.dto.response.db.ImportTableDataResponse;
 import edu.zsc.ai.domain.model.dto.response.db.TableDataResponse;
 import edu.zsc.ai.domain.service.db.ConnectionService;
@@ -14,17 +15,24 @@ import edu.zsc.ai.domain.service.db.transfer.TableDataExporter;
 import edu.zsc.ai.domain.service.db.transfer.TableDataTransferRegistry;
 import edu.zsc.ai.plugin.capability.TableManager;
 import edu.zsc.ai.plugin.manager.DefaultPluginManager;
+import edu.zsc.ai.plugin.model.command.sql.SqlColumnInfo;
 import edu.zsc.ai.plugin.model.command.sql.SqlCommandResult;
 import edu.zsc.ai.plugin.model.command.sql.SqlMessageInfo;
+import edu.zsc.ai.plugin.model.db.RowWriteNotSupportedException;
 import edu.zsc.ai.plugin.model.db.TableRowValue;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 
@@ -243,6 +251,7 @@ public class TableServiceImpl implements TableService {
                 .currentPage(currentPage)
                 .pageSize(pageSize)
                 .totalPages(totalPages)
+                .writeTarget(buildWriteTarget(db, tableName, result))
                 .build();
     }
 
@@ -271,7 +280,46 @@ public class TableServiceImpl implements TableService {
                 .currentPage(currentPage)
                 .pageSize(pageSize)
                 .totalPages(totalPages)
+                .writeTarget(buildWriteTarget(db, tableName, result))
                 .build();
+    }
+
+    /**
+     * Write target for one table page. A table is writable even without a primary
+     * key (rows are then matched by every selected column), and the matching rule
+     * is resolved here so the client never chooses one on its own. Both the key
+     * and the headers come from the page query, so rendering a page costs no
+     * additional metadata round trip.
+     */
+    private ExecuteSqlWriteTarget buildWriteTarget(DbContext db, String tableName, SqlCommandResult result) {
+        List<String> primaryKeyColumns = resolvePrimaryKeyColumns(result.getColumns());
+        List<String> matchColumns = primaryKeyColumns.isEmpty()
+                ? (result.getHeaders() == null ? List.of() : result.getHeaders())
+                : primaryKeyColumns;
+        return ExecuteSqlWriteTarget.builder()
+                .editable(true)
+                .objectType("TABLE")
+                .catalog(db.catalog())
+                .schema(db.schema())
+                .table(tableName)
+                .primaryKeyColumns(primaryKeyColumns.isEmpty() ? null : primaryKeyColumns)
+                .matchColumns(matchColumns.isEmpty() ? null : matchColumns)
+                .build();
+    }
+
+    /** Primary key columns in key order, as reported by the page query's metadata. */
+    private List<String> resolvePrimaryKeyColumns(List<SqlColumnInfo> columns) {
+        if (columns == null || columns.isEmpty()) {
+            return List.of();
+        }
+        return columns.stream()
+                .filter(column -> Boolean.TRUE.equals(column.getPrimaryKey()))
+                .filter(column -> column.getName() != null && !column.getName().isBlank())
+                .sorted(Comparator.comparing(column -> column.getPrimaryKeyOrdinal() == null
+                        ? Integer.MAX_VALUE
+                        : column.getPrimaryKeyOrdinal()))
+                .map(SqlColumnInfo::getName)
+                .toList();
     }
 
     private ExecuteSqlResponse toExecuteSqlResponse(SqlCommandResult result, DbContext db) {
@@ -304,11 +352,93 @@ public class TableServiceImpl implements TableService {
 
     @Override
     public BatchTableRowsResponse batchTableRows(DbContext db, String tableName,
-                                                 List<BatchTableRowOperationRequest> operations, boolean force) {
+                                                 List<BatchTableRowOperationRequest> operations, boolean force,
+                                                 String mode, String planHash) {
+        // PLAN resolves the plugin from the active connection, not from the connection
+        // record: the preview must be rendered by the same plugin instance that will
+        // execute the statements, otherwise the two could drift apart.
         connectionService.openConnection(db);
 
         ActiveConnectionRegistry.ActiveConnection active = ActiveConnectionRegistry.getOwnedConnection(db);
         TableManager provider = DefaultPluginManager.getInstance().getTableManagerByPluginId(active.pluginId());
+
+        boolean planMode = "PLAN".equalsIgnoreCase(mode);
+
+        if (planMode) {
+            List<String> statements;
+            try {
+                statements = buildRowStatements(provider, db, tableName, operations);
+            } catch (RuntimeException ex) {
+                log.warn("Failed to build row write plan: connectionId={}, tableName={}",
+                        db.connectionId(), tableName, ex);
+                return BatchTableRowsResponse.builder()
+                        .success(false)
+                        .committed(false)
+                        .total(operations.size())
+                        .failedAtIndex(0)
+                        .errorCode(planErrorCode(ex))
+                        .errorMessage(ex.getMessage())
+                        .results(List.of())
+                        .build();
+            }
+            return BatchTableRowsResponse.builder()
+                    .success(true)
+                    .committed(false)
+                    .total(operations.size())
+                    .statements(statements)
+                    .planHash(hashStatements(statements))
+                    .results(List.of())
+                    .build();
+        }
+
+        if (planHash != null && !planHash.isBlank()) {
+            try {
+                List<String> expected = buildRowStatements(provider, db, tableName, operations);
+                if (!planHash.equals(hashStatements(expected))) {
+                    return BatchTableRowsResponse.builder()
+                            .success(false)
+                            .committed(false)
+                            .total(operations.size())
+                            .succeeded(0)
+                            .failedAtIndex(0)
+                            .errorCode("PLAN_STALE")
+                            .errorMessage("The staged changes differ from the previewed SQL. Preview again and retry.")
+                            .statements(expected)
+                            .planHash(hashStatements(expected))
+                            .results(List.of())
+                            .build();
+                }
+            } catch (RuntimeException ex) {
+                // A value the provider refuses to write is not a hash mismatch: fail
+                // with the same code EXECUTE would return instead of running blind.
+                if (ex instanceof RowWriteNotSupportedException rejected) {
+                    return BatchTableRowsResponse.builder()
+                            .success(false)
+                            .committed(false)
+                            .total(operations.size())
+                            .succeeded(0)
+                            .failedAtIndex(0)
+                            .errorCode(rejected.code())
+                            .errorMessage(ex.getMessage())
+                            .results(List.of())
+                            .build();
+                }
+                // The client asked for its preview to be validated; if the expected
+                // statements cannot be rebuilt, refuse instead of executing blind.
+                log.warn("Rejecting batch write: plan hash could not be validated, connectionId={}, tableName={}",
+                        db.connectionId(), tableName, ex);
+                return BatchTableRowsResponse.builder()
+                        .success(false)
+                        .committed(false)
+                        .total(operations.size())
+                        .succeeded(0)
+                        .failedAtIndex(0)
+                        .errorCode("PLAN_UNAVAILABLE")
+                        .errorMessage("The previewed SQL could not be validated. Retry, and execute without a preview if it persists.")
+                        .results(List.of())
+                        .build();
+            }
+        }
 
         try (ActiveConnectionRegistry.BorrowedConnection borrowed = active.borrowConnection()) {
             Connection connection = borrowed.connection();
@@ -372,6 +502,44 @@ public class TableServiceImpl implements TableService {
                     .build();
         } catch (SQLException ex) {
             throw new RuntimeException("Batch row transaction failed: " + ex.getMessage(), ex);
+        }
+    }
+
+    /**
+     * Render the statements EXECUTE would run. The plugin owns both the preview
+     * and the executed statement, so the two cannot drift apart.
+     */
+    private List<String> buildRowStatements(TableManager provider, DbContext db, String tableName,
+                                            List<BatchTableRowOperationRequest> operations) {        List<String> statements = new ArrayList<>(operations.size());
+        for (BatchTableRowOperationRequest operation : operations) {
+            String type = operation.getType() == null ? "" : operation.getType().trim().toUpperCase();
+            statements.add(switch (type) {
+                case "INSERT" -> provider.previewInsertRowSql(db.catalog(), db.schema(), tableName,
+                        toPluginRowValues(operation.getValues()));
+                case "UPDATE" -> provider.previewUpdateRowSql(db.catalog(), db.schema(), tableName,
+                        toPluginRowValues(operation.getSetValues()),
+                        toPluginRowValues(operation.getMatchValues()));
+                case "DELETE" -> provider.previewDeleteRowSql(db.catalog(), db.schema(), tableName,
+                        toPluginRowValues(operation.getMatchValues()));
+                default -> throw new IllegalArgumentException(
+                        "Unknown batch operation type: " + operation.getType());
+            });
+        }
+        return statements;
+    }
+
+    /** Error code for a failed plan: a provider rejection keeps its own code. */
+    private static String planErrorCode(RuntimeException ex) {
+        return ex instanceof RowWriteNotSupportedException rejected ? rejected.code() : "PLAN_FAILED";
+    }
+
+    private String hashStatements(List<String> statements) {
+        try {
+            byte[] hash = MessageDigest.getInstance("SHA-256")
+                    .digest(String.join("\n", statements).getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(hash, 0, 8);
+        } catch (NoSuchAlgorithmException ex) {
+            throw new IllegalStateException("SHA-256 is not available", ex);
         }
     }
 

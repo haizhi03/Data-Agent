@@ -33,6 +33,29 @@ export function statementFirstLine(result: ExecuteSqlResponse | null | undefined
   return newline === -1 ? sql : sql.slice(0, newline);
 }
 
+/** Coarse SQL error category derived from the JDBC SQLState class. */
+export type SqlErrorCategory =
+  | 'CONNECTION'
+  | 'AUTH'
+  | 'SYNTAX_OR_OBJECT'
+  | 'CONSTRAINT'
+  | 'TRANSACTION'
+  | 'TIMEOUT'
+  | 'DATA'
+  | 'UNKNOWN';
+
+export function classifySqlError(sqlState?: string | null): SqlErrorCategory {
+  const state = (sqlState ?? '').toUpperCase();
+  if (state.startsWith('08')) return 'CONNECTION';
+  if (state.startsWith('28')) return 'AUTH';
+  if (state.startsWith('42')) return 'SYNTAX_OR_OBJECT';
+  if (state.startsWith('23')) return 'CONSTRAINT';
+  if (state.startsWith('40')) return 'TRANSACTION';
+  if (state.startsWith('57') || state === 'HY008') return 'TIMEOUT';
+  if (state.startsWith('22')) return 'DATA';
+  return 'UNKNOWN';
+}
+
 /** Headers + rows of a statement's primary result set (its QUERY result, if any). */
 export function extractResultSet(result: ExecuteSqlResponse | null | undefined): {
   headers: string[];

@@ -45,4 +45,10 @@ public class TableDataResponse {
      * Total pages
      */
     private Long totalPages;
+
+    /**
+     * Backend-resolved write target for this table page, so the client does not
+     * re-derive editability or primary keys on its own.
+     */
+    private ExecuteSqlWriteTarget writeTarget;
 }

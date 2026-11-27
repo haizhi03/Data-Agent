@@ -1,9 +1,13 @@
 package edu.zsc.ai.api.controller.ai;
 
 import cn.dev33.satoken.stp.StpUtil;
+import edu.zsc.ai.domain.model.dto.request.ai.ExportResultFileRequest;
 import edu.zsc.ai.domain.service.ai.export.FileExportService;
 import edu.zsc.ai.domain.service.ai.export.model.ExportedFileDownload;
+import edu.zsc.ai.domain.service.ai.export.model.ExportedFilePayload;
 import edu.zsc.ai.domain.service.ai.export.model.ExportedFileStatus;
+import edu.zsc.ai.domain.service.ai.export.model.FileExportRequest;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -16,6 +20,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -34,6 +40,18 @@ public class ExportFileController {
     public ExportedFileStatus status(@PathVariable @NotBlank(message = "fileId is required") String fileId) {
         Long userId = StpUtil.getLoginIdAsLong();
         return exportFileService.getStatus(fileId, userId);
+    }
+
+    /** Export a query result set through the shared export pipeline (XLSX, CSV, PDF, DOCX). */
+    @PostMapping("/export")
+    public ExportedFilePayload export(@Valid @RequestBody ExportResultFileRequest request) {
+        Long userId = StpUtil.getLoginIdAsLong();
+        return exportFileService.export(FileExportRequest.builder()
+                .format(request.getFormat())
+                .headers(request.getHeaders())
+                .rows(request.getRows())
+                .userId(userId)
+                .build());
     }
 
     @GetMapping("/{fileId}")
