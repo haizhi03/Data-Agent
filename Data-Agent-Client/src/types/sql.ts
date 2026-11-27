@@ -178,6 +178,28 @@ export interface ExecuteSqlResultSet {
   rows?: (unknown[])[];
   fetchRows?: number | null;
   truncated?: boolean | null;
+  /** Backend-resolved editability and row-to-table mapping. */
+  writeTarget?: ExecuteSqlWriteTarget | null;
+}
+
+/** Where a result set's rows can be written back to, resolved by the backend. */
+export interface ExecuteSqlWriteTarget {
+  editable: boolean;
+  /** Source object kind, e.g. TABLE or VIEW; null when it could not be resolved. */
+  objectType?: string | null;
+  catalog?: string | null;
+  schema?: string | null;
+  table?: string | null;
+  /** Primary key columns, ordered by their position inside the key. */
+  primaryKeyColumns?: string[] | null;
+  /**
+   * Columns the client must use to locate a row for UPDATE / DELETE: the primary
+   * key when the object has one, every selected column otherwise. The client must
+   * never pick a matching rule on its own.
+   */
+  matchColumns?: string[] | null;
+  /** Read-only reason, e.g. DERIVED_COLUMN / NO_PRIMARY_KEY / VIEW_READ_ONLY. */
+  reason?: string | null;
 }
 
 export type ExecuteSqlMessageLevel = 'INFO' | 'WARN' | 'ERROR';

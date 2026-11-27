@@ -101,6 +101,32 @@ public interface TableManager {
         throw new UnsupportedOperationException("Plugin does not support updating table rows");
     }
 
+    /**
+     * Render the INSERT statement this plugin would execute, without running it.
+     * Plugins must build the preview and the executed statement from the same
+     * dialect rules so the two can never diverge.
+     */
+    default String previewInsertRowSql(String catalog, String schema, String tableName,
+                                       List<TableRowValue> values) {
+        throw new UnsupportedOperationException("Plugin does not support previewing table row writes");
+    }
+
+    /**
+     * Render the UPDATE statement this plugin would execute, without running it.
+     */
+    default String previewUpdateRowSql(String catalog, String schema, String tableName,
+                                       List<TableRowValue> setValues, List<TableRowValue> matchValues) {
+        throw new UnsupportedOperationException("Plugin does not support previewing table row writes");
+    }
+
+    /**
+     * Render the DELETE statement this plugin would execute, without running it.
+     */
+    default String previewDeleteRowSql(String catalog, String schema, String tableName,
+                                       List<TableRowValue> matchValues) {
+        throw new UnsupportedOperationException("Plugin does not support previewing table row writes");
+    }
+
     default SqlCommandResult getTableData(Connection connection, String catalog, String schema, String tableName, int offset, int pageSize) {
         throw new UnsupportedOperationException("Plugin does not support getting table data");
     }

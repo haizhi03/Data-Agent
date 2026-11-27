@@ -17,6 +17,10 @@ import { cn } from '../../lib/utils';
 interface TableDataToolbarProps {
   loading: boolean;
   isTable: boolean;
+  /** Backend verdict on whether this object's rows can be inserted. */
+  canEditRows: boolean;
+  /** Backend verdict on whether rows carry enough columns to be matched. */
+  canMatchRows: boolean;
   viewMode: 'grid' | 'transpose';
   hasRowSelection: boolean;
   hasPendingOps: boolean;
@@ -57,6 +61,8 @@ interface TableDataToolbarProps {
 export function TableDataToolbar({
   loading,
   isTable,
+  canEditRows,
+  canMatchRows,
   viewMode,
   hasRowSelection,
   hasPendingOps,
@@ -154,7 +160,7 @@ export function TableDataToolbar({
         className="h-6 w-6"
         title={t(I18N_KEYS.EXPLORER.ADD_ROW)}
         onClick={onAddRow}
-        disabled={!isTable || loading || isTransposeMode}
+        disabled={!canEditRows || loading || isTransposeMode}
       >
         <Plus className="w-3.5 h-3.5 theme-text-secondary" />
       </Button>
@@ -164,7 +170,7 @@ export function TableDataToolbar({
         className="h-6 w-6"
         title={t(I18N_KEYS.EXPLORER.DELETE_ROW)}
         onClick={onDeleteRow}
-        disabled={!isTable || !hasRowSelection || isTransposeMode}
+        disabled={!canMatchRows || !hasRowSelection || isTransposeMode}
       >
         <Minus className="w-3.5 h-3.5 theme-text-secondary" />
       </Button>

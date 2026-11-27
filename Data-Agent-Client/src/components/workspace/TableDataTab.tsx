@@ -58,6 +58,8 @@ export function TableDataTab({ tabId, metadata }: TableDataTabProps) {
     selectedRowIndex,
     selectedRows,
     hasSelectedRow,
+    canEditRows,
+    canMatchRows,
     hasPendingOps,
     pendingCount,
     submittingEdits,
@@ -161,6 +163,8 @@ export function TableDataTab({ tabId, metadata }: TableDataTabProps) {
       <TableDataToolbar
         loading={loading}
         isTable={isTable}
+        canEditRows={canEditRows}
+        canMatchRows={canMatchRows}
         viewMode={viewMode}
         hasRowSelection={hasSelectedRow}
         hasPendingOps={hasPendingOps}
@@ -198,7 +202,7 @@ export function TableDataTab({ tabId, metadata }: TableDataTabProps) {
         onCloseFind={onCloseFind}
       />
 
-      {isDm && isTable && !isAddingRow && (
+      {isDm && canMatchRows && !isAddingRow && (
         <div className="px-3 py-1 text-[10px] theme-text-secondary border-b theme-border">
           {t(I18N_KEYS.EXPLORER.DM_CELL_EDIT_HINT)}
         </div>
@@ -217,7 +221,7 @@ export function TableDataTab({ tabId, metadata }: TableDataTabProps) {
       />
 
       <TableDataInsertBar
-        isVisible={isAddingRow && isTable}
+        isVisible={isAddingRow && canEditRows}
         headers={columns}
         columnMetadata={columnMetadata}
         loadingColumns={loadingColumns}
@@ -243,6 +247,7 @@ export function TableDataTab({ tabId, metadata }: TableDataTabProps) {
         onOpenChange={setSqlGeneratorOpen}
         metadata={metadata}
         headers={columns}
+        pkColumns={data?.writeTarget?.primaryKeyColumns ?? []}
         rows={selectedRows.filter((row) => !row.pendingLocalId).map((row) => row.row)}
       />
 
@@ -293,7 +298,7 @@ export function TableDataTab({ tabId, metadata }: TableDataTabProps) {
         orderByDirection={orderByDirection}
         selectedRowIndex={selectedRowIndex}
         startRow={startRow}
-        editable={isTable && viewMode === 'grid'}
+        editable={canMatchRows && viewMode === 'grid'}
         matchedKeys={matchedKeys}
         currentMatch={currentMatch}
         dirtyCellKeys={dirtyCellKeys}

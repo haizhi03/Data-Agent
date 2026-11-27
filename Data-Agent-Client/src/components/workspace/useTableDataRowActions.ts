@@ -4,7 +4,6 @@ import { useTranslation } from 'react-i18next';
 import { I18N_KEYS } from '../../constants/i18nKeys';
 import { useToast } from '../../hooks/useToast';
 import { columnService, type ColumnMetadata } from '../../services/column.service';
-import { primaryKeyService } from '../../services/primaryKey.service';
 import type {
   BatchRowOperation,
   TableDataResponse,
@@ -52,7 +51,6 @@ interface UseTableDataRowActionsArgs {
   objectType: TableTabMetadata['objectType'];
   catalog: string;
   schema: string;
-  isTable: boolean;
   isTransposeMode: boolean;
   data: TableDataResponse | null;
   currentPage: number;
@@ -70,7 +68,6 @@ export function useTableDataRowActions({
   objectType,
   catalog,
   schema,
-  isTable,
   isTransposeMode,
   data,
   currentPage,
@@ -92,7 +89,6 @@ export function useTableDataRowActions({
   const [pendingOps, setPendingOps] = useState<PendingOp[]>([]);
 
   const revertingCellRef = useRef(false);
-  const primaryKeyColumnsRef = useRef<string[] | null>(null);
   const idCounterRef = useRef(0);
   const pendingOpsRef = useRef<PendingOp[]>([]);
   const currentPageRef = useRef(currentPage);
@@ -110,38 +106,32 @@ export function useTableDataRowActions({
     return `op-${Date.now()}-${idCounterRef.current}`;
   }, []);
 
-  // --- Primary keys -------------------------------------------------------
+  // --- Backend-resolved write capability ----------------------------------
 
-  const getPrimaryKeyColumns = useCallback(async (): Promise<string[]> => {
-    const cached = primaryKeyColumnsRef.current;
-    if (cached !== null) {
-      return cached;
+  // Whether the loaded object can be written and which columns identify a row
+  // both come from the backend; nothing is re-derived here. A backend that
+  // predates matchColumns only ships the primary key (and, for a table without
+  // one, matched by every column).
+  const canEditRows = data?.writeTarget?.editable === true;
+  const matchColumns = useMemo(() => {
+    const target = data?.writeTarget;
+    if (!target) {
+      return [];
     }
-    let pkColumns: string[];
-    try {
-      const primaryKeys = await primaryKeyService.listPrimaryKeys(
-        connId,
-        objectName,
-        catalog || undefined,
-        schema || undefined,
-      );
-      pkColumns =
-        primaryKeys?.length && primaryKeys[0]?.columnNames?.length
-          ? primaryKeys[0].columnNames
-          : [];
-    } catch {
-      pkColumns = [];
+    if (target.matchColumns != null) {
+      return target.matchColumns;
     }
-    primaryKeyColumnsRef.current = pkColumns;
-    return pkColumns;
-  }, [catalog, connId, objectName, schema]);
+    const primaryKeyColumns = target.primaryKeyColumns ?? [];
+    return primaryKeyColumns.length > 0 ? primaryKeyColumns : data?.headers ?? [];
+  }, [data?.headers, data?.writeTarget]);
+  // Row edits and deletes need a matching rule; inserts only need a writable table.
+  const canMatchRows = canEditRows && matchColumns.length > 0;
 
-  // Build WHERE pairs for a row. Editing a primary key column itself still
-  // targets the right row because callers pass the pre-edit source row.
+  // Build WHERE pairs for a row. Editing a match column itself still targets the
+  // right row because callers pass the pre-edit source row.
   const buildMatchValues = useCallback(
-    (sourceRow: unknown[], pkColumns: string[], headers: string[]): TableRowValuePayload[] => {
-      const whereColumns = pkColumns.length > 0 ? pkColumns : headers;
-      return whereColumns
+    (sourceRow: unknown[], columns: string[], headers: string[]): TableRowValuePayload[] => {
+      return columns
         .map((column) => {
           const columnIndex = headers.indexOf(column);
           if (columnIndex === -1) {
@@ -261,7 +251,6 @@ export function useTableDataRowActions({
     setNewRowValues({});
     setInsertError(null);
     setPendingOps([]);
-    primaryKeyColumnsRef.current = null;
   }, []);
 
   useEffect(() => {
@@ -305,7 +294,7 @@ export function useTableDataRowActions({
       toast.warning(t(I18N_KEYS.EXPLORER.TRANSPOSE_READONLY));
       return;
     }
-    if (!isTable) {
+    if (!canEditRows) {
       toast.warning(t(I18N_KEYS.EXPLORER.VIEW_READONLY));
       return;
     }
@@ -321,7 +310,7 @@ export function useTableDataRowActions({
       .then((cols) => setColumnMetadata(cols || []))
       .catch(() => setColumnMetadata([]))
       .finally(() => setLoadingColumns(false));
-  }, [catalog, connId, isTable, isTransposeMode, objectName, schema, t, toast]);
+  }, [catalog, canEditRows, connId, isTransposeMode, objectName, schema, t, toast]);
 
   const handleCancelAddRow = useCallback(() => {
     setIsAddingRow(false);
@@ -371,7 +360,7 @@ export function useTableDataRowActions({
       toast.warning(t(I18N_KEYS.EXPLORER.TRANSPOSE_READONLY));
       return;
     }
-    if (!isTable) {
+    if (!canMatchRows) {
       toast.warning(t(I18N_KEYS.EXPLORER.VIEW_READONLY));
       return;
     }
@@ -393,36 +382,33 @@ export function useTableDataRowActions({
       return;
     }
 
-    void (async () => {
-      const pkColumns = await getPrimaryKeyColumns();
-      const matchValues = buildMatchValues(selectedRow.row, pkColumns, currentData.headers);
-      if (matchValues.length === 0) {
-        toast.error('Cannot build DELETE: no matching columns');
-        return;
-      }
-      const matchKey = getMatchKey(matchValues);
+    const matchValues = buildMatchValues(selectedRow.row, matchColumns, currentData.headers);
+    if (matchValues.length === 0) {
+      toast.error('Cannot build DELETE: no matching columns');
+      return;
+    }
+    const matchKey = getMatchKey(matchValues);
 
-      setPendingOps((prev) => {
-        const existingDelete = prev.find((op) => op.type === 'DELETE' && op.matchKey === matchKey);
-        if (existingDelete) {
-          // Toggle: cancel the staged deletion.
-          return prev.filter((op) => op !== existingDelete);
-        }
-        // Staging a delete discards staged edits for the same row.
-        return [
-          ...prev.filter((op) => !(op.type === 'UPDATE' && op.matchKey === matchKey)),
-          { localId: makeLocalId(), type: 'DELETE', matchKey, matchValues },
-        ];
-      });
-    })();
+    setPendingOps((prev) => {
+      const existingDelete = prev.find((op) => op.type === 'DELETE' && op.matchKey === matchKey);
+      if (existingDelete) {
+        // Toggle: cancel the staged deletion.
+        return prev.filter((op) => op !== existingDelete);
+      }
+      // Staging a delete discards staged edits for the same row.
+      return [
+        ...prev.filter((op) => !(op.type === 'UPDATE' && op.matchKey === matchKey)),
+        { localId: makeLocalId(), type: 'DELETE', matchKey, matchValues },
+      ];
+    });
   }, [
     buildMatchValues,
+    canMatchRows,
     data,
     getMatchKey,
-    getPrimaryKeyColumns,
-    isTable,
     isTransposeMode,
     makeLocalId,
+    matchColumns,
     selectedRow,
     t,
     toast,
@@ -435,7 +421,7 @@ export function useTableDataRowActions({
       if (revertingCellRef.current) {
         return;
       }
-      if (!isTable || isTransposeMode || !data) {
+      if (!canMatchRows || isTransposeMode || !data) {
         return;
       }
 
@@ -488,71 +474,68 @@ export function useTableDataRowActions({
       const originalValue = sourceRow[columnIndex];
       const equalsOriginal = isSameCellValue(newValue, originalValue);
 
-      void (async () => {
-        const pkColumns = await getPrimaryKeyColumns();
-        const matchValues = buildMatchValues(sourceRow, pkColumns, data.headers);
-        if (matchValues.length === 0) {
-          toast.error('Cannot build UPDATE: no matching columns');
-          revert();
-          return;
-        }
-        const matchKey = getMatchKey(matchValues);
+      const matchValues = buildMatchValues(sourceRow, matchColumns, data.headers);
+      if (matchValues.length === 0) {
+        toast.error('Cannot build UPDATE: no matching columns');
+        revert();
+        return;
+      }
+      const matchKey = getMatchKey(matchValues);
 
-        // Rows staged for deletion are not editable.
-        const hasDelete = pendingOpsRef.current.some(
-          (op) => op.type === 'DELETE' && op.matchKey === matchKey,
-        );
-        if (hasDelete) {
-          revert();
-          return;
-        }
+      // Rows staged for deletion are not editable.
+      const hasDelete = pendingOpsRef.current.some(
+        (op) => op.type === 'DELETE' && op.matchKey === matchKey,
+      );
+      if (hasDelete) {
+        revert();
+        return;
+      }
 
-        if (equalsOriginal) {
-          // Value returned to original: drop this column from the staged UPDATE,
-          // removing the whole op when no edits remain.
-          setPendingOps((prev) => {
-            const existing = prev.find((op) => op.type === 'UPDATE' && op.matchKey === matchKey);
-            if (!existing) {
-              return prev;
-            }
-            const setValues = (existing.setValues ?? []).filter((entry) => entry.columnName !== colId);
-            if (setValues.length === 0) {
-              return prev.filter((op) => op !== existing);
-            }
-            return prev.map((op) => (op === existing ? { ...op, setValues } : op));
-          });
-          return;
-        }
-
+      if (equalsOriginal) {
+        // Value returned to original: drop this column from the staged UPDATE,
+        // removing the whole op when no edits remain.
         setPendingOps((prev) => {
           const existing = prev.find((op) => op.type === 'UPDATE' && op.matchKey === matchKey);
-          if (existing) {
-            const setValues = (existing.setValues ?? []).filter((entry) => entry.columnName !== colId);
-            setValues.push({ columnName: colId, value: newValue });
-            return prev.map((op) => (op === existing ? { ...op, setValues } : op));
+          if (!existing) {
+            return prev;
           }
-          return [
-            ...prev,
-            {
-              localId: makeLocalId(),
-              type: 'UPDATE',
-              matchKey,
-              matchValues,
-              setValues: [{ columnName: colId, value: newValue }],
-            },
-          ];
+          const setValues = (existing.setValues ?? []).filter((entry) => entry.columnName !== colId);
+          if (setValues.length === 0) {
+            return prev.filter((op) => op !== existing);
+          }
+          return prev.map((op) => (op === existing ? { ...op, setValues } : op));
         });
-      })();
+        return;
+      }
+
+      setPendingOps((prev) => {
+        const existing = prev.find((op) => op.type === 'UPDATE' && op.matchKey === matchKey);
+        if (existing) {
+          const setValues = (existing.setValues ?? []).filter((entry) => entry.columnName !== colId);
+          setValues.push({ columnName: colId, value: newValue });
+          return prev.map((op) => (op === existing ? { ...op, setValues } : op));
+        }
+        return [
+          ...prev,
+          {
+            localId: makeLocalId(),
+            type: 'UPDATE',
+            matchKey,
+            matchValues,
+            setValues: [{ columnName: colId, value: newValue }],
+          },
+        ];
+      });
     },
     [
       buildMatchValues,
+      canMatchRows,
       data,
       getMatchKey,
-      getPrimaryKeyColumns,
       isDm,
-      isTable,
       isTransposeMode,
       makeLocalId,
+      matchColumns,
       toast,
     ],
   );
@@ -613,6 +596,8 @@ export function useTableDataRowActions({
     selectedRows,
     hasSelectedRow: selectedRow != null,
     // Pending state
+    canEditRows,
+    canMatchRows,
     hasPendingOps: pendingOps.length > 0,
     pendingCount: pendingOps.length,
     submittingEdits,

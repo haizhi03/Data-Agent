@@ -2,15 +2,7 @@ import type { CellClassParams, ColDef, ValueFormatterParams } from 'ag-grid-comm
 import type { TableRowValuePayload } from '../../services/tableData.service';
 import type { ExecuteSqlColumn, ExecuteSqlResultSet } from '../../types/sql';
 import { STORAGE_KEYS } from '../../constants/storageKeys';
-import { resolveResultTableIdentity } from '../../utils/exportResult';
 import { buildRowNumberColumn, getGridFieldKey } from '../../utils/agGrid';
-import {
-  qualifyName,
-  quoteIdent,
-  toSqlLiteral,
-  toWhereCondition,
-  type SqlDialectProfile,
-} from '../../utils/sqlGenerator';
 import { toRowMatchValue } from '../workspace/tableDataTabShared';
 import { ResultColumnHeader, type ResultColumnHeaderMeta } from './ResultColumnHeader';
 
@@ -257,31 +249,6 @@ export function collectQueryResultSets(
   return result?.resultSet ? [result.resultSet] : [];
 }
 
-/** Why a result set cannot be edited in place. */
-export type ResultReadonlyReason =
-  | 'DERIVED_COLUMN'
-  | 'MULTIPLE_TABLES'
-  | 'NO_CONNECTION'
-  | 'PRIMARY_KEY_UNAVAILABLE'
-  | 'NO_PRIMARY_KEY'
-  | 'MISSING_PRIMARY_KEY'
-  | 'DUPLICATE_PRIMARY_KEY'
-  | 'NULL_PRIMARY_KEY';
-
-export interface ResultSourceTable {
-  catalogName?: string | null;
-  schemaName?: string | null;
-  tableName: string;
-}
-
-export interface ResultEditability {
-  editable: boolean;
-  reason?: ResultReadonlyReason;
-  /** Present with reason === 'MISSING_PRIMARY_KEY'. */
-  missingPrimaryKeyColumns?: string[];
-  sourceTable: ResultSourceTable | null;
-}
-
 /** Normalize a column name for case-insensitive matching. */
 export const normalizeResultColumnKey = (value?: string | null) =>
   (value ?? '').trim().toUpperCase();
@@ -298,14 +265,14 @@ export function buildResultColumnIndexMap(columns: ExecuteSqlColumn[]): Map<stri
   return map;
 }
 
-/** WHERE pairs for a result row, built from the source table's primary key columns. */
+/** WHERE pairs for a result row, built from the backend-resolved match columns. */
 export function buildResultMatchValues(
   columns: ExecuteSqlColumn[],
   sourceRow: unknown[],
-  primaryKeys: string[],
+  matchColumns: string[],
 ): TableRowValuePayload[] {
   const columnIndexByKey = buildResultColumnIndexMap(columns);
-  return primaryKeys
+  return matchColumns
     .map((columnName) => {
       const columnIndex = columnIndexByKey.get(normalizeResultColumnKey(columnName));
       if (columnIndex == null) {
@@ -325,133 +292,4 @@ export function buildResultMatchKey(matchValues: TableRowValuePayload[]): string
     })
     .sort()
     .join('|');
-}
-
-/**
- * Preview SQL for staged result edits. Reuses the SQL generator's dialect
- * profile, identifier quoting and literal formatting.
- */
-export function buildPendingUpdatesSql(params: {
-  table: ResultSourceTable;
-  updates: { matchValues: TableRowValuePayload[]; setValues: TableRowValuePayload[] }[];
-  profile: SqlDialectProfile;
-}): string {
-  const { table, updates, profile } = params;
-  if (updates.length === 0) {
-    return '';
-  }
-
-  const tableName = qualifyName(
-    { catalog: table.catalogName, schema: table.schemaName, name: table.tableName },
-    profile,
-  );
-
-  return updates
-    .map(({ matchValues, setValues }) => {
-      const assignments = setValues
-        .map((entry) => `  ${quoteIdent(entry.columnName, profile)} = ${toSqlLiteral(entry.value, profile)}`)
-        .join(',\n');
-      const where = matchValues
-        .map((entry) =>
-          `  ${toWhereCondition(quoteIdent(entry.columnName, profile), '=', entry.value, profile)}`,
-        )
-        .join(' AND\n');
-      return `UPDATE ${tableName}\nSET\n${assignments}\nWHERE\n${where};`;
-    })
-    .join('\n\n');
-}
-
-/** Typed key part so 1 (number) and "1" (string) are not treated as the same value. */
-function normalizeKeyValue(value: unknown): string | null {
-  if (value === null || value === undefined) return null;
-  if (typeof value === 'number' || typeof value === 'bigint') return `n:${value}`;
-  if (typeof value === 'boolean') return `b:${value}`;
-  if (typeof value === 'string') return `s:${value}`;
-  try {
-    return `o:${JSON.stringify(value)}`;
-  } catch {
-    return `o:${String(value)}`;
-  }
-}
-
-/**
- * Decide whether a result set can be edited in place.
- * Requires a single source table, a reachable connection, every primary key
- * column present in the result, and unique non-null key values in loaded rows.
- */
-export function evaluateResultEditability(params: {
-  columns: ExecuteSqlColumn[];
-  rows: unknown[][];
-  connectionId?: number | null;
-  /** Primary key columns of the source table; null while being resolved. */
-  primaryKeys: string[] | null;
-  primaryKeyError?: boolean;
-}): ResultEditability {
-  const { columns, rows, connectionId, primaryKeys, primaryKeyError = false } = params;
-
-  const identity = resolveResultTableIdentity(columns);
-  if (!identity) {
-    if (columns.length === 0) {
-      return { editable: false, sourceTable: null };
-    }
-    return {
-      editable: false,
-      reason: columns.some((column) => !column.tableName) ? 'DERIVED_COLUMN' : 'MULTIPLE_TABLES',
-      sourceTable: null,
-    };
-  }
-
-  const sourceTable: ResultSourceTable = {
-    catalogName: identity.catalogName,
-    schemaName: identity.schemaName,
-    tableName: identity.tableName,
-  };
-
-  if (connectionId == null) {
-    return { editable: false, reason: 'NO_CONNECTION', sourceTable };
-  }
-  if (primaryKeyError) {
-    return { editable: false, reason: 'PRIMARY_KEY_UNAVAILABLE', sourceTable };
-  }
-  if (primaryKeys == null) {
-    // Still resolving metadata; treat as read-only until verified.
-    return { editable: false, sourceTable };
-  }
-  if (primaryKeys.length === 0) {
-    return { editable: false, reason: 'NO_PRIMARY_KEY', sourceTable };
-  }
-
-  const columnIndexByKey = buildResultColumnIndexMap(columns);
-
-  const missingPrimaryKeyColumns = primaryKeys.filter(
-    (columnName) => !columnIndexByKey.has(normalizeResultColumnKey(columnName)),
-  );
-  if (missingPrimaryKeyColumns.length > 0) {
-    return {
-      editable: false,
-      reason: 'MISSING_PRIMARY_KEY',
-      missingPrimaryKeyColumns,
-      sourceTable,
-    };
-  }
-
-  const seenKeys = new Set<string>();
-  for (const row of rows) {
-    const parts: string[] = [];
-    for (const columnName of primaryKeys) {
-      const columnIndex = columnIndexByKey.get(normalizeResultColumnKey(columnName));
-      const normalized = normalizeKeyValue(columnIndex == null ? null : row[columnIndex]);
-      if (normalized == null) {
-        return { editable: false, reason: 'NULL_PRIMARY_KEY', sourceTable };
-      }
-      parts.push(normalized);
-    }
-    const rowKey = parts.join('\u0001');
-    if (seenKeys.has(rowKey)) {
-      return { editable: false, reason: 'DUPLICATE_PRIMARY_KEY', sourceTable };
-    }
-    seenKeys.add(rowKey);
-  }
-
-  return { editable: true, sourceTable };
 }

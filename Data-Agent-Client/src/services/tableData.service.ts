@@ -1,6 +1,6 @@
 import http from '../lib/http';
 import { ApiPaths } from '../constants/apiPaths';
-import type { ExecuteSqlResponse } from '../types/sql';
+import type { ExecuteSqlResponse, ExecuteSqlWriteTarget } from '../types/sql';
 
 export interface TableDataResponse {
   headers: string[];
@@ -9,6 +9,8 @@ export interface TableDataResponse {
   currentPage: number;
   pageSize: number;
   totalPages: number;
+  /** Backend-resolved editability, target table and primary key for this page. */
+  writeTarget?: ExecuteSqlWriteTarget | null;
 }
 
 export interface TableRowValuePayload {
@@ -93,6 +95,10 @@ export interface BatchTableRowsParams {
   schema?: string;
   operations: BatchRowOperation[];
   force?: boolean;
+  /** PLAN only renders the statements; EXECUTE (default) runs them. */
+  mode?: 'PLAN' | 'EXECUTE';
+  /** planHash returned by PLAN; EXECUTE rejects a stale plan. */
+  planHash?: string;
 }
 
 export interface BatchTableRowsItemResult {
@@ -112,6 +118,12 @@ export interface BatchTableRowsResult {
   succeeded: number;
   failedAtIndex: number | null;
   errorMessage: string | null;
+  /** Structured error code, e.g. PLAN_STALE. */
+  errorCode?: string | null;
+  /** PLAN mode: statements EXECUTE would run, in request order. */
+  statements?: string[] | null;
+  /** PLAN mode: hash of statements, echoed back by EXECUTE. */
+  planHash?: string | null;
   results: BatchTableRowsItemResult[];
 }
 
@@ -271,6 +283,8 @@ export const tableDataService = {
       schema: params.schema ?? undefined,
       operations: params.operations,
       force: params.force ?? false,
+      mode: params.mode ?? undefined,
+      planHash: params.planHash ?? undefined,
     });
     return response.data;
   },

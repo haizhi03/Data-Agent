@@ -68,7 +68,7 @@ function buildJsonFromResult(columns: ExecuteSqlColumn[], rows: unknown[][]): st
   );
 }
 
-interface ResultTableIdentity {
+export interface ResultTableIdentity {
   tableName: string;
   catalogName?: string | null;
   schemaName?: string | null;
@@ -106,8 +106,8 @@ function buildSqlInsertFromResult(
   columns: ExecuteSqlColumn[],
   rows: unknown[][],
   profile: SqlDialectProfile,
+  table: ResultTableIdentity | null,
 ): string {
-  const table = resolveResultTableIdentity(columns);
   if (!table) {
     throw new Error('SQL export requires a result set from a single table');
   }
@@ -137,6 +137,8 @@ interface DownloadResultOptions {
   format: ClientResultExportFormat;
   /** Dialect used by the SQL export (quoting and literals). */
   profile: SqlDialectProfile;
+  /** Backend-resolved single source table; falls back to the column metadata. */
+  table?: ResultTableIdentity | null;
   baseName?: string;
 }
 
@@ -146,11 +148,12 @@ export function downloadResultSet({
   rows,
   format,
   profile,
+  table,
   baseName,
 }: DownloadResultOptions): void {
   const headers = columns.map((column, index) => column.label || column.name || `Column ${index + 1}`);
-  const table = resolveResultTableIdentity(columns);
-  const name = baseName || table?.tableName || 'result';
+  const sourceTable = table !== undefined ? table : resolveResultTableIdentity(columns);
+  const name = baseName || sourceTable?.tableName || 'result';
   const extension = EXPORT_FILE_EXTENSIONS[format] ?? format.toLowerCase();
 
   let content: string;
@@ -159,7 +162,7 @@ export function downloadResultSet({
     content = buildJsonFromResult(columns, rows);
     mimeType = 'application/json;charset=utf-8';
   } else if (format === 'SQL') {
-    content = buildSqlInsertFromResult(columns, rows, profile);
+    content = buildSqlInsertFromResult(columns, rows, profile, sourceTable);
     mimeType = 'text/plain;charset=utf-8';
   } else {
     content = buildCsvFromResult(headers, rows);

@@ -187,14 +187,17 @@ public class TableController {
 
     @PostMapping("/rows/batch")
     public ApiResponse<BatchTableRowsResponse> batchRows(@Valid @RequestBody BatchTableRowsRequest request) {
-        log.info("Batch updating table rows: connectionId={}, tableName={}, operationCount={}, force={}",
-                request.getConnectionId(), request.getTableName(), request.getOperations().size(), request.isForce());
+        log.info("Batch updating table rows: connectionId={}, tableName={}, operationCount={}, force={}, mode={}",
+                request.getConnectionId(), request.getTableName(), request.getOperations().size(),
+                request.isForce(), request.getMode());
         DbContext db = DbContext.from(request);
         return ApiResponse.success(tableService.batchTableRows(
                 db,
                 request.getTableName(),
                 request.getOperations(),
-                request.isForce()
+                request.isForce(),
+                request.getMode(),
+                request.getPlanHash()
         ));
     }
 

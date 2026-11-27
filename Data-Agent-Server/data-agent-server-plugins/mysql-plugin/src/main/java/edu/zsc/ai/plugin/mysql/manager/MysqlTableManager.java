@@ -101,6 +101,24 @@ public final class MysqlTableManager implements TableManager {
     }
 
     @Override
+    public String previewInsertRowSql(String catalog, String schema, String tableName,
+                                      List<TableRowValue> values) {
+        return rowWriteSupport.previewInsertRowSql(catalog, schema, tableName, values);
+    }
+
+    @Override
+    public String previewUpdateRowSql(String catalog, String schema, String tableName,
+                                      List<TableRowValue> setValues, List<TableRowValue> matchValues) {
+        return rowWriteSupport.previewUpdateRowSql(catalog, schema, tableName, setValues, matchValues);
+    }
+
+    @Override
+    public String previewDeleteRowSql(String catalog, String schema, String tableName,
+                                      List<TableRowValue> matchValues) {
+        return rowWriteSupport.previewDeleteRowSql(catalog, schema, tableName, matchValues);
+    }
+
+    @Override
     public SqlCommandResult getTableData(Connection connection, String catalog, String schema,
                                          String tableName, int offset, int pageSize) {
         return support.getTableLikeData(connection, catalog, tableName, offset, pageSize);

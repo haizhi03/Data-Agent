@@ -11,12 +11,15 @@ import org.slf4j.LoggerFactory;
 
 import java.sql.*;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 
 /**
  * Abstract SQL executor that provides common SQL execution logic.
@@ -53,6 +56,21 @@ public abstract class AbstractSqlExecutor implements CommandExecutor<SqlCommandR
      * {@link SqlCommandRequest#getMaxRows()} (a value &lt;= 0 disables the cap).
      */
     protected static final int DEFAULT_MAX_ROWS = 10_000;
+
+    /**
+     * Column comments are display-only: cache successful lookups so the common
+     * query path does not pay a getColumns round trip per source table per query.
+     * The TTL bounds how long a comment edited after this query stays stale.
+     */
+    private static final long COLUMN_COMMENT_CACHE_TTL_MS = 5 * 60 * 1000L;
+    private static final int COLUMN_COMMENT_CACHE_MAX_ENTRIES = 512;
+    private static final Map<String, ColumnCommentCacheEntry> COLUMN_COMMENT_CACHE =
+            Collections.synchronizedMap(new LinkedHashMap<>(64, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(Map.Entry<String, ColumnCommentCacheEntry> eldest) {
+                    return size() > COLUMN_COMMENT_CACHE_MAX_ENTRIES;
+                }
+            });
 
     protected abstract Object getJdbcValue(JdbcValueContext context) throws SQLException;
 
@@ -456,6 +474,8 @@ public abstract class AbstractSqlExecutor implements CommandExecutor<SqlCommandR
             Connection connection = statement.getConnection();
             // One metadata lookup per distinct source table per result set.
             Map<String, TableColumnMetadata> tableMetadataCache = new HashMap<>();
+            // Source tables of this result set, in column order.
+            Map<String, TableColumnMetadata> sourceTables = new LinkedHashMap<>();
 
             // Get column names (use 1-based index consistently)
             for (int i = 1; i <= columnCount; i++) {
@@ -468,6 +488,10 @@ public abstract class AbstractSqlExecutor implements CommandExecutor<SqlCommandR
                 String tableName = trimToNull(metaData.getTableName(i));
                 TableColumnMetadata tableMetadata = resolveTableMetadata(
                         connection, tableMetadataCache, catalogName, schemaName, tableName);
+                if (tableName != null) {
+                    sourceTables.putIfAbsent(
+                            catalogName + '\u0000' + schemaName + '\u0000' + tableName, tableMetadata);
+                }
                 String columnKey = name == null ? null : name.toUpperCase(Locale.ROOT);
                 Integer primaryKeyOrdinal = columnKey == null ? null : tableMetadata.primaryKeys().get(columnKey);
                 String comment = columnKey == null ? null : tableMetadata.comments().get(columnKey);
@@ -510,6 +534,13 @@ public abstract class AbstractSqlExecutor implements CommandExecutor<SqlCommandR
             sub.setHeaders(headers);
             sub.setRows(rows);
             sub.setColumns(columns);
+            // Only a single-source-table result can be written back, and then the
+            // table's complete key decides whether the selected columns cover it.
+            if (sourceTables.size() == 1) {
+                TableColumnMetadata sourceMetadata = sourceTables.values().iterator().next();
+                sub.setSourceTablePrimaryKeyColumns(
+                        sourceMetadata.primaryKeysKnown() ? sourceMetadata.primaryKeyColumns() : null);
+            }
             sub.setFetchRows(rows.size());
             sub.setTruncated(truncated);
             sub.setLimitApplied(truncated);
@@ -549,6 +580,8 @@ public abstract class AbstractSqlExecutor implements CommandExecutor<SqlCommandR
                                                                String table) {
         Map<String, Integer> primaryKeys = new HashMap<>();
         Map<String, String> comments = new HashMap<>();
+        Map<Integer, String> orderedKeyColumns = new TreeMap<>();
+        boolean primaryKeysKnown = false;
         String effectiveCatalog = catalog;
         if (effectiveCatalog == null) {
             try {
@@ -571,30 +604,37 @@ public abstract class AbstractSqlExecutor implements CommandExecutor<SqlCommandR
             if (!tried.add(key)) {
                 continue;
             }
-            readPrimaryKeys(connection, candidate[0], candidate[1], table, primaryKeys);
+            primaryKeysKnown |= readPrimaryKeys(
+                    connection, candidate[0], candidate[1], table, primaryKeys, orderedKeyColumns);
             readColumnComments(connection, candidate[0], candidate[1], table, comments);
             if (!primaryKeys.isEmpty() || !comments.isEmpty()) {
                 break;
             }
         }
-        return new TableColumnMetadata(primaryKeys, comments);
+        return new TableColumnMetadata(primaryKeys, List.copyOf(orderedKeyColumns.values()),
+                comments, primaryKeysKnown);
     }
 
-    private static void readPrimaryKeys(Connection connection,
-                                        String catalog,
-                                        String schema,
-                                        String table,
-                                        Map<String, Integer> ordinals) {
+    private static boolean readPrimaryKeys(Connection connection,
+                                           String catalog,
+                                           String schema,
+                                           String table,
+                                           Map<String, Integer> ordinals,
+                                           Map<Integer, String> orderedNames) {
         try (ResultSet primaryKeys = connection.getMetaData().getPrimaryKeys(catalog, schema, table)) {
             while (primaryKeys.next()) {
                 String columnName = primaryKeys.getString("COLUMN_NAME");
                 if (columnName != null) {
-                    ordinals.put(columnName.toUpperCase(Locale.ROOT), primaryKeys.getInt("KEY_SEQ"));
+                    int keySeq = primaryKeys.getInt("KEY_SEQ");
+                    ordinals.put(columnName.toUpperCase(Locale.ROOT), keySeq);
+                    orderedNames.put(keySeq, columnName);
                 }
             }
+            return true;
         } catch (SQLException e) {
             log.debug("Failed to read primary key metadata for {}.{}.{}: {}", catalog, schema, table,
                     e.getMessage());
+            return false;
         }
     }
 
@@ -603,23 +643,61 @@ public abstract class AbstractSqlExecutor implements CommandExecutor<SqlCommandR
                                            String schema,
                                            String table,
                                            Map<String, String> comments) {
+        String cacheKey = commentCacheKey(connection, catalog, schema, table);
+        ColumnCommentCacheEntry cached = cacheKey == null ? null : COLUMN_COMMENT_CACHE.get(cacheKey);
+        if (cached != null && cached.expiresAt() > System.currentTimeMillis()) {
+            comments.putAll(cached.comments());
+            return;
+        }
+        Map<String, String> loaded = new HashMap<>();
         try (ResultSet columns = connection.getMetaData().getColumns(catalog, schema, table, null)) {
             while (columns.next()) {
                 String columnName = columns.getString("COLUMN_NAME");
                 String remarks = columns.getString("REMARKS");
                 if (columnName != null && remarks != null && !remarks.isBlank()) {
-                    comments.put(columnName.toUpperCase(Locale.ROOT), remarks.trim());
+                    loaded.put(columnName.toUpperCase(Locale.ROOT), remarks.trim());
                 }
             }
         } catch (SQLException e) {
+            // Do not cache failures: the next query retries the lookup.
             log.debug("Failed to read column comments for {}.{}.{}: {}", catalog, schema, table,
                     e.getMessage());
+            return;
         }
+        if (cacheKey != null) {
+            COLUMN_COMMENT_CACHE.put(cacheKey,
+                    new ColumnCommentCacheEntry(Map.copyOf(loaded),
+                            System.currentTimeMillis() + COLUMN_COMMENT_CACHE_TTL_MS));
+        }
+        comments.putAll(loaded);
     }
 
-    private record TableColumnMetadata(Map<String, Integer> primaryKeys, Map<String, String> comments) {
+    /** Cache identity: same database URL plus the same table name means the same comments. */
+    private static String commentCacheKey(Connection connection,
+                                          String catalog,
+                                          String schema,
+                                          String table) {
+        if (connection == null || table == null) {
+            return null;
+        }
+        String database;
+        try {
+            database = connection.getMetaData().getURL();
+        } catch (SQLException e) {
+            database = connection.getClass().getName();
+        }
+        return database + '\u0000' + catalog + '\u0000' + schema + '\u0000' + table;
+    }
+
+    private record ColumnCommentCacheEntry(Map<String, String> comments, long expiresAt) {
+    }
+
+    private record TableColumnMetadata(Map<String, Integer> primaryKeys,
+                                       List<String> primaryKeyColumns,
+                                       Map<String, String> comments,
+                                       boolean primaryKeysKnown) {
         private static final TableColumnMetadata EMPTY =
-                new TableColumnMetadata(Map.of(), Map.of());
+                new TableColumnMetadata(Map.of(), List.of(), Map.of(), false);
     }
 
     private void applyFirstResult(SqlCommandResult result, SqlCommandSubResult first) {
@@ -627,6 +705,7 @@ public abstract class AbstractSqlExecutor implements CommandExecutor<SqlCommandR
         result.setHeaders(first.getHeaders());
         result.setRows(first.getRows());
         result.setColumns(first.getColumns());
+        result.setSourceTablePrimaryKeyColumns(first.getSourceTablePrimaryKeyColumns());
         result.setAffectedRows(first.getAffectedRows());
         result.setFetchRows(first.getFetchRows());
         result.setTruncated(first.getTruncated());

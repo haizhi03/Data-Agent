@@ -53,6 +53,12 @@ public class SqlCommandResult extends BaseCommandResult implements CommandResult
     private List<SqlCommandSubResult> results;
 
     /**
+     * Complete primary key of the result's single source table, in key order.
+     * Empty when the table has no key; null when it could not be resolved.
+     */
+    private List<String> sourceTablePrimaryKeyColumns;
+
+    /**
      * Factual execution state of this statement. Assigned by the executor on every exit path.
      */
     private StatementExecutionState statementState;

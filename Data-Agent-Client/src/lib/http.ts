@@ -149,6 +149,12 @@ http.interceptors.response.use(
             openLoginModal();
         }
 
+        // Surface the backend message instead of the generic "Request failed with status code".
+        const apiMessage = error.response?.data?.message;
+        if (typeof apiMessage === 'string' && apiMessage.length > 0) {
+            error.message = apiMessage;
+        }
+
         return Promise.reject(error);
     }
 );

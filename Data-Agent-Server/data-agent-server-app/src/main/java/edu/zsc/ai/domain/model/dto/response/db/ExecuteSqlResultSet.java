@@ -24,4 +24,9 @@ public class ExecuteSqlResultSet {
      * Whether result is truncated (client or server-side limit).
      */
     private Boolean truncated;
+
+    /**
+     * Write target resolved by the backend from the result's column metadata.
+     */
+    private ExecuteSqlWriteTarget writeTarget;
 }

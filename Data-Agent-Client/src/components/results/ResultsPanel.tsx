@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { CellValueChangedEvent, ColumnResizedEvent, GridApi } from 'ag-grid-community';
+import type { ColumnResizedEvent, GridApi } from 'ag-grid-community';
 import { Database, Download, Trash2, Maximize2, Minimize2, ChevronDown, ArrowUp, ArrowLeftToLine, ArrowRightToLine, FileCode2, Undo2, Loader2, AlertCircle, Copy, SlidersHorizontal, Sparkles } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useTranslation } from 'react-i18next';
@@ -12,18 +12,14 @@ import {
   resolveResultTableIdentity,
   RESULT_EXPORT_FORMATS,
   type ResultExportFormat,
+  type ResultTableIdentity,
 } from '../../utils/exportResult';
 import { downloadFile } from '../../utils/download';
 import { exportFileService } from '../../services/exportFile.service';
 import { formatDmExecutionPlan } from '../../utils/dmExecutionPlan';
-import { primaryKeyService } from '../../services/primaryKey.service';
 import { sqlExecutionService } from '../../services/sqlExecution.service';
 import { aiService } from '../../services/ai.service';
 import { useUiStore } from '../../store/uiStore';
-import type { BatchRowOperation, TableRowValuePayload } from '../../services/tableData.service';
-import { normalizeEditedCellInput } from '../workspace/tableDataInputValues';
-import { isSameCellValue } from '../workspace/tableDataTabShared';
-import { useBatchRowOpsSubmit } from '../workspace/useBatchRowOpsSubmit';
 import { useDbTypeStore } from '../../store/dbTypeStore';
 import { resolveProfile } from '../../utils/sqlGenerator';
 import { useToast } from '../../hooks/useToast';
@@ -52,14 +48,8 @@ import { classifySqlError, extractResultSet, statementStatusColor, statementStat
 import { StatementResultRow } from './StatementResultRow';
 import { ResultGrid } from './ResultGrid';
 import {
-  buildPendingUpdatesSql,
-  buildResultColumnIndexMap,
   buildResultColumnSignature,
-  buildResultMatchKey,
-  buildResultMatchValues,
   collectQueryResultSets,
-  evaluateResultEditability,
-  normalizeResultColumnKey,
   readResultColumnPreferences,
   resolveResultColumns,
   writeResultColumnPreferences,
@@ -67,6 +57,7 @@ import {
   type ResultColumnPreferences,
   type ResultGridRow,
 } from './resultGridUtils';
+import { useResultWriteBack } from './useResultWriteBack';
 import { getGridFieldKey } from '../../utils/agGrid';
 
 interface ResultsPanelProps {
@@ -79,18 +70,10 @@ interface ResultsPanelProps {
   children: React.ReactNode;
 }
 
-/** Staged cell edit for an editable result row (same payload shape as the table data editor). */
-interface ResultPendingUpdate {
-  rowIndex: number;
-  matchKey: string;
-  matchValues: TableRowValuePayload[];
-  setValues: TableRowValuePayload[];
-}
-
-/** Rows fetched by "load more" for one statement / result set. */
-interface ResultExpandedRows {
-  statementIndex: number;
-  resultSetIndex: number;
+/** Rows loaded for one result page: "load more" output or committed cell edits. */
+interface ResultPageRows {
+  /** Page the rows were loaded for; rows never leak into another page. */
+  pageKey: unknown;
   rows: unknown[][];
   truncated: boolean;
 }
@@ -119,60 +102,52 @@ export function ResultsPanel({ isVisible, onClose, executeResult: singleResult, 
   );
   const resultSets = useMemo(() => collectQueryResultSets(executeResult), [executeResult]);
   const activeResultSet = resultSets[activeResultSetIndex] ?? null;
-  const [expandedRows, setExpandedRows] = useState<ResultExpandedRows | null>(null);
+  const resultPageKey = useMemo(
+    () => ({ executeResult, resultSetIndex: activeResultSetIndex }),
+    [executeResult, activeResultSetIndex],
+  );
+  const [pageRowsState, setPageRowsState] = useState<ResultPageRows | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
-  const currentExpandedRows =
-    expandedRows &&
-    expandedRows.statementIndex === selectedStatement &&
-    expandedRows.resultSetIndex === activeResultSetIndex
-      ? expandedRows
-      : null;
+  // Rows belong to the page they were loaded for; stale entries are ignored so a
+  // page switch never renders the previous page's rows with the new columns.
+  const pageRows = pageRowsState?.pageKey === resultPageKey ? pageRowsState : null;
   const activeHeaders = useMemo(
     () => activeResultSet?.columns?.map((column) => column.label || column.name || '').filter(Boolean)
       ?? resultHeaders,
     [activeResultSet, resultHeaders],
   );
-  const activeRows = currentExpandedRows?.rows ?? activeResultSet?.rows ?? resultRows;
-  // Feed the grid rows fetched by "load more" while keeping the original columns.
+  const activeRows = pageRows?.rows ?? activeResultSet?.rows ?? resultRows;
+  // Feed the grid rows loaded for this page ("load more" / committed edits) while
+  // keeping the original columns.
   const gridResultSet = useMemo(() => {
-    if (!activeResultSet || !currentExpandedRows) {
+    if (!activeResultSet || !pageRows) {
       return activeResultSet;
     }
     return {
       ...activeResultSet,
-      rows: currentExpandedRows.rows,
-      truncated: currentExpandedRows.truncated,
+      rows: pageRows.rows,
+      truncated: pageRows.truncated,
     };
-  }, [activeResultSet, currentExpandedRows]);
+  }, [activeResultSet, pageRows]);
   // A new result shape invalidates the snapshot; the grid recaptures it on the next model update.
   useEffect(() => {
     displayedRowsRef.current = null;
   }, [gridResultSet]);
-  const resultTruncated = currentExpandedRows
-    ? currentExpandedRows.truncated
-    : activeResultSet?.truncated === true || executeResult?.executionInfo?.truncated === true;
+  const sourceTruncated = activeResultSet?.truncated === true || executeResult?.executionInfo?.truncated === true;
+  const resultTruncated = pageRows?.truncated ?? sourceTruncated;
   const loadMoreSql = executeResult?.executedSql || executeResult?.originalSql || '';
   const activeColumns = useMemo(
     () => resolveResultColumns(activeResultSet, activeHeaders),
     [activeResultSet, activeHeaders],
   );
-  const activeSourceTable = useMemo(
-    () => resolveResultTableIdentity(activeColumns),
-    [activeColumns],
-  );
-  const resultColumnIndexByKey = useMemo(
-    () => buildResultColumnIndexMap(activeColumns),
-    [activeColumns],
-  );
-
   const activeConnectionId = executeResult?.connectionId ?? null;
-  const [primaryKeys, setPrimaryKeys] = useState<string[] | null>(null);
-  const [primaryKeyError, setPrimaryKeyError] = useState(false);
-  const [pendingUpdates, setPendingUpdates] = useState<ResultPendingUpdate[]>([]);
-  const [previewSqlOpen, setPreviewSqlOpen] = useState(false);
-  const [gridResetVersion, setGridResetVersion] = useState(0);
-  const pendingUpdatesRef = useRef<ResultPendingUpdate[]>([]);
-  const revertingResultCellRef = useRef(false);
+  // Editability and the row-to-table mapping come from the backend.
+  const resultWriteTarget = activeResultSet?.writeTarget ?? null;
+  const resultReadonlyReason = resultWriteTarget?.editable === true && activeConnectionId != null
+    ? undefined
+    : activeConnectionId == null
+      ? 'NO_CONNECTION'
+      : resultWriteTarget?.reason ?? undefined;
   const resultGridApiRef = useRef<GridApi<ResultGridRow> | null>(null);
   // Last filtered/sorted rows seen in the grid, so export stays correct even
   // when the grid is unmounted (e.g. the output tab is active).
@@ -180,6 +155,57 @@ export function ResultsPanel({ isVisible, onClose, executeResult: singleResult, 
   const isDm = (executeResult?.dbType ?? '').toUpperCase() === 'DM';
   const supportedDbTypes = useDbTypeStore((state) => state.supportedDbTypes);
   const requestAiCompose = useUiStore((state) => state.requestAiCompose);
+
+  // A load-more request belongs to the page that started it; drop the previous
+  // page's rows so large results are not kept alive.
+  useEffect(() => {
+    setPageRowsState(null);
+    setLoadingMore(false);
+  }, [resultPageKey]);
+
+  const handleResultRowsApplied = useCallback((apply: (rows: unknown[][]) => unknown[][]) => {
+    setPageRowsState((prev) => {
+      const samePage = prev?.pageKey === resultPageKey;
+      const baseRows = samePage ? prev.rows : activeRows;
+      return {
+        pageKey: resultPageKey,
+        rows: apply(baseRows),
+        truncated: samePage ? prev.truncated : sourceTruncated,
+      };
+    });
+  }, [activeRows, resultPageKey, sourceTruncated]);
+
+  // Staging, previewing and committing result edits all live in the hook; this
+  // component only renders that state.
+  const {
+    editable: resultEditable,
+    pendingCellCount,
+    dirtyCellKeys: dirtyResultCellKeys,
+    gridResetVersion,
+    previewSqlOpen,
+    setPreviewSqlOpen,
+    previewStatements,
+    previewError,
+    previewLoading,
+    previewSql,
+    submitting: submittingResultEdits,
+    forceConfirmOpen: resultForceConfirmOpen,
+    forceMessage: resultForceMessage,
+    closeForceConfirm: closeResultForceConfirm,
+    stageCellEdit: handleResultCellValueChanged,
+    handleOpenPreviewSql,
+    handleSubmitEdits: handleSubmitResultEdits,
+    handleConfirmForce: handleConfirmResultForce,
+    handleDiscardEdits: handleDiscardResultEdits,
+  } = useResultWriteBack({
+    pageKey: resultPageKey,
+    connectionId: activeConnectionId,
+    writeTarget: resultWriteTarget,
+    columns: activeColumns,
+    rows: activeRows,
+    isDm,
+    onRowsApplied: handleResultRowsApplied,
+  });
 
   // Column display preferences (visibility / pinning / width) survive re-runs of
   // the same result shape; applied through the grid's own column state API.
@@ -259,251 +285,10 @@ export function ResultsPanel({ isVisible, onClose, executeResult: singleResult, 
     writeResultColumnPreferences(columnSignature, next);
   }, [columnSignature]);
 
-  // Resolve the source table's full primary key before allowing in-place edits.
-  useEffect(() => {
-    setPrimaryKeys(null);
-    setPrimaryKeyError(false);
-    if (!activeSourceTable || activeConnectionId == null) {
-      return;
-    }
-    let cancelled = false;
-    primaryKeyService
-      .listPrimaryKeys(
-        String(activeConnectionId),
-        activeSourceTable.tableName,
-        activeSourceTable.catalogName ?? undefined,
-        activeSourceTable.schemaName ?? undefined,
-      )
-      .then((keys) => {
-        if (!cancelled) {
-          setPrimaryKeys(keys?.[0]?.columnNames ?? []);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setPrimaryKeyError(true);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [activeConnectionId, activeSourceTable]);
-
-  const resultEditability = useMemo(
-    () =>
-      evaluateResultEditability({
-        columns: activeColumns,
-        rows: activeRows,
-        connectionId: activeConnectionId,
-        primaryKeys,
-        primaryKeyError,
-      }),
-    [activeColumns, activeRows, activeConnectionId, primaryKeys, primaryKeyError],
-  );
-
-  // Staged edits belong to one execution / result set page.
-  useEffect(() => {
-    setPendingUpdates([]);
-    setPreviewSqlOpen(false);
-    setExpandedRows(null);
-    setLoadingMore(false);
-  }, [executeResult, activeResultSetIndex]);
-
-  useEffect(() => {
-    pendingUpdatesRef.current = pendingUpdates;
-  }, [pendingUpdates]);
-
-  const pendingCellCount = useMemo(
-    () => pendingUpdates.reduce((count, update) => count + update.setValues.length, 0),
-    [pendingUpdates],
-  );
-
   const sqlProfile = useMemo(() => {
     const option = supportedDbTypes.find((item) => item.code === executeResult?.dbType);
     return resolveProfile(executeResult?.dbType, option?.identifierQuoteStyle);
   }, [executeResult?.dbType, supportedDbTypes]);
-
-  const pendingUpdateSql = useMemo(() => {
-    if (!activeSourceTable || pendingUpdates.length === 0) {
-      return '';
-    }
-    return buildPendingUpdatesSql({
-      table: {
-        catalogName: activeSourceTable.catalogName,
-        schemaName: activeSourceTable.schemaName,
-        tableName: activeSourceTable.tableName,
-      },
-      updates: pendingUpdates,
-      profile: sqlProfile,
-    });
-  }, [activeSourceTable, pendingUpdates, sqlProfile]);
-
-  // Applied values become the new baseline so later edits match the updated row.
-  const handleBatchSubmitSuccess = useCallback(() => {
-    const updates = pendingUpdatesRef.current;
-    if (updates.length > 0) {
-      const rows = activeResultSet?.rows ?? resultRows;
-      updates.forEach((update) => {
-        const row = rows[update.rowIndex];
-        if (!row) {
-          return;
-        }
-        update.setValues.forEach((entry) => {
-          const columnIndex = resultColumnIndexByKey.get(normalizeResultColumnKey(entry.columnName));
-          if (columnIndex != null) {
-            row[columnIndex] = entry.value;
-          }
-        });
-      });
-    }
-    setPendingUpdates([]);
-    setGridResetVersion((version) => version + 1);
-  }, [activeResultSet, resultColumnIndexByKey, resultRows]);
-
-  const {
-    submitting: submittingResultEdits,
-    forceConfirmOpen: resultForceConfirmOpen,
-    forceMessage: resultForceMessage,
-    submit: submitResultBatch,
-    closeForceConfirm: closeResultForceConfirm,
-  } = useBatchRowOpsSubmit({
-    connectionId: activeConnectionId,
-    tableName: activeSourceTable?.tableName ?? '',
-    catalog: activeSourceTable?.catalogName ?? undefined,
-    schema: activeSourceTable?.schemaName ?? undefined,
-    onSuccess: handleBatchSubmitSuccess,
-  });
-
-  const handleSubmitResultEdits = useCallback(
-    async (force = false): Promise<boolean> => {
-      const updates = pendingUpdatesRef.current;
-      if (updates.length === 0) {
-        return true;
-      }
-      const operations: BatchRowOperation[] = updates.map((update) => ({
-        type: 'UPDATE',
-        setValues: update.setValues,
-        matchValues: update.matchValues,
-      }));
-      return submitResultBatch(operations, force);
-    },
-    [submitResultBatch],
-  );
-
-  const handleConfirmResultForce = useCallback(async () => {
-    closeResultForceConfirm();
-    await handleSubmitResultEdits(true);
-  }, [closeResultForceConfirm, handleSubmitResultEdits]);
-
-  const handleDiscardResultEdits = useCallback(() => {
-    setPendingUpdates([]);
-    setGridResetVersion((version) => version + 1);
-  }, []);
-
-  const dirtyResultCellKeys = useMemo(() => {
-    const keys = new Set<string>();
-    if (pendingUpdates.length === 0) {
-      return keys;
-    }
-    pendingUpdates.forEach((update) => {
-      update.setValues.forEach((entry) => {
-        const columnIndex = resultColumnIndexByKey.get(normalizeResultColumnKey(entry.columnName));
-        if (columnIndex != null) {
-          keys.add(`${update.rowIndex}::${columnIndex}`);
-        }
-      });
-    });
-    return keys;
-  }, [pendingUpdates, resultColumnIndexByKey]);
-
-  // Stage cell edits as UPDATE operations, reusing the table editor's payload
-  // shape (setValues + primary-key matchValues) so Apply can use batchRows later.
-  const handleResultCellValueChanged = useCallback(
-    (event: CellValueChangedEvent<ResultGridRow>) => {
-      if (revertingResultCellRef.current) {
-        return;
-      }
-      if (!resultEditability.editable || !primaryKeys?.length) {
-        return;
-      }
-
-      const colId = event.column.getColId();
-      const columnMatch = /^result-col-(\d+)$/.exec(colId);
-      const rowIndex = event.data?.__rowIndex;
-      const sourceRow = event.data?.__sourceRow;
-      if (!columnMatch || rowIndex == null || !sourceRow) {
-        return;
-      }
-
-      const columnIndex = Number(columnMatch[1]);
-      const column = activeColumns[columnIndex];
-      const columnName = column?.name || column?.label;
-      if (!columnName) {
-        return;
-      }
-
-      const oldValue = event.oldValue;
-      const revert = () => {
-        revertingResultCellRef.current = true;
-        try {
-          event.node.setDataValue(colId, oldValue);
-        } finally {
-          revertingResultCellRef.current = false;
-        }
-      };
-
-      const newValue = normalizeEditedCellInput(event.newValue, oldValue, isDm);
-
-      // AG Grid fires on !== comparisons; skip number 5 vs string "5" style non-changes.
-      if (isSameCellValue(newValue, oldValue)) {
-        revert();
-        return;
-      }
-
-      const matchValues = buildResultMatchValues(activeColumns, sourceRow, primaryKeys);
-      if (matchValues.length === 0) {
-        revert();
-        return;
-      }
-      const matchKey = buildResultMatchKey(matchValues);
-
-      const originalValue = sourceRow[columnIndex];
-      const equalsOriginal = isSameCellValue(newValue, originalValue);
-
-      setPendingUpdates((prev) => {
-        const existing = prev.find((update) => update.matchKey === matchKey);
-
-        if (equalsOriginal) {
-          // Value returned to the database value: drop this column from the staged UPDATE.
-          if (!existing) {
-            return prev;
-          }
-          const setValues = existing.setValues.filter((entry) => entry.columnName !== columnName);
-          if (setValues.length === 0) {
-            return prev.filter((update) => update !== existing);
-          }
-          return prev.map((update) => (update === existing ? { ...update, setValues } : update));
-        }
-
-        if (existing) {
-          const setValues = existing.setValues.filter((entry) => entry.columnName !== columnName);
-          setValues.push({ columnName, value: newValue });
-          return prev.map((update) => (update === existing ? { ...update, setValues } : update));
-        }
-
-        return [
-          ...prev,
-          {
-            rowIndex,
-            matchKey,
-            matchValues,
-            setValues: [{ columnName, value: newValue }],
-          },
-        ];
-      });
-    },
-    [activeColumns, isDm, primaryKeys, resultEditability.editable],
-  );
 
   const isDmExecutionPlan = /^\s*EXPLAIN\b/i.test(executeResult?.executedSql || executeResult?.originalSql || '')
     && activeHeaders.length === 1 && activeHeaders[0] === 'Execution Plan';
@@ -516,8 +301,20 @@ export function ResultsPanel({ isVisible, onClose, executeResult: singleResult, 
 
   // Can export when we have a result set (headers; rows may be empty)
   const canExport = hasResultTab && !!activeHeaders.length;
+  // The backend already resolved the single source table, so the SQL export
+  // reuses that verdict instead of re-deriving it from the column metadata.
+  const resultExportTable = useMemo<ResultTableIdentity | null>(() => {
+    if (resultWriteTarget?.table) {
+      return {
+        tableName: resultWriteTarget.table,
+        catalogName: resultWriteTarget.catalog,
+        schemaName: resultWriteTarget.schema,
+      };
+    }
+    return resolveResultTableIdentity(activeColumns);
+  }, [activeColumns, resultWriteTarget]);
   // SQL export needs every column to come from the same source table.
-  const canExportSql = canExport && !!resolveResultTableIdentity(activeColumns);
+  const canExportSql = canExport && !!resultExportTable;
 
   // Export exactly what the grid shows: current sort order and active filters.
   // When rows are checked, only those rows are exported; otherwise every
@@ -576,6 +373,7 @@ export function ResultsPanel({ isVisible, onClose, executeResult: singleResult, 
           rows: exportRows,
           format,
           profile: sqlProfile,
+          table: resultExportTable,
         });
       }
       toast.success(t(I18N_KEYS.COMMON.EXPORT_SUCCESS));
@@ -602,9 +400,8 @@ export function ResultsPanel({ isVisible, onClose, executeResult: singleResult, 
         toast.error(t(I18N_KEYS.COMMON.RESULT_LOAD_MORE_FAILED));
         return;
       }
-      setExpandedRows({
-        statementIndex: selectedStatement,
-        resultSetIndex: activeResultSetIndex,
+      setPageRowsState({
+        pageKey: resultPageKey,
         rows: response.resultSet?.rows ?? response.rows ?? [],
         truncated: response.resultSet?.truncated === true || response.executionInfo?.truncated === true,
       });
@@ -736,8 +533,8 @@ export function ResultsPanel({ isVisible, onClose, executeResult: singleResult, 
   const effectiveExecutionMs = executionMs ?? Math.max(0, durationMs - (fetchingMs ?? 0));
 
   const editabilityReasonText = useMemo(() => {
-    if (resultEditability.editable) return undefined;
-    switch (resultEditability.reason) {
+    if (resultEditable) return undefined;
+    switch (resultReadonlyReason) {
       case 'DERIVED_COLUMN':
         return t(I18N_KEYS.COMMON.RESULT_READONLY_DERIVED_COLUMN);
       case 'MULTIPLE_TABLES':
@@ -750,7 +547,7 @@ export function ResultsPanel({ isVisible, onClose, executeResult: singleResult, 
         return t(I18N_KEYS.COMMON.RESULT_READONLY_NO_PK);
       case 'MISSING_PRIMARY_KEY':
         return t(I18N_KEYS.COMMON.RESULT_READONLY_MISSING_PK, {
-          columns: (resultEditability.missingPrimaryKeyColumns ?? []).join(', '),
+          columns: (resultWriteTarget?.primaryKeyColumns ?? []).join(', '),
         });
       case 'DUPLICATE_PRIMARY_KEY':
         return t(I18N_KEYS.COMMON.RESULT_READONLY_DUPLICATE_PK);
@@ -759,7 +556,7 @@ export function ResultsPanel({ isVisible, onClose, executeResult: singleResult, 
       default:
         return undefined;
     }
-  }, [resultEditability, t]);
+  }, [resultEditable, resultReadonlyReason, resultWriteTarget, t]);
 
   const resultsContent = (
     <>
@@ -830,7 +627,7 @@ export function ResultsPanel({ isVisible, onClose, executeResult: singleResult, 
                 <Undo2 className="w-3.5 h-3.5" />
               </button>
               <button
-                onClick={() => setPreviewSqlOpen(true)}
+                onClick={() => void handleOpenPreviewSql()}
                 disabled={submittingResultEdits}
                 className="workbench-icon-button disabled:opacity-50"
                 title={t(I18N_KEYS.COMMON.RESULT_PREVIEW_SQL)}
@@ -1033,7 +830,7 @@ export function ResultsPanel({ isVisible, onClose, executeResult: singleResult, 
                 fallbackHeaders={activeHeaders}
                 fallbackRows={activeRows}
                 emptyMessage={t(I18N_KEYS.COMMON.NO_DATA)}
-                editable={resultEditability.editable}
+                editable={resultEditable}
                 dirtyCellKeys={dirtyResultCellKeys}
                 resetVersion={gridResetVersion}
                 onCellValueChanged={handleResultCellValueChanged}
@@ -1214,7 +1011,7 @@ export function ResultsPanel({ isVisible, onClose, executeResult: singleResult, 
           )}
           {hasResultTab ? (
             <span title={editabilityReasonText}>
-              {resultEditability.editable
+              {resultEditable
                 ? t(I18N_KEYS.COMMON.RESULT_EDITABLE)
                 : t(I18N_KEYS.COMMON.READONLY)}
             </span>
@@ -1257,15 +1054,22 @@ export function ResultsPanel({ isVisible, onClose, executeResult: singleResult, 
             </DialogDescription>
           </DialogHeader>
           <div className="max-h-[60vh] overflow-auto">
-            <SqlCodeBlock sql={pendingUpdateSql} />
+            {previewLoading ? (
+              <div className="p-4 text-xs theme-text-secondary">{t(I18N_KEYS.EXPLORER.LOADING)}</div>
+            ) : previewError ? (
+              <div className="p-4 text-xs text-red-500 whitespace-pre-wrap">{previewError}</div>
+            ) : (
+              <SqlCodeBlock sql={previewSql} />
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setPreviewSqlOpen(false)}>
               {t(I18N_KEYS.COMMON.CLOSE)}
             </Button>
             <Button
+              disabled={previewLoading || previewStatements.length === 0}
               onClick={() => {
-                void navigator.clipboard.writeText(pendingUpdateSql).then(
+                void navigator.clipboard.writeText(previewSql).then(
                   () => toast.success(t(I18N_KEYS.EXPLORER.SQL_GENERATOR_COPIED)),
                   () => undefined,
                 );

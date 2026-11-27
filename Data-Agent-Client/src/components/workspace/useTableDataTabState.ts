@@ -19,7 +19,6 @@ export function useTableDataTabState({ tabId, metadata }: UseTableDataTabStateAr
     objectType: metadata.objectType,
     catalog: metadata.catalog ?? '',
     schema: metadata.schema ?? '',
-    isTable: queryState.isTable,
     isTransposeMode: queryState.isTransposeMode,
     data: queryState.data,
     currentPage: queryState.currentPage,

@@ -31,7 +31,7 @@ export function useBatchRowOpsSubmit({
   const [forceMessage, setForceMessage] = useState('');
 
   const submit = useCallback(
-    async (operations: BatchRowOperation[], force = false): Promise<boolean> => {
+    async (operations: BatchRowOperation[], force = false, planHash?: string | null): Promise<boolean> => {
       if (operations.length === 0) {
         return true;
       }
@@ -48,12 +48,18 @@ export function useBatchRowOpsSubmit({
           schema: schema || undefined,
           operations,
           force,
+          planHash: planHash ?? undefined,
         });
 
         if (result.success) {
           toast.success(t(I18N_KEYS.EXPLORER.BATCH_SUBMIT_SUCCESS, { count: result.total }));
           await onSuccess();
           return true;
+        }
+
+        if (result.errorCode === 'PLAN_STALE') {
+          toast.error(t(I18N_KEYS.EXPLORER.BATCH_SUBMIT_PLAN_STALE));
+          return false;
         }
 
         if (result.requiresForce) {

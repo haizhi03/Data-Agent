@@ -32,4 +32,10 @@ public class BatchTableRowsRequest extends BaseRequest {
 
     /** When true, ambiguous UPDATE/DELETE targets (multiple matched rows) are allowed. */
     private boolean force;
+
+    /** PLAN only renders the statements; EXECUTE (default) runs them. */
+    private String mode;
+
+    /** planHash returned by PLAN; EXECUTE rejects a stale plan. */
+    private String planHash;
 }
