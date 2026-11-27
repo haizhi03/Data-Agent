@@ -1134,7 +1134,7 @@ function ErDiagramCanvas({ metadata }: ErDiagramTabProps) {
                   nodesDraggable={!layouting && !exporting}
                   elementsSelectable={!layouting && !exporting}
                   selectionKeyCode="Shift"
-                  multiSelectionKeyCode={['Shift', 'Control', 'Meta']}
+                  multiSelectionKeyCode={['Control', 'Meta']}
                   onSelectionChange={({ nodes: picked }) => {
                     setSelectedNodeIds(picked.map((node) => node.id));
                   }}

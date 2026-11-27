@@ -17,7 +17,7 @@ export interface ErDiagramInteraction {
   clearHover: (focus: ColumnFocus) => void;
   busy: boolean;
   toggleExpanded: (nodeId: string) => void;
-  /** Ctrl or Shift click toggles this table in the current selection. */
+  /** Ctrl or Command click toggles this table in the current selection. */
   modifySelection: (nodeId: string) => void;
   openData: (table: ErTable) => void;
   openDdl: (table: ErTable) => void;

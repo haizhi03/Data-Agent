@@ -87,8 +87,8 @@ export function ErTableNode({ data, selected }: NodeProps<ErTableNodeType>) {
       onPointerDownCapture={(event) => {
         if (event.button !== 0 || !nodeId) return;
         const target = event.target as HTMLElement;
-        if (target.closest('button, .er-drag-handle')) return;
-        if (!(event.ctrlKey || event.metaKey || event.shiftKey)) return;
+        if (target.closest('button')) return;
+        if (!(event.ctrlKey || event.metaKey)) return;
         event.stopPropagation();
         event.preventDefault();
         interaction.modifySelection(nodeId);
