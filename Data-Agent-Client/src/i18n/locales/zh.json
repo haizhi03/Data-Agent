@@ -644,6 +644,7 @@
     "structure_diag_primary_key_missing_column": "主键引用了不存在的列",
     "structure_diag_foreign_key_incomplete": "外键不完整：{{name}}",
     "structure_diag_check_has_semicolon": "检查表达式不能包含分号：{{name}}",
+    "structure_diag_check_expression_empty": "检查表达式不能为空：{{name}}",
     "structure_diag_auto_increment_needs_index": "自增字段必须有索引：{{name}}",
     "structure_diag_option_missing": "缺少{{name}}",
     "structure_diag_option_unsupported": "不支持的{{name}}：{{detail}}",

@@ -217,6 +217,52 @@ class DmTableStructureDialectTest {
     }
 
     @Test
+    void invalidForeignKeyReplacementBlocksTheWholePlan() {
+        ForeignKey foreignKey = new ForeignKey("FK_DEMO", "FK_DEMO", List.of("NAME"), "HR", "PARENT", List.of("ID"), null, null);
+        ForeignKey broken = new ForeignKey("FK_DEMO", "FK_DEMO", List.of(), "HR", "PARENT", List.of("ID"), null, null);
+        Column commented = column("NAME", "NAME", "VARCHAR(100)", true, "客户名");
+        TableStructure baseline = new TableStructure(sample().name(), sample().comment(), null, null, null,
+                sample().columns(), sample().primaryKey(), List.of(), List.of(foreignKey), sample().checks());
+        TableStructure draft = new TableStructure(baseline.name(), baseline.comment(), null, null, null,
+                List.of(column("ID"), commented), baseline.primaryKey(), List.of(), List.of(broken), baseline.checks());
+
+        StructurePreview preview = DmTableStructureDialect.preview(null, "HR", baseline, draft);
+
+        assertTrue(preview.statements().isEmpty());
+        assertTrue(hasCode(preview, StructureDiagnostic.FOREIGN_KEY_INCOMPLETE));
+    }
+
+    @Test
+    void invalidCheckReplacementBlocksTheWholePlan() {
+        Check check = new Check("CHK_NAME", "CHK_NAME", "LENGTH(\"NAME\") > 0");
+        Check broken = new Check("CHK_NAME", "CHK_NAME", "LENGTH(\"NAME\") > 0; DROP TABLE X");
+        Column commented = column("NAME", "NAME", "VARCHAR(100)", true, "客户名");
+        TableStructure baseline = new TableStructure(sample().name(), sample().comment(), null, null, null,
+                sample().columns(), sample().primaryKey(), List.of(), List.of(), List.of(check));
+        TableStructure draft = new TableStructure(baseline.name(), baseline.comment(), null, null, null,
+                List.of(column("ID"), commented), baseline.primaryKey(), List.of(), List.of(), List.of(broken));
+
+        StructurePreview preview = DmTableStructureDialect.preview(null, "HR", baseline, draft);
+
+        assertTrue(preview.statements().isEmpty());
+        assertTrue(hasCode(preview, StructureDiagnostic.CHECK_HAS_SEMICOLON));
+    }
+
+    @Test
+    void indexPointingAtMissingColumnBlocksTheWholePlan() {
+        Index index = new Index("IDX_NAME", "IDX_NAME", false, "NORMAL", List.of("NAME"), List.of());
+        Index broken = new Index("IDX_NAME", "IDX_NAME", false, "NORMAL", List.of("MISSING"), List.of());
+        TableStructure baseline = withIndexes(sample(), List.of(index));
+        TableStructure draft = new TableStructure(baseline.name(), baseline.comment(), null, null, null,
+                baseline.columns(), baseline.primaryKey(), List.of(broken), baseline.foreignKeys(), baseline.checks());
+
+        StructurePreview preview = DmTableStructureDialect.preview(null, "HR", baseline, draft);
+
+        assertTrue(preview.statements().isEmpty());
+        assertTrue(hasCode(preview, StructureDiagnostic.INDEX_MISSING_COLUMN));
+    }
+
+    @Test
     void loadedIndexWithoutColumnsDoesNotBlockOtherChanges() {
         Index index = new Index("INDEX33555775", "INDEX33555775", false, "NORMAL", List.of(), List.of());
         Column commented = column("NAME", "NAME", "VARCHAR(100)", true, "客户名");

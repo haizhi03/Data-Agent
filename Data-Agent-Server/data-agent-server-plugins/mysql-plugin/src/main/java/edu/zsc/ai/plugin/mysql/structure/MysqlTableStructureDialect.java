@@ -3,6 +3,7 @@ package edu.zsc.ai.plugin.mysql.structure;
 import edu.zsc.ai.plugin.capability.MysqlIdentifierEscaper;
 import edu.zsc.ai.plugin.model.structure.StructureDefaultKind;
 import edu.zsc.ai.plugin.model.structure.StructureDiagnostic;
+import edu.zsc.ai.plugin.model.structure.StructureReplacementGuard;
 import edu.zsc.ai.plugin.model.structure.StructureTypeRules;
 import edu.zsc.ai.plugin.model.structure.StructurePreview;
 import edu.zsc.ai.plugin.model.structure.StructurePreview.Change;
@@ -152,15 +153,7 @@ public final class MysqlTableStructureDialect {
                 blocked = true;
             }
         }
-        for (Index index : next.indexes()) {
-            if (StringUtils.isBlank(index.originalName()) || !index.columns().isEmpty()) {
-                continue;
-            }
-            Index loaded = findIndex(base, index.originalName());
-            if (loaded == null || loaded.columns() == null || loaded.columns().isEmpty()) {
-                continue;
-            }
-            warnings.add(StructureDiagnostic.of(StructureDiagnostic.INDEX_HAS_NO_COLUMNS, StringUtils.defaultIfBlank(index.name(), index.originalName())));
+        if (StructureReplacementGuard.block(base, next, false, warnings)) {
             blocked = true;
         }
         return blocked;

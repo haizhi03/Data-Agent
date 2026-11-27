@@ -272,6 +272,42 @@ class MysqlTableStructureDialectTest {
     }
 
     @Test
+    void invalidForeignKeyReplacementBlocksTheWholePlan() {
+        ForeignKey foreignKey = new ForeignKey("fk_name", "fk_name", List.of("name"), "crm", "parent", List.of("id"), null, null);
+        ForeignKey broken = new ForeignKey("fk_name", "fk_name", List.of(), "crm", "parent", List.of("id"), null, null);
+        Column commented = column("name", "name", "varchar(100)", 100, true, "客户名");
+        TableStructure baseline = new TableStructure(sample().name(), sample().comment(), sample().engine(),
+                sample().charset(), sample().collation(), sample().columns(), sample().primaryKey(),
+                List.of(), List.of(foreignKey), sample().checks());
+        TableStructure draft = new TableStructure(baseline.name(), baseline.comment(), baseline.engine(),
+                baseline.charset(), baseline.collation(), List.of(column("id"), commented), baseline.primaryKey(),
+                List.of(), List.of(broken), baseline.checks());
+
+        StructurePreview preview = MysqlTableStructureDialect.preview("crm", null, baseline, draft);
+
+        assertTrue(preview.statements().isEmpty());
+        assertTrue(hasCode(preview, StructureDiagnostic.FOREIGN_KEY_INCOMPLETE));
+    }
+
+    @Test
+    void invalidCheckReplacementBlocksTheWholePlan() {
+        Check check = new Check("chk_name", "chk_name", "char_length(`name`) > 0");
+        Check broken = new Check("chk_name", "chk_name", "char_length(`name`) > 0; drop table x");
+        Column commented = column("name", "name", "varchar(100)", 100, true, "客户名");
+        TableStructure baseline = new TableStructure(sample().name(), sample().comment(), sample().engine(),
+                sample().charset(), sample().collation(), sample().columns(), sample().primaryKey(),
+                List.of(), List.of(), List.of(check));
+        TableStructure draft = new TableStructure(baseline.name(), baseline.comment(), baseline.engine(),
+                baseline.charset(), baseline.collation(), List.of(column("id"), commented), baseline.primaryKey(),
+                List.of(), List.of(), List.of(broken));
+
+        StructurePreview preview = MysqlTableStructureDialect.preview("crm", null, baseline, draft);
+
+        assertTrue(preview.statements().isEmpty());
+        assertTrue(hasCode(preview, StructureDiagnostic.CHECK_HAS_SEMICOLON));
+    }
+
+    @Test
     void removingIndexDropsIt() {
         Index index = new Index("uk_name", "uk_name", true, "BTREE", List.of("name"), List.of());
         TableStructure baseline = withIndexes(sample(), List.of(index));

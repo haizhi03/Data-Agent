@@ -24,6 +24,7 @@ public record StructureDiagnostic(String code, List<String> args) {
     public static final String PRIMARY_KEY_MISSING_COLUMN = "PRIMARY_KEY_MISSING_COLUMN";
     public static final String FOREIGN_KEY_INCOMPLETE = "FOREIGN_KEY_INCOMPLETE";
     public static final String CHECK_HAS_SEMICOLON = "CHECK_HAS_SEMICOLON";
+    public static final String CHECK_EXPRESSION_EMPTY = "CHECK_EXPRESSION_EMPTY";
     public static final String AUTO_INCREMENT_NEEDS_INDEX = "AUTO_INCREMENT_NEEDS_INDEX";
     public static final String OPTION_MISSING = "OPTION_MISSING";
     public static final String OPTION_UNSUPPORTED = "OPTION_UNSUPPORTED";

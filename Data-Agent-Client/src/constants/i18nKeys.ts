@@ -408,6 +408,7 @@ export const I18N_KEYS = {
     STRUCTURE_DIAG_PRIMARY_KEY_MISSING_COLUMN: 'explorer.structure_diag_primary_key_missing_column',
     STRUCTURE_DIAG_FOREIGN_KEY_INCOMPLETE: 'explorer.structure_diag_foreign_key_incomplete',
     STRUCTURE_DIAG_CHECK_HAS_SEMICOLON: 'explorer.structure_diag_check_has_semicolon',
+    STRUCTURE_DIAG_CHECK_EXPRESSION_EMPTY: 'explorer.structure_diag_check_expression_empty',
     STRUCTURE_DIAG_AUTO_INCREMENT_NEEDS_INDEX: 'explorer.structure_diag_auto_increment_needs_index',
     STRUCTURE_DIAG_OPTION_MISSING: 'explorer.structure_diag_option_missing',
     STRUCTURE_DIAG_OPTION_UNSUPPORTED: 'explorer.structure_diag_option_unsupported',
