@@ -8,12 +8,14 @@ import java.time.LocalDate;
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.context.support.ResourceBundleMessageSource;
 
 import edu.zsc.ai.api.model.request.ChatUserMention;
 import edu.zsc.ai.common.constant.MemoryRecallLogConstant;
 import edu.zsc.ai.config.ai.PromptConfig;
 import edu.zsc.ai.domain.service.agent.prompt.PromptRenderResult;
 import edu.zsc.ai.domain.service.agent.runtimecontext.strategy.DurableFactsStrategy;
+import edu.zsc.ai.domain.service.agent.runtimecontext.strategy.ErQueryFocusStrategy;
 import edu.zsc.ai.domain.service.agent.runtimecontext.strategy.ExplicitReferencesStrategy;
 import edu.zsc.ai.domain.service.agent.runtimecontext.strategy.CurrentConversationMemoryStrategy;
 import edu.zsc.ai.domain.service.agent.runtimecontext.strategy.ResponsePreferencesStrategy;
@@ -299,7 +301,9 @@ class RuntimeContextManagerTest {
         assertTrue(conversationMemoryPos < scopePos);
         assertTrue(scopePos < prefPos);
         assertTrue(prefPos < factsPos);
+        int focusPos = rendered.indexOf("<圈选附件");
         assertTrue(factsPos < refsPos);
+        assertTrue(refsPos < focusPos);
     }
 
     private RuntimeContextManager createManager() {
@@ -309,9 +313,18 @@ class RuntimeContextManagerTest {
                 new ScopeHintsStrategy(),
                 new ResponsePreferencesStrategy(),
                 new DurableFactsStrategy(),
-                new ExplicitReferencesStrategy()));
+                new ExplicitReferencesStrategy(),
+                new ErQueryFocusStrategy(messageSource())));
         return new RuntimeContextManager(
                 chain,
                 PromptConfig.loadClassPathResource(RuntimeContextManager.TEMPLATE_PATH));
+    }
+
+    private static ResourceBundleMessageSource messageSource() {
+        ResourceBundleMessageSource source = new ResourceBundleMessageSource();
+        source.setBasename("i18n/messages");
+        source.setDefaultEncoding("UTF-8");
+        source.setFallbackToSystemLocale(false);
+        return source;
     }
 }

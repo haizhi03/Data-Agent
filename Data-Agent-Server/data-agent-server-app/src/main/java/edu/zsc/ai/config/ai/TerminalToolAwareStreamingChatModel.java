@@ -10,22 +10,30 @@ import dev.langchain4j.model.chat.request.ChatRequestParameters;
 import dev.langchain4j.model.chat.response.ChatResponse;
 import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
 import dev.langchain4j.model.output.FinishReason;
-import lombok.extern.slf4j.Slf4j;
-
 import java.util.List;
 import java.util.Set;
+import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class TerminalToolAwareStreamingChatModel implements StreamingChatModel {
 
     private final StreamingChatModel delegate;
     private final TerminalToolResultPolicy terminalToolResultPolicy;
+    private final ErQueryFocusModelInjector erQueryFocusModelInjector;
 
     public TerminalToolAwareStreamingChatModel(
             StreamingChatModel delegate,
             TerminalToolResultPolicy terminalToolResultPolicy) {
+        this(delegate, terminalToolResultPolicy, null);
+    }
+
+    public TerminalToolAwareStreamingChatModel(
+            StreamingChatModel delegate,
+            TerminalToolResultPolicy terminalToolResultPolicy,
+            ErQueryFocusModelInjector erQueryFocusModelInjector) {
         this.delegate = delegate;
         this.terminalToolResultPolicy = terminalToolResultPolicy;
+        this.erQueryFocusModelInjector = erQueryFocusModelInjector;
     }
 
     @Override
@@ -39,7 +47,8 @@ public class TerminalToolAwareStreamingChatModel implements StreamingChatModel {
             return;
         }
 
-        delegate.chat(request, handler);
+        ChatRequest outgoing = erQueryFocusModelInjector == null ? request : erQueryFocusModelInjector.inject(request);
+        delegate.chat(outgoing, handler);
     }
 
     @Override

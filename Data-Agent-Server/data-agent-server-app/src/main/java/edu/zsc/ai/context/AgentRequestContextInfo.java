@@ -1,5 +1,6 @@
 package edu.zsc.ai.context;
 
+import edu.zsc.ai.api.model.request.ErQueryFocus;
 import edu.zsc.ai.config.ai.model.ModelRunSnapshot;
 import java.util.List;
 import lombok.AllArgsConstructor;
@@ -28,4 +29,7 @@ public class AgentRequestContextInfo {
 
     /** Immutable purpose bindings shared by the main agent, tool threads and continuations. */
     private ModelRunSnapshot modelRunSnapshot;
+
+    /** ER tables attached to this user message. Stored apart from the message text. */
+    private ErQueryFocus erFocus;
 }

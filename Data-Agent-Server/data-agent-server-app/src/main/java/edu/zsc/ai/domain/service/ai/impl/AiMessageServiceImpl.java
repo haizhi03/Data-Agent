@@ -9,13 +9,16 @@ import dev.langchain4j.data.message.ChatMessageSerializer;
 import dev.langchain4j.data.message.ChatMessageType;
 import edu.zsc.ai.agent.memory.ChatMemoryCompressor;
 import edu.zsc.ai.agent.memory.MemoryUtil;
+import edu.zsc.ai.api.model.request.ErQueryFocus;
 import edu.zsc.ai.common.enums.ai.MessageStatusEnum;
+import edu.zsc.ai.domain.service.agent.ErQueryFocusAttachment;
 import edu.zsc.ai.domain.mapper.ai.AiMessageMapper;
 import edu.zsc.ai.domain.model.entity.ai.StoredChatMessage;
 import edu.zsc.ai.domain.service.ai.AiMessageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -125,6 +128,50 @@ public class AiMessageServiceImpl extends ServiceImpl<AiMessageMapper, StoredCha
     }
 
     @Override
+    public void saveErFocusOnLatestUserMessage(Long conversationId, String attachmentJson) {
+        if (conversationId == null || StringUtils.isBlank(attachmentJson)) {
+            return;
+        }
+        List<StoredChatMessage> messages = getByConversationIdOrderByCreatedAtAsc(conversationId);
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            StoredChatMessage message = messages.get(i);
+            if (!ChatMessageType.USER.name().equals(message.getRole())) {
+                continue;
+            }
+            if (StringUtils.isBlank(message.getAttachment())) {
+                updateAttachment(message.getId(), attachmentJson);
+            }
+            return;
+        }
+    }
+
+    @Override
+    public List<ErQueryFocus> listErFocuses(Long conversationId) {
+        if (conversationId == null) {
+            return List.of();
+        }
+        List<ErQueryFocus> focuses = new ArrayList<>();
+        for (StoredChatMessage message : getByConversationIdOrderByCreatedAtAsc(conversationId)) {
+            ErQueryFocus focus = ErQueryFocusAttachment.read(message.getAttachment());
+            if (focus != null) {
+                focuses.add(focus);
+            }
+        }
+        return focuses;
+    }
+
+    private void updateAttachment(Long id, String attachmentJson) {
+        if (id == null) {
+            return;
+        }
+        LambdaUpdateWrapper<StoredChatMessage> wrapper = new LambdaUpdateWrapper<>();
+        wrapper.eq(StoredChatMessage::getId, id)
+                .set(StoredChatMessage::getAttachment, attachmentJson)
+                .set(StoredChatMessage::getUpdatedAt, LocalDateTime.now());
+        update(wrapper);
+    }
+
+    @Override
     public void updateLastAiMessageTokenCount(Long conversationId, Integer tokenCount) {
         if (conversationId == null || tokenCount == null) {
             return;
@@ -181,10 +228,28 @@ public class AiMessageServiceImpl extends ServiceImpl<AiMessageMapper, StoredCha
                                        List<StoredChatMessage> storedAll,
                                        List<StoredChatMessage> activeStored,
                                        List<ChatMessage> normalizedIncoming) {
+        boolean keptAttachment = activeStored.stream().anyMatch(message -> StringUtils.isNotBlank(message.getAttachment()));
+        List<String> messageData = activeStored.stream()
+                .map(StoredChatMessage::getData)
+                .toList();
         if (CollectionUtils.isNotEmpty(activeStored)) {
             removeByIds(activeStored.stream().map(StoredChatMessage::getId).filter(Objects::nonNull).toList());
         }
         appendMessages(conversationId, normalizedIncoming, nextBaseTime(storedAll));
+        if (!keptAttachment) {
+            return;
+        }
+        List<StoredChatMessage> restored = getByConversationIdOrderByCreatedAtAsc(conversationId);
+        for (StoredChatMessage message : restored) {
+            int index = messageData.indexOf(message.getData());
+            if (index < 0 || index >= activeStored.size()) {
+                continue;
+            }
+            String attachment = activeStored.get(index).getAttachment();
+            if (StringUtils.isNotBlank(attachment) && StringUtils.isBlank(message.getAttachment())) {
+                updateAttachment(message.getId(), attachment);
+            }
+        }
     }
 
     private void appendMessages(Long conversationId, List<ChatMessage> messages, LocalDateTime baseTime) {

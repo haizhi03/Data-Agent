@@ -18,9 +18,9 @@ public final class ErQueryFocusMessage {
     private ErQueryFocusMessage() {
     }
 
-    public static String enrich(String message, ErQueryFocus focus, MessageSource messages, Locale locale) {
+    public static String contextBlock(ErQueryFocus focus, MessageSource messages, Locale locale) {
         if (focus == null || focus.getTables() == null || focus.getTables().isEmpty()) {
-            return message;
+            return "";
         }
         StringBuilder block = new StringBuilder();
         block.append(text(messages, locale, "er.focus.subject")).append('\n');
@@ -30,11 +30,7 @@ public final class ErQueryFocusMessage {
         appendTables(block, focus.getTables(), messages, locale);
         appendRelations(block, text(messages, locale, "er.focus.inside"), focus.getInsideRelations(), messages, locale);
         appendRelations(block, text(messages, locale, "er.focus.outside"), focus.getOutsideRelations(), messages, locale);
-        String question = StringUtils.defaultString(message).trim();
-        if (question.isEmpty()) {
-            return block.toString().trim();
-        }
-        return block + "\n" + text(messages, locale, "er.focus.question") + "\n" + question;
+        return block.toString().trim();
     }
 
     private static void appendTables(StringBuilder block, List<ErQueryFocus.Table> tables, MessageSource messages, Locale locale) {

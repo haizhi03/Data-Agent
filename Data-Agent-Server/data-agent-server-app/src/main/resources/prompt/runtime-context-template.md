@@ -21,3 +21,7 @@
 <显式引用 purpose="用户显式引用对象" apply_to="范围确定,对象优先级" strength="最高">
 {{EXPLICIT_REFERENCES}}
 </显式引用>
+
+<圈选附件 purpose="圈选的表和关系" apply_to="SQL范围,对象身份" strength="最高">
+{{ER_QUERY_FOCUS}}
+</圈选附件>

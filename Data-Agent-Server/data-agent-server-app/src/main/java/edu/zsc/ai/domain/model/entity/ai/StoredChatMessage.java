@@ -28,6 +28,9 @@ public class StoredChatMessage {
 
     private String data;
 
+    /** JSON attachment kept apart from the message text, such as an ER query focus. */
+    private String attachment;
+
     private Integer status;
 
     private LocalDateTime createdAt;

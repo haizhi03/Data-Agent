@@ -5,6 +5,9 @@ import dev.langchain4j.data.message.ChatMessageDeserializer;
 import dev.langchain4j.data.message.ChatMessageType;
 import dev.langchain4j.store.memory.chat.ChatMemoryStore;
 import edu.zsc.ai.domain.model.entity.ai.StoredChatMessage;
+import edu.zsc.ai.api.model.request.ErQueryFocus;
+import edu.zsc.ai.context.AgentRequestContext;
+import edu.zsc.ai.domain.service.agent.ErQueryFocusAttachment;
 import edu.zsc.ai.domain.service.ai.AiConversationService;
 import edu.zsc.ai.domain.service.ai.AiMessageService;
 import lombok.RequiredArgsConstructor;
@@ -93,6 +96,19 @@ public class CustomChatMemoryStore implements ChatMemoryStore {
                 idInfo.conversationId(), idInfo.modelName(), persistableMessages);
 
         aiMessageService.replaceConversationMessages(idInfo.conversationId(), toPersist);
+        saveErFocus(idInfo.conversationId());
+    }
+
+    private void saveErFocus(Long conversationId) {
+        if (!AgentRequestContext.hasContext()) {
+            return;
+        }
+        ErQueryFocus focus = AgentRequestContext.get().getErFocus();
+        String attachment = ErQueryFocusAttachment.write(focus);
+        if (attachment == null) {
+            return;
+        }
+        aiMessageService.saveErFocusOnLatestUserMessage(conversationId, attachment);
     }
 
     static boolean shouldPersistRuntimeMessage(ChatMessage message) {

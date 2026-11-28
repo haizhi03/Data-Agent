@@ -31,10 +31,8 @@ import edu.zsc.ai.domain.service.db.DbConnectionService;
 import edu.zsc.ai.util.ConnectionIdUtil;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
-import org.springframework.context.MessageSource;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -57,7 +55,6 @@ public class ChatSessionFactory {
     private final AiModelCatalog aiModelCatalog;
     private final ModelRuntime modelRuntime;
     private final ConnectionAccessService connectionAccessService;
-    private final MessageSource messageSource;
 
     /**
      * Build a ChatSession from an incoming ChatRequest.
@@ -99,12 +96,12 @@ public class ChatSessionFactory {
                 invocationContext.put(InvocationContextConstant.READABLE_CONNECTION_IDS, readableConnCsv);
             }
             InvocationParameters parameters = InvocationParameters.from(invocationContext);
+            String userMessage = rememberErFocus(request);
             RequestContextInfo requestContextSnapshot = RequestContext.snapshot();
             AgentRequestContextInfo agentRequestContextSnapshot = AgentRequestContext.snapshot();
 
-            String enriched = modelContext(request);
             return new ChatSession(modelName, agentMode, agent, memoryId,
-                    enriched, parameters, conversationId, requestContextSnapshot, agentRequestContextSnapshot);
+                    userMessage, parameters, conversationId, requestContextSnapshot, agentRequestContextSnapshot);
         } finally {
             restoreContexts(previousRequestContext, previousAgentRequestContext);
         }
@@ -159,7 +156,7 @@ public class ChatSessionFactory {
         }
     }
 
-    private String modelContext(ChatRequest request) {
+    private String rememberErFocus(ChatRequest request) {
         ErQueryFocus focus = request.getErFocus();
         if (focus == null || focus.getTables() == null || focus.getTables().isEmpty()) {
             return request.getMessage();
@@ -168,21 +165,11 @@ public class ChatSessionFactory {
             throw new BusinessException(ResponseCode.PARAM_ERROR, ResponseMessageKey.CONNECTION_ACCESS_DENIED_MESSAGE);
         }
         connectionAccessService.assertReadable(focus.getConnectionId());
-        return ErQueryFocusMessage.enrich(request.getMessage(), focus, messageSource, localeOf(request.getLanguage()));
-    }
-
-    private static Locale localeOf(String language) {
-        if (language == null || language.isBlank()) {
-            return Locale.US;
+        AgentRequestContextInfo current = AgentRequestContext.get();
+        if (current != null) {
+            AgentRequestContext.set(current.toBuilder().erFocus(focus).build());
         }
-        String tag = language.replace('_', '-');
-        if (tag.equalsIgnoreCase("en")) {
-            return Locale.US;
-        }
-        if (tag.equalsIgnoreCase("zh")) {
-            return Locale.SIMPLIFIED_CHINESE;
-        }
-        return Locale.forLanguageTag(tag);
+        return request.getMessage();
     }
 
     private String resolveModel(String model) {

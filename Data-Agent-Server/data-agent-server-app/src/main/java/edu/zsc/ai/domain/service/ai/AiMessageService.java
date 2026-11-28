@@ -2,6 +2,7 @@ package edu.zsc.ai.domain.service.ai;
 
 import com.baomidou.mybatisplus.extension.service.IService;
 import dev.langchain4j.data.message.ChatMessage;
+import edu.zsc.ai.api.model.request.ErQueryFocus;
 import edu.zsc.ai.domain.model.entity.ai.StoredChatMessage;
 
 import java.util.List;
@@ -37,4 +38,8 @@ public interface AiMessageService extends IService<StoredChatMessage> {
      * @param tokenCount     output token count for the AI response (from response.tokenUsage().outputTokenCount())
      */
     void updateLastAiMessageTokenCount(Long conversationId, Integer tokenCount);
+
+    void saveErFocusOnLatestUserMessage(Long conversationId, String attachmentJson);
+
+    List<ErQueryFocus> listErFocuses(Long conversationId);
 }

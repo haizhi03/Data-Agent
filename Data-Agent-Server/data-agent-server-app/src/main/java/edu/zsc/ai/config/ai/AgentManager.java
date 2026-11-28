@@ -34,6 +34,7 @@ public class AgentManager {
     private final SystemPromptManager systemPromptManager;
     private final TerminalToolResultPolicy terminalToolResultPolicy;
     private final ModelRuntime modelRuntime;
+    private final ErQueryFocusModelInjector erQueryFocusModelInjector;
 
     @Bean
     @Primary
@@ -67,7 +68,8 @@ public class AgentManager {
                                       String systemPrompt) {
         List<Object> tools = agentToolConfig.resolveMainTools(agentTools, mode);
         AgentToolConfig.ToolBundle toolBundle = agentToolConfig.buildToolBundle(tools);
-        StreamingChatModel effectiveModel = new TerminalToolAwareStreamingChatModel(model, terminalToolResultPolicy);
+        StreamingChatModel effectiveModel = new TerminalToolAwareStreamingChatModel(
+                model, terminalToolResultPolicy, erQueryFocusModelInjector);
 
         return AiServices.builder(ReActAgent.class)
                 .streamingChatModel(effectiveModel)

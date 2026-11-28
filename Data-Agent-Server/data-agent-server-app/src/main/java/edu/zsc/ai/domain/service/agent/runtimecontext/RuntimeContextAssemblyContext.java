@@ -4,6 +4,7 @@ import java.time.LocalDate;
 import java.util.List;
 
 import edu.zsc.ai.api.model.request.ChatUserMention;
+import edu.zsc.ai.api.model.request.ErQueryFocus;
 import edu.zsc.ai.domain.service.ai.model.MemoryPromptContext;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -27,4 +28,7 @@ public class RuntimeContextAssemblyContext {
 
     @Builder.Default
     private List<ChatUserMention> userMentions = List.of();
+
+    @Builder.Default
+    private List<ErQueryFocus> erFocuses = List.of();
 }

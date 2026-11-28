@@ -14,10 +14,9 @@ class ErQueryFocusMessageTest {
     private final ResourceBundleMessageSource messages = messages();
 
     @Test
-    void leavesTheMessageAloneWhenNothingIsCircled() {
-        assertEquals("按地区统计", ErQueryFocusMessage.enrich("按地区统计", null, messages, Locale.CHINA));
-        ErQueryFocus empty = new ErQueryFocus();
-        assertEquals("按地区统计", ErQueryFocusMessage.enrich("按地区统计", empty, messages, Locale.CHINA));
+    void leavesTheContextEmptyWhenNothingIsCircled() {
+        assertEquals("", ErQueryFocusMessage.contextBlock(null, messages, Locale.CHINA));
+        assertEquals("", ErQueryFocusMessage.contextBlock(new ErQueryFocus(), messages, Locale.CHINA));
     }
 
     @Test
@@ -43,14 +42,14 @@ class ErQueryFocusMessageTest {
         focus.setInsideRelations(List.of(inside));
         focus.setOutsideRelations(List.of(outside));
 
-        String enriched = ErQueryFocusMessage.enrich("按地区统计订单", focus, messages, Locale.forLanguageTag("zh-CN"));
+        String context = ErQueryFocusMessage.contextBlock(focus, messages, Locale.forLanguageTag("zh-CN"));
 
-        assertTrue(enriched.contains("圈选不是白名单"));
-        assertTrue(enriched.contains("连接：shop-db (id=7)"));
-        assertTrue(enriched.contains("shop.public.orders: id PK int, address_id int"));
-        assertTrue(enriched.contains("shop.public.orders.address_id -> shop.public.address.id"));
-        assertTrue(enriched.endsWith("用户问题：\n按地区统计订单"));
-        assertTrue(ErQueryFocusMessage.enrich("count orders", focus, messages, Locale.US).contains("Connection: shop-db (id=7)"));
+        assertTrue(context.contains("圈选不是白名单"));
+        assertTrue(context.contains("连接：shop-db (id=7)"));
+        assertTrue(context.contains("shop.public.orders: id PK int, address_id int"));
+        assertTrue(context.contains("shop.public.orders.address_id -> shop.public.address.id"));
+        assertTrue(!context.contains("按地区统计订单"));
+        assertTrue(ErQueryFocusMessage.contextBlock(focus, messages, Locale.US).contains("Connection: shop-db (id=7)"));
     }
 
     private static ResourceBundleMessageSource messages() {
