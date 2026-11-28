@@ -55,6 +55,7 @@ public class ChatSessionFactory {
     private final AiModelCatalog aiModelCatalog;
     private final ModelRuntime modelRuntime;
     private final ConnectionAccessService connectionAccessService;
+    private final ErQueryFocusResolver erQueryFocusResolver;
 
     /**
      * Build a ChatSession from an incoming ChatRequest.
@@ -165,9 +166,10 @@ public class ChatSessionFactory {
             throw new BusinessException(ResponseCode.PARAM_ERROR, ResponseMessageKey.CONNECTION_ACCESS_DENIED_MESSAGE);
         }
         connectionAccessService.assertReadable(focus.getConnectionId());
+        ErQueryFocus resolved = erQueryFocusResolver.resolve(focus);
         AgentRequestContextInfo current = AgentRequestContext.get();
         if (current != null) {
-            AgentRequestContext.set(current.toBuilder().erFocus(focus).build());
+            AgentRequestContext.set(current.toBuilder().erFocus(resolved).build());
         }
         return request.getMessage();
     }

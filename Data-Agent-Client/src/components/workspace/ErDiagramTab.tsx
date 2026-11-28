@@ -454,7 +454,6 @@ function ErDiagramCanvas({ metadata }: ErDiagramTabProps) {
   const {
     selectedTables,
     selectedTableKeys,
-    focusSplit,
     pinnedKeys,
     pinnedSplit,
     pinnedKeepIds,
@@ -883,7 +882,7 @@ function ErDiagramCanvas({ metadata }: ErDiagramTabProps) {
                   onShowAll={showAllTables}
                   onQuery={() => {
                     useErQueryFocusStore.getState().attach(
-                      toFocusPayload(selectedTables, focusSplit, {
+                      toFocusPayload(selectedTables, {
                         connectionId: metadata.connectionId,
                         connectionName: metadata.connectionName,
                         catalogName: metadata.catalog,

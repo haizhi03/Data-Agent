@@ -5,7 +5,6 @@ import { relationFromId, relationMapping, relationToId, tableId } from './erDiag
 export const ER_FOCUS_SPREAD_AT = 8;
 
 const STATUS_HOP_LIMIT = 3;
-const PROMPT_COLUMN_LIMIT = 40;
 
 export interface ErFocusColumn {
   name: string;
@@ -18,21 +17,6 @@ export interface ErFocusTablePayload {
   catalog?: string | null;
   schema?: string | null;
   columns: ErFocusColumn[];
-}
-
-export interface ErFocusRelationPayload {
-  fromCatalog?: string | null;
-  fromSchema?: string | null;
-  fromTable: string;
-  fromColumns: string[];
-  toCatalog?: string | null;
-  toSchema?: string | null;
-  toTable: string;
-  toColumns: string[];
-  cardinality: string;
-  viaCatalog?: string | null;
-  viaSchema?: string | null;
-  viaTable?: string | null;
 }
 
 export interface ErFocusSplit {
@@ -51,8 +35,6 @@ export interface ErQueryFocusPayload {
   catalogName?: string;
   schemaName?: string;
   tables: ErFocusTablePayload[];
-  insideRelations: ErFocusRelationPayload[];
-  outsideRelations: ErFocusRelationPayload[];
 }
 
 export function splitFocusRelations(relations: ErRelation[], selected: ReadonlySet<string>): ErFocusSplit {
@@ -95,7 +77,6 @@ export function focusInvolvedTableIds(selected: ReadonlySet<string>, split: ErFo
 
 export function toFocusPayload(
   tables: ErTable[],
-  split: ErFocusSplit,
   scope: { connectionId: number; connectionName: string; catalogName?: string | null; schemaName?: string | null },
 ): ErQueryFocusPayload {
   return {
@@ -107,14 +88,8 @@ export function toFocusPayload(
       name: table.name,
       catalog: table.catalog,
       schema: table.schema,
-      columns: table.columns.slice(0, PROMPT_COLUMN_LIMIT).map((column) => ({
-        name: column.name,
-        typeName: column.typeName,
-        primaryKey: column.primaryKey,
-      })),
+      columns: [],
     })),
-    insideRelations: split.inside.map(toRelationPayload),
-    outsideRelations: split.outside.map(toRelationPayload),
   };
 }
 
@@ -133,21 +108,4 @@ export function relationFocusKey(relation: ErRelation) {
 
 export function selectedTableId(table: ErTable) {
   return tableId(table);
-}
-
-function toRelationPayload(relation: ErRelation): ErFocusRelationPayload {
-  return {
-    fromCatalog: relation.fromCatalog,
-    fromSchema: relation.fromSchema,
-    fromTable: relation.fromTable,
-    fromColumns: relation.fromColumns?.length ? relation.fromColumns : [relation.fromColumn],
-    toCatalog: relation.toCatalog,
-    toSchema: relation.toSchema,
-    toTable: relation.toTable,
-    toColumns: relation.toColumns?.length ? relation.toColumns : [relation.toColumn],
-    cardinality: relation.cardinality,
-    viaCatalog: relation.viaCatalog,
-    viaSchema: relation.viaSchema,
-    viaTable: relation.viaTable,
-  };
 }
